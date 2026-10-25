@@ -153,6 +153,8 @@ else:
     EMAIL_FILE_PATH = BASE_DIR / ".dev-emails"
 # Send in a background thread so login/sign-up answer immediately (tests turn this off).
 EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)
+# Friend/share notifications go out in a background thread (tests switch this off).
+PUSH_SEND_ASYNC = env.bool("PUSH_SEND_ASYNC", default=True)
 # The app's address, for the "Open To-Do" button in the welcome email.
 APP_URL = env("APP_URL", default="http://localhost:5173")
 

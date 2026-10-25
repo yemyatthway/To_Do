@@ -1,7 +1,9 @@
 import logging
+import threading
 from datetime import timedelta
 
-from django.db import transaction
+from django.conf import settings
+from django.db import close_old_connections, transaction
 from django.db.models import Q
 from django.utils import timezone
 from pywebpush import WebPushException
@@ -74,6 +76,7 @@ def accept_request(*, me, friendship_id):
     friendship.status = Friendship.Status.ACCEPTED
     friendship.responded_at = timezone.now()
     friendship.save(update_fields=["status", "responded_at"])
+    _notify(friendship.requester, "Friend request accepted", f"{me.full_name or me.email} accepted your friend request.", url="/?view=friends")
     return friendship
 
 
@@ -154,12 +157,31 @@ def dismiss_share(*, me, share_id):
         raise NotFound("That share couldn't be found.")
 
 
-def _notify(user, title, body, url="/"):
-    """Best-effort push to someone who has reminders on; sharing works the same without it."""
-    if not user.reminders_enabled:
-        return
-    for subscription in user.push_subscriptions.all():
+def _send_all(subscriptions, title, body, url):
+    for subscription in subscriptions:
         try:
             send_push(subscription, title, body, url=url)
         except WebPushException as exc:
             logger.warning("Social push to %s failed: %s", subscription, exc)
+
+
+def _send_in_background(*args):
+    try:
+        _send_all(*args)
+    finally:
+        close_old_connections()  # the worker thread gives back the DB connection it may have opened
+
+
+def _notify(user, title, body, url="/"):
+    """Best-effort push (friend request, accepted, tasks sent) to someone who has notifications on.
+    Sent in the background so the person tapping "Add friend" or "Send" never waits on a push
+    service; sharing works the same without it."""
+    if not user.reminders_enabled:
+        return
+    subscriptions = list(user.push_subscriptions.all())
+    if not subscriptions:
+        return
+    if settings.PUSH_SEND_ASYNC:
+        threading.Thread(target=_send_in_background, args=(subscriptions, title, body, url), daemon=True).start()
+    else:
+        _send_all(subscriptions, title, body, url)
