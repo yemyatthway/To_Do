@@ -1,10 +1,13 @@
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
 
 from apps.users.cron import PruneView
 
 urlpatterns = [
+    # For the host's health check: answers without touching the database.
+    path("api/health/", lambda request: JsonResponse({"ok": True})),
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.users.auth_urls")),
     path("api/admin/", include("apps.users.admin_urls")),

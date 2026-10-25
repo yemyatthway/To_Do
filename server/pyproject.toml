@@ -9,6 +9,8 @@ dependencies = [
     "djangorestframework>=3.18.3",
     "djangorestframework-simplejwt>=5.5.1",
     "dnspython>=2.7",
+    "gunicorn>=26.2.0",
     "psycopg[binary]>=3.3.6",
     "pywebpush>=2.5.0",
+    "whitenoise>=6.12.0",
 ]

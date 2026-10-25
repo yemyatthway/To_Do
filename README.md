@@ -133,9 +133,21 @@ Everything except the VAPID key and the cron endpoint requires a logged-in user,
 
 ## Deploying (free tier)
 
-- **Client** on Vercel or Cloudflare Pages. Set `VITE_API_URL` to the backend's URL.
-- **Server** on Render (gunicorn), **database** on Neon or Supabase. Set `ALLOWED_HOSTS` and `TRUSTED_FRONTEND_ORIGINS`. Best: add a Vercel rewrite of `/api/*` to the Render URL so the refresh cookie stays first-party (`SameSite=Lax`).
-- **Reminders**: set `CRON_SECRET`, then have cron-job.org POST `/api/push/send-due/` every minute with that header. This also keeps Render's free instance awake.
-- **Clean-up**: have cron-job.org POST `/api/cron/prune/` once a day (same secret). It deletes expired codes and tokens, auth events older than 180 days and finished shares older than 30 days.
-- **Email**: set `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL` on the server.
-- **iPhone**: push only works after "Add to Home Screen" (the app ships a web manifest for this).
+**Vercel** (the app) → forwards `/api/*` to **Render** (Django) → **Supabase** (Postgres). Email goes through **Brevo**, reminders and clean-up are triggered by **cron-job.org**. All free.
+
+Why these: Render's free plan blocks outgoing email on ports 25/465/587, so email uses Brevo on port 2525. Neon's free plan has 100 compute-hours a month, which a once-a-minute reminder check would use up; Supabase has no compute-hour cap.
+
+1. **Supabase**: new project → Project Settings → Database → *Connection string* → **Session pooler** (the direct one is IPv6-only). Copy it, with your database password filled in, as `DATABASE_URL`.
+2. **Brevo**: free account → Senders, domains → add and verify the address emails come *from* → SMTP & API → SMTP keys → create one. `EMAIL_HOST_USER` = the SMTP login shown there, `EMAIL_HOST_PASSWORD` = the key, `DEFAULT_FROM_EMAIL` = `To-Do <the verified address>`.
+3. **VAPID keys** for production: `uv run python scripts/generate_vapid_keys.py` (new ones, not your local ones).
+4. **Render**: New → Blueprint → this repo (uses `render.yaml`). Fill in `DATABASE_URL`, the Brevo values, the VAPID values, `VAPID_SUBJECT` (`mailto:you@…`), and for now `TRUSTED_FRONTEND_ORIGINS` / `APP_URL` = `https://placeholder.vercel.app`. The build runs migrations. Note the URL, e.g. `https://to-do-api.onrender.com`, and check `…/api/health/` answers `{"ok": true}`.
+5. **Vercel**: put the Render URL into `client/vercel.json` (replace `YOUR-RENDER-APP`), commit and push. New Project → this repo → Root Directory `client` → Deploy. No environment variables needed.
+6. Back in **Render** → Environment: set `TRUSTED_FRONTEND_ORIGINS` and `APP_URL` to the real Vercel URL → save (it redeploys).
+7. **cron-job.org** (two jobs, method POST, header `X-Cron-Secret` = Render's generated `CRON_SECRET`):
+   - every minute: `https://<render>/api/push/send-due/` (reminders; also keeps the free server awake)
+   - daily: `https://<render>/api/cron/prune/` (clean-up)
+8. **Make yourself admin** (Render's free plan has no shell, so from your Mac): sign up in the live app, then
+   `cd server && DATABASE_URL="<supabase url>" uv run python manage.py make_staff you@gmail.com` (a `DATABASE_URL` always wins over the local `DB_*` settings).
+9. **iPhone**: push only works after "Add to Home Screen".
+
+Production settings live in `server/config/settings/production.py` (HTTPS only, HSTS, secure cookies, no CORS because the app and `/api` share the Vercel domain).
