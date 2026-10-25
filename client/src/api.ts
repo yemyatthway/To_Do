@@ -280,6 +280,7 @@ export const api = {
   vapidKey: () => request<{ public_key: string }>('/api/push/vapid-public-key/'),
   subscribePush: (subscription: PushSubscriptionJSON) => request<void>('/api/push/subscribe/', json('POST', subscription)),
   unsubscribePush: (endpoint: string) => request<void>('/api/push/subscribe/', json('DELETE', { endpoint })),
+  testPush: (subscription: PushSubscriptionJSON) => request<{ detail: string }>('/api/push/test/', json('POST', subscription)),
 }
 
 /** Query for an admin table: search, filters, `ordering` ("joined" / "-joined"), page, page_size. Empty values are left out. */

@@ -3989,3 +3989,84 @@ select.field:focus-visible {
     box-shadow: var(--sk-raised);
   }
 }
+
+/* ---- Reminders setup guide ---- */
+.guide-card {
+  width: min(100%, 520px);
+}
+
+.guide-status {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--chip);
+  color: var(--text);
+}
+
+.guide-status .icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  color: var(--accT);
+}
+
+.guide-on .icon {
+  color: var(--ok);
+}
+
+.guide-blocked,
+.guide-unsupported {
+  background: var(--dBg);
+}
+
+.guide-blocked .icon,
+.guide-unsupported .icon {
+  color: var(--dIcon);
+}
+
+.guide-tabs button {
+  font-size: 13px;
+}
+
+.guide-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.guide-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accT);
+  box-shadow: inset 2px 2px 5px var(--inD), inset -2px -2px 5px var(--shL);
+}
+
+.guide-note {
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--row);
+}

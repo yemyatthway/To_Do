@@ -29,6 +29,11 @@ async function currentSubscription() {
   return (await registration?.pushManager.getSubscription()) ?? null
 }
 
+/** False when asking would fail anyway: no push support (e.g. iPhone outside the Home Screen app) or blocked. */
+export function canAskForNotifications() {
+  return isPushSupported() && Notification.permission !== 'denied'
+}
+
 /** Asks for permission (if needed), subscribes this browser and registers it with the server. */
 export async function subscribeThisDevice() {
   if (!isPushSupported()) {
@@ -63,6 +68,13 @@ export async function unsubscribeThisDevice() {
   if (!subscription) return
   await api.unsubscribePush(subscription.endpoint).catch(() => undefined)
   await subscription.unsubscribe().catch(() => undefined)
+}
+
+/** Pushes "It works!" to this browser through the real server, to check the whole path. */
+export async function sendTestNotification() {
+  const subscription = await currentSubscription()
+  if (!subscription) throw new Error('Reminders are not set up on this device yet.')
+  await api.testPush(subscription.toJSON())
 }
 
 /** True when this browser is set up to receive pushes right now. */

@@ -13,6 +13,8 @@ interface ProfileProps {
   themePreference: ThemePreference
   onUserChange: (user: User) => void
   onToggleReminders: () => void
+  /** How to set up reminders on iPhone, Android, Mac and Windows. */
+  onOpenRemindersGuide: () => void
   onThemeChange: (pref: ThemePreference) => void
   onReplayTutorial: () => void
   /** Only passed for staff accounts. */
@@ -26,7 +28,7 @@ interface ProfileProps {
 }
 
 export function Profile(props: ProfileProps) {
-  const { user, now, remindersBusy, themePreference, onUserChange, onToggleReminders, onThemeChange, onReplayTutorial, onOpenAdmin, onLogout, onDeleteAccount, notify, onTasksRestored } = props
+  const { user, now, remindersBusy, themePreference, onUserChange, onToggleReminders, onOpenRemindersGuide, onThemeChange, onReplayTutorial, onOpenAdmin, onLogout, onDeleteAccount, notify, onTasksRestored } = props
   const [deleting, setDeleting] = useState(false)
 
   const [fullName, setFullName] = useState(user.full_name)
@@ -153,7 +155,12 @@ export function Profile(props: ProfileProps) {
               <Icon name="bell" />
               Task reminders
             </span>
-            <span className="hint">A notification 10 minutes before each timed task.</span>
+            <span className="hint">
+              A notification 10 minutes before each timed task.{' '}
+              <button type="button" className="link-btn" onClick={onOpenRemindersGuide}>
+                Set up on your devices
+              </button>
+            </span>
           </span>
           <button
             type="button"

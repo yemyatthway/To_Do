@@ -11,7 +11,7 @@ import { AuthScreen } from './pages/AuthScreen'
 import { usePageVisible } from './visibility'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
-import { deviceCanReceive, subscribeThisDevice, unsubscribeThisDevice } from './push'
+import { canAskForNotifications, deviceCanReceive, subscribeThisDevice, unsubscribeThisDevice } from './push'
 import { useTheme } from './theme'
 import { initials } from './user'
 import {
@@ -35,6 +35,7 @@ const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
 const Timer = lazy(() => import('./pages/Timer').then((m) => ({ default: m.Timer })))
 const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.Friends })))
+const RemindersGuide = lazy(() => import('./components/RemindersGuide').then((m) => ({ default: m.RemindersGuide })))
 const SendTasksDialog = lazy(() => import('./components/SendTasksDialog').then((m) => ({ default: m.SendTasksDialog })))
 const Tour = lazy(() => import('./components/Tour').then((m) => ({ default: m.Tour })))
 const WelcomeDialog = lazy(() => import('./components/Tour').then((m) => ({ default: m.WelcomeDialog })))
@@ -246,6 +247,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const [toast, setToast] = useState<ToastData | null>(null)
   const [freshId, setFreshId] = useState<number | null>(null)
   const [remindersBusy, setRemindersBusy] = useState(false)
+  const [remindersGuide, setRemindersGuide] = useState(false)
   const [touring, setTouring] = useState(false)
   // Deletes wait out the undo window before reaching the server.
   const pendingDeletes = useRef(new Map<number, number>())
@@ -286,6 +288,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     tasksRef.current = tasks
   }, [tasks])
   const closeSheet = useCallback(() => setSheet(null), [])
+  const closeRemindersGuide = useCallback(() => setRemindersGuide(false), [])
 
   // This week (for progress) through the next few days, stretched to include whatever day is open,
   // plus anything unfinished from before today (the Overdue section), merged into one list.
@@ -433,21 +436,41 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     })
   }
 
-  async function toggleReminders() {
-    if (remindersBusy) return
+  /** Permission + subscribe this device, then reminders on for the account. True if it worked. */
+  async function enableReminders() {
+    // iPhone in a Safari tab, an old browser, or blocked: show how to set this device up instead.
+    if (!canAskForNotifications()) {
+      setRemindersGuide(true)
+      return false
+    }
     setRemindersBusy(true)
     try {
-      if (user.reminders_enabled) {
-        onUserChange(await auth.updateMe({ reminders_enabled: false }))
-        await unsubscribeThisDevice()
-        notify('Reminders off', "You won't get task notifications.")
-      } else {
-        await subscribeThisDevice()
-        onUserChange(await auth.updateMe({ reminders_enabled: true }))
-        notify('Reminders on', 'You get a notification 10 minutes before timed tasks.')
-      }
+      await subscribeThisDevice()
+      onUserChange(await auth.updateMe({ reminders_enabled: true }))
+      notify('Reminders on', 'You get a notification 10 minutes before timed tasks.')
+      return true
     } catch (err) {
-      notify(user.reminders_enabled ? "Couldn't turn reminders off" : "Couldn't turn reminders on", errorMessage(err))
+      notify("Couldn't turn reminders on", errorMessage(err))
+      setRemindersGuide(true)
+      return false
+    } finally {
+      setRemindersBusy(false)
+    }
+  }
+
+  async function toggleReminders() {
+    if (remindersBusy) return
+    if (!user.reminders_enabled) {
+      await enableReminders()
+      return
+    }
+    setRemindersBusy(true)
+    try {
+      onUserChange(await auth.updateMe({ reminders_enabled: false }))
+      await unsubscribeThisDevice()
+      notify('Reminders off', "You won't get task notifications.")
+    } catch (err) {
+      notify("Couldn't turn reminders off", errorMessage(err))
     } finally {
       setRemindersBusy(false)
     }
@@ -638,6 +661,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               themePreference={theme.preference}
               onUserChange={onUserChange}
               onToggleReminders={toggleReminders}
+              onOpenRemindersGuide={() => setRemindersGuide(true)}
               onThemeChange={theme.choose}
               onReplayTutorial={startTour}
               onOpenAdmin={user.is_staff ? () => setView('admin') : undefined}
@@ -746,6 +770,15 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       {toast && <Toast key={toast.id} toast={toast} onDismiss={dismissToast} />}
 
       <Suspense fallback={null}>
+      {remindersGuide && (
+        <RemindersGuide
+          remindersOn={user.reminders_enabled}
+          busy={remindersBusy}
+          onEnableHere={enableReminders}
+          onClose={closeRemindersGuide}
+          notify={notify}
+        />
+      )}
       {!user.tutorial_seen && !touring && (
         <WelcomeDialog
           name={user.full_name}
