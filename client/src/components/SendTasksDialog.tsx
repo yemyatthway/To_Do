@@ -121,7 +121,7 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
         </div>
         <p className="list-sub" style={{ margin: 0 }}>
           {mode === 'remind'
-            ? "It goes straight into their list with a reminder. If you change the time or delete it, theirs updates too."
+            ? "It goes straight into their list with a reminder, as a shared plan: changes either of you make reach the other, with a notification."
             : 'They get a copy in their inbox and choose whether to add it. Later changes stay separate.'}{' '}
           They never see the rest of your tasks.
         </p>

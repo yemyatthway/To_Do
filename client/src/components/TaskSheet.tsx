@@ -319,14 +319,14 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
           <p className="hint friend-note">
             <Icon name="users" />
             {task.linked
-              ? `Added by ${task.added_by_name}. When they change the time or title, it updates here too. Editing those yourself makes it your own copy.`
-              : `Added by ${task.added_by_name}. This is your own copy now.`}
+              ? `Shared plan from ${task.added_by_name}. Changes anyone makes to the time, title or notes reach everyone, and the others are notified. Done is just for you.`
+              : `Added by ${task.added_by_name}. It's no longer shared, so changes stay here.`}
           </p>
         )}
         {!task?.added_by_name && Boolean(task?.shared_with?.length) && (
           <p className="hint friend-note">
             <Icon name="users" />
-            {`Also in ${task!.shared_with!.join(', ')}'s list. Changing the time or title, or deleting it, updates theirs too.`}
+            {`Shared with ${task!.shared_with!.join(', ')}. Changes anyone makes reach everyone, and the others are notified. Deleting it cancels it for everyone.`}
           </p>
         )}
 

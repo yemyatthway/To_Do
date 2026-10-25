@@ -55,7 +55,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         before = {field: getattr(serializer.instance, field) for field in SYNCED_FIELDS}
         task = serializer.save()
-        sync_copies(task, before)  # friends you reminded get the change too
+        sync_copies(task, before)  # a shared plan: everyone else's copy changes too
 
     def perform_destroy(self, task):
         from apps.social.linked import cancel_copies

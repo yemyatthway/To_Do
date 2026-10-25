@@ -69,12 +69,6 @@ class TaskSerializer(serializers.ModelSerializer):
             for key in ("due_at", "remind_before_minutes")
         ):
             instance.reminder_sent_at = None
-        # Editing what a friend set (time, title...) makes this copy your own: it stops following theirs.
-        if instance.linked_from_id and any(
-            key in validated_data and validated_data[key] != getattr(instance, key)
-            for key in ("title", "notes", "due_at", "category", "priority")
-        ):
-            instance.linked_from = None
         if "done" in validated_data and validated_data["done"] != instance.done:
             instance.completed_at = timezone.now() if validated_data["done"] else None
         return super().update(instance, validated_data)

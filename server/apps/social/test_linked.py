@@ -79,18 +79,32 @@ class RemindFriendTests(APITestCase):
         self.assertTrue(Task.all_objects.filter(owner=self.aung, deleted_at__isnull=False).exists())  # in their Recently deleted
         self.assertEqual(send_push.call_args.args[1], "Mia Thompson cancelled a task")
 
-    def test_their_own_edits_unlink_it(self, send_push):
+    def test_it_is_two_way_and_everyone_else_is_told(self, send_push):
+        from apps.notifications.models import PushSubscription
+
+        PushSubscription.objects.create(user=self.mia, endpoint="https://push.example.com/mia", p256dh="k", auth="a")
         self.remind(self.go_out)
         copy = self.their_copy()
         self.client.force_authenticate(self.aung)
         self.client.patch(f"/api/tasks/{copy.id}/", {"done": True}, format="json")
-        self.assertTrue(Task.objects.get(pk=copy.pk).linked_from_id)  # done keeps the link
-        self.client.patch(f"/api/tasks/{copy.id}/", {"title": "My plan"}, format="json")
-        self.assertIsNone(Task.objects.get(pk=copy.pk).linked_from_id)
+        self.go_out.refresh_from_db()
+        self.assertFalse(self.go_out.done)  # done is personal
 
-        self.client.force_authenticate(self.mia)
-        self.client.patch(f"/api/tasks/{self.go_out.id}/", {"title": "Changed"}, format="json")
-        self.assertEqual(Task.objects.get(pk=copy.pk).title, "My plan")
+        later = self.go_out.due_at + timedelta(hours=1)
+        self.client.patch(f"/api/tasks/{copy.id}/", {"due_at": later.isoformat()}, format="json")
+        self.go_out.refresh_from_db()
+        self.assertEqual(self.go_out.due_at, later)  # Aung's change reached Mia
+        self.assertEqual((send_push.call_args.args[0].user, send_push.call_args.args[1]), (self.mia, "Ko Aung moved a task"))
+
+        self.client.patch(f"/api/tasks/{copy.id}/", {"title": "Dinner"}, format="json")
+        self.go_out.refresh_from_db()
+        self.assertEqual(self.go_out.title, "Dinner")
+        self.assertEqual(send_push.call_args.args[1:3], ("Ko Aung renamed a task", "Go out is now Dinner"))
+
+        # Aung leaving only removes his copy; Mia is told and keeps hers.
+        self.client.delete(f"/api/tasks/{copy.id}/")
+        self.assertTrue(Task.objects.filter(pk=self.go_out.pk).exists())
+        self.assertEqual(send_push.call_args.args[1], "Ko Aung left a plan")
 
     def test_friends_only_inbox_choice_past_tasks_and_unfriending(self, send_push):
         self.assertEqual(self.remind(self.go_out, to=self.sara).status_code, 403)  # not friends

@@ -1,10 +1,10 @@
 """'Remind a friend': put a copy of your task straight into a friend's list, kept in sync.
 
-The original stays yours. Each friend gets their own Task (linked_from = your task), so their
-reminders, done state and Recently deleted work exactly like their own tasks. When you change the
-time, title, notes, category or priority, the copies follow; when you delete it, theirs go to
-their Recently deleted. If they edit one of those fields themselves, their copy is unlinked and
-becomes their own (see TaskSerializer.update).
+Each friend gets their own Task (linked_from = your task), so their reminders, done state and
+Recently deleted work exactly like their own tasks. It's one shared plan, edited by anyone: a
+change to the time, title, notes, category or priority by any member reaches everyone's copy and
+the others are notified. Done stays personal. The creator deleting it cancels it for everyone; a
+friend deleting theirs just leaves.
 """
 
 from django.db import transaction
@@ -89,30 +89,50 @@ def add_for_friend(*, me, recipient_id, task_ids):
     return {"mode": "added", "added": len(copies), "already": len(upcoming) - len(fresh), "past": past}
 
 
+def _members(task):
+    """Everyone's copy of the same shared plan: the original plus every linked copy."""
+    root = task.linked_from if task.linked_from_id else task
+    if root is None:
+        return []
+    return [root, *Task.objects.filter(linked_from=root).select_related("owner")]
+
+
 def sync_copies(task, before):
-    """The owner changed their task: copy the synced fields to every linked copy and tell those
-    friends if the time moved. `before` holds the values from before the change."""
+    """Someone (creator or friend) changed their copy of a shared plan: copy the synced fields to
+    everyone else's and tell them what changed. `before` holds the values from before the change."""
     changed = [f for f in SYNCED_FIELDS if getattr(task, f) != before[f]]
     if not changed:
         return 0
-    copies = list(Task.objects.filter(linked_from=task).select_related("owner"))
-    for copy in copies:
+    others = [m for m in _members(task) if m.pk != task.pk and m.deleted_at is None]
+    editor = _name(task.owner)
+    for other in others:
         for field in changed:
-            setattr(copy, field, getattr(task, field))
+            setattr(other, field, getattr(task, field))
         update_fields = list(changed)
         if "due_at" in changed:
-            copy.reminder_sent_at = None  # new time: the reminder fires again
-            if copy.due_at and not copy.remind_before_minutes:
-                copy.remind_before_minutes = DEFAULT_REMIND_MINUTES
+            other.reminder_sent_at = None  # new time: the reminder fires again
+            if other.due_at and not other.remind_before_minutes:
+                other.remind_before_minutes = DEFAULT_REMIND_MINUTES
             update_fields += ["reminder_sent_at", "remind_before_minutes"]
-        copy.save(update_fields=update_fields)
+        other.save(update_fields=update_fields)
         if "due_at" in changed:
-            _notify(copy.owner, f"{_name(task.owner)} moved a task", f"{copy.title} is now {when(copy, copy.owner)}", url="/")
-    return len(copies)
+            title, body = f"{editor} moved a task", f"{other.title} is now {when(other, other.owner)}"
+        elif "title" in changed:
+            title, body = f"{editor} renamed a task", f"{before['title']} is now {other.title}"
+        else:
+            title, body = f"{editor} updated a task", f"{other.title}: new {', '.join(f for f in changed)}"
+        _notify(other.owner, title, body, url="/")
+    return len(others)
 
 
 def cancel_copies(task):
-    """The owner deleted their task: friends' copies go to their Recently deleted."""
+    """A task was deleted. The creator deleting it cancels the plan for everyone (their copies go
+    to Recently deleted); a friend deleting theirs only leaves, and the creator is told."""
+    if task.linked_from_id:
+        root = Task.all_objects.filter(pk=task.linked_from_id).select_related("owner").first()
+        if root and root.deleted_at is None:
+            _notify(root.owner, f"{_name(task.owner)} left a plan", f"{task.title} was removed from their list.", url="/")
+        return 0
     copies = list(Task.objects.filter(linked_from=task).select_related("owner"))
     now = timezone.now()
     for copy in copies:
