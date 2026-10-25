@@ -1,0 +1,13 @@
+{% autoescape off %}
+Welcome to To-Do{% if name %}, {{ name }}{% endif %}!
+
+Your account is ready. Here's how to get the most out of it:
+{% for feature in features %}
+- {{ feature.title }}: {{ feature.body }}{% endfor %}
+
+Open To-Do: {{ app_url }}
+
+Tip: on iPhone, add To-Do to your Home Screen (Share > Add to Home Screen) to get reminders.
+
+— To-Do
+{% endautoescape %}

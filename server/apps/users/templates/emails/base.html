@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{ subject }}</title>
+<style>
+  /* Inline styles do the work (Gmail and Outlook ignore much of <style>); these only add
+     phone sizing and dark mode for the apps that support them (Apple Mail, iOS, Outlook.com). */
+  @media (max-width: 520px) {
+    .card { padding: 28px 22px !important; border-radius: 20px !important; }
+    .code { font-size: 30px !important; letter-spacing: 8px !important; }
+    .h1 { font-size: 22px !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    .page { background: #0f1625 !important; }
+    .card { background: #18223a !important; border-color: #26324d !important; }
+    .h1, .strong { color: #eef3ff !important; }
+    .text { color: #b4c0d8 !important; }
+    .muted { color: #7f8ba5 !important; }
+    .codebox { background: #111a2e !important; border-color: #2b3a5c !important; }
+    .code { color: #8fb6ff !important; }
+    .note { background: #2a2617 !important; border-color: #4a4026 !important; color: #ecdcb0 !important; }
+    .feature-icon { background: #22304f !important; }
+  }
+</style>
+</head>
+<body class="page" style="margin:0;padding:0;background:#eef3fb;-webkit-text-size-adjust:100%;">
+  <!-- Preview text shown in the inbox list -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{{ preheader }}&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="page" style="background:#eef3fb;">
+    <tr>
+      <td align="center" style="padding:32px 14px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+          <!-- Brand -->
+          <tr>
+            <td align="center" style="padding:0 0 20px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td width="40" height="40" align="center" valign="middle" style="width:40px;height:40px;background:#3f80e6;background-image:linear-gradient(180deg,#7fb1fa,#3f80e6 50%,#2459bd);border-radius:12px;color:#ffffff;font:700 20px/40px -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">&#10003;</td>
+                  <td style="padding-left:10px;font:800 20px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e2b45;" class="strong">To-Do</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <!-- Card -->
+          <tr>
+            <td class="card" style="background:#ffffff;border:1px solid #e1e9f6;border-radius:24px;padding:36px 34px;box-shadow:0 12px 32px rgba(46,82,140,0.10);font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td align="center" class="muted" style="padding:22px 18px 0;font:400 12px/1.6 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#8a97ad;">
+              {% block footer %}You're receiving this because this address was used on To-Do.{% endblock %}<br>
+              To-Do · your tasks on a clock
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

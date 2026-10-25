@@ -1,0 +1,10 @@
+{
+  "name": "To-Do",
+  "short_name": "To-Do",
+  "description": "A to-do list on a clock, with push reminders.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#e6eef8",
+  "theme_color": "#2f6fd6",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -1,0 +1,16 @@
+{% autoescape off %}
+{{ heading }}
+
+{{ intro }}
+
+Your code: {{ code }}
+
+It expires in {{ minutes }} minutes. Only the newest code works.
+{% if device %}
+Signing in from: {{ device }}
+Not you? Don't share this code with anyone, and change your password in the app.
+{% endif %}
+If you didn't ask for this code, you can safely ignore this email.
+
+— To-Do
+{% endautoescape %}
