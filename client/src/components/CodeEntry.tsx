@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { detectDevice } from '../device'
 import { Icon } from '../icons'
 
 export interface CodeSent {
@@ -71,8 +72,17 @@ export function CodeEntry({
   }
 
   // "Paste" button: reads the clipboard (the browser may ask once) and sends the code if it finds one.
+  // iPhone/iPad Safari only allows that after a second tap on its own "Paste" bubble, which is easy
+  // to miss, so there the button opens the keyboard instead: iOS offers the emailed code right above it.
   const canPaste = typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText)
+  const ios = typeof navigator !== 'undefined' && detectDevice().platform === 'ios'
   async function paste() {
+    if (ios) {
+      setError('')
+      setInfo('Tap the code above the keyboard, or press and hold the box and choose Paste.')
+      inputRef.current?.focus()
+      return
+    }
     try {
       const digits = (await navigator.clipboard.readText()).match(/\d{6}/)?.[0]
       if (!digits) {
@@ -83,7 +93,7 @@ export function CodeEntry({
       setError('')
       if (digits !== submitted.current) void submit(digits)
     } catch {
-      setError('Paste was blocked. Long-press the box and choose Paste instead.')
+      setError('Your browser blocked pasting. Press and hold (or right-click) the box and choose Paste.')
       inputRef.current?.focus()
     }
   }
