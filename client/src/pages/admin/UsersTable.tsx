@@ -3,6 +3,7 @@ import { admin, type AdminUser } from '../../api'
 import { formatDateTime, initials, timeAgo } from '../../user'
 import { STATUS_LABEL } from './labels'
 import { FilterSelect, Pager, SearchBox, SortHeader, TableError } from './table'
+import { useLiveRefresh } from '../../live'
 import { useServerTable } from './useServerTable'
 
 const STATUS_OPTIONS = [
@@ -29,6 +30,7 @@ interface UsersTableProps {
 
 export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps) {
   const table = useServerTable(admin.users, { ordering: '-joined', filters: { status: '', verified: '' } })
+  useLiveRefresh(table.refreshSilently, 30_000) // new sign-ups, logins and bans appear by themselves
   const { patchRows } = table
 
   useEffect(() => {

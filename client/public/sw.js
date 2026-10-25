@@ -4,16 +4,21 @@ self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {}
   const title = data.title || 'To-Do'
 
+  // Tell any open To-Do window, so it refreshes what changed right away (no waiting for a poll).
+  const tellOpenApps = self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((windows) => windows.forEach((w) => w.postMessage({ type: 'push', url: data.url || '/' })))
+
   // Safari revokes push permission if a push arrives without a visible notification.
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      icon: '/icon.svg',
-      // High-priority reminders stay on screen until you deal with them.
-      requireInteraction: Boolean(data.urgent),
-      data: { url: data.url || '/' },
-    }),
-  )
+  const show = self.registration.showNotification(title, {
+    body: data.body || '',
+    icon: '/icon.svg',
+    // High-priority reminders stay on screen until you deal with them.
+    requireInteraction: Boolean(data.urgent),
+    data: { url: data.url || '/' },
+  })
+
+  event.waitUntil(Promise.all([show, tellOpenApps]))
 })
 
 self.addEventListener('notificationclick', (event) => {

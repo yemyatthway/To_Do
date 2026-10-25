@@ -3,6 +3,7 @@ import { Icon } from '../../icons'
 import { formatDateTime, timeAgo } from '../../user'
 import { EVENT_ICON, EVENT_LABEL } from './labels'
 import { FilterSelect, Pager, SearchBox, SortHeader, TableError } from './table'
+import { useLiveRefresh } from '../../live'
 import { useServerTable } from './useServerTable'
 
 const KIND_OPTIONS = [
@@ -24,6 +25,7 @@ const SINCE_OPTIONS = [
 /** The sign-up / login / logout log for every account. */
 export function ActivityTable({ now, initialSearch, onOpenUser }: { now: Date; initialSearch?: string; onOpenUser: (id: number) => void }) {
   const table = useServerTable(admin.events, { ordering: '-time', filters: { kind: '', since: '' }, search: initialSearch })
+  useLiveRefresh(table.refreshSilently, 30_000) // new sign-ups, logins and bans appear by themselves
   const filtered = Boolean(table.query || table.filters.kind || table.filters.since)
 
   return (

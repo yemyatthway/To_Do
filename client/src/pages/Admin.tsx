@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLiveRefresh } from '../live'
 import { admin, type AdminStats, type AdminUser, type AdminUserDetail, type User } from '../api'
 import { ActivityTable } from './admin/ActivityTable'
 import { errorMessage } from './admin/useServerTable'
@@ -40,6 +41,7 @@ export function Admin({ me, now, notify }: AdminProps) {
   useEffect(() => {
     loadStats()
   }, [loadStats])
+  useLiveRefresh(loadStats, 30_000)
 
   const openUser = useCallback(
     async (id: number) => {

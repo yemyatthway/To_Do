@@ -8,6 +8,7 @@ import { Icon } from './icons'
 import { clearSavedTimer, useTimer, type TimerState } from './timer/useTimer'
 import { enter, useGsap } from './motion'
 import { AuthScreen } from './pages/AuthScreen'
+import { useLiveRefresh } from './live'
 import { usePageVisible } from './visibility'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
@@ -314,6 +315,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     window.addEventListener('focus', load)
     return () => window.removeEventListener('focus', load)
   }, [load])
+  // Tasks friends add or change for you show up without a reload.
+  useLiveRefresh(load, 30_000)
 
   // Time zone follows the device, so reminders read right after travelling.
   useEffect(() => {
@@ -522,13 +525,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [])
 
   // No polling while the tab is hidden; it refreshes as soon as you come back.
-  const visible = usePageVisible()
   useEffect(() => {
-    if (!visible) return
     loadBadge()
-    const id = setInterval(loadBadge, 60_000)
-    return () => clearInterval(id)
-  }, [loadBadge, visible])
+  }, [loadBadge])
+  useLiveRefresh(loadBadge, 20_000)
 
   const dark = theme.resolved === 'dark'
   const remindersOn = user.reminders_enabled

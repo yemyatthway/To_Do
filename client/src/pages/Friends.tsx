@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLiveRefresh } from '../live'
 import { social, type Person, type Share } from '../api'
 import { Icon } from '../icons'
 import { formatShortDay, formatTime } from '../time'
@@ -39,6 +40,9 @@ export function Friends({ now, notify, onSendTasks, onChanged }: FriendsProps) {
     refresh()
   }, [refresh])
 
+  // Requests, accepts and shares from friends appear without reloading.
+  useLiveRefresh(refresh, 10_000)
+
   /** Runs an action once at a time per button, then refreshes everything. */
   async function act(key: string, fn: () => Promise<unknown>, success?: string) {
     setBusy(key)
@@ -49,6 +53,8 @@ export function Friends({ now, notify, onSendTasks, onChanged }: FriendsProps) {
       onChanged()
     } catch (err) {
       notify("That didn't work", errorMessage(err))
+      // Usually it changed elsewhere (they cancelled, accepted, declined): show how things are now.
+      await refresh()
     } finally {
       setBusy(null)
     }

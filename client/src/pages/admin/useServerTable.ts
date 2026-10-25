@@ -28,6 +28,8 @@ export function useServerTable<T, F extends Record<string, string>>(
   const [page, setPage] = useState(1)
   const [pageSize, setPageSizeState] = useState(25)
   const [nonce, setNonce] = useState(0)
+  // Background refreshes re-fetch the same view without dimming it ("loading" stays false).
+  const [tick, setTick] = useState(0)
   const [loaded, setLoaded] = useState<Loaded<T> | null>(null)
   const loadRef = useRef(load)
   useEffect(() => {
@@ -52,7 +54,7 @@ export function useServerTable<T, F extends Record<string, string>>(
     return () => {
       live = false
     }
-  }, [key, query, filters, ordering, page, pageSize])
+  }, [key, query, filters, ordering, page, pageSize, tick])
 
   const setFilter = useCallback((name: keyof F, value: string) => {
     setFilters((prev) => ({ ...prev, [name]: value }))
@@ -91,6 +93,7 @@ export function useServerTable<T, F extends Record<string, string>>(
     pageSize,
     setPageSize,
     reload: useCallback(() => setNonce((n) => n + 1), []),
+    refreshSilently: useCallback(() => setTick((n) => n + 1), []),
     patchRows,
   }
 }
