@@ -105,7 +105,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: 'reminders',
     title: 'Reminders',
-    body: 'Turn reminders on to get a notification 10 minutes before a task. Tap again to turn them off.',
+    body: 'Turn reminders on to get a notification before your tasks (10 minutes by default; pick another time on any task). Tap again to turn them off.',
     gesture: 'tap',
   },
   {
@@ -450,7 +450,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     try {
       await subscribeThisDevice()
       onUserChange(await auth.updateMe({ reminders_enabled: true }))
-      notify('Reminders on', 'You get a notification 10 minutes before timed tasks.')
+      notify('Reminders on', 'You get a notification before timed tasks (10 min by default, changeable per task).')
       return true
     } catch (err) {
       notify("Couldn't turn reminders on", errorMessage(err))

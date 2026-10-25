@@ -45,6 +45,12 @@ class TaskSerializer(serializers.ModelSerializer):
             return []
         return [(c.owner.full_name or c.owner.email).split()[0] for c in task.linked_copies.all()]
 
+    def validate_remind_before_minutes(self, value):
+        # Up to a day ahead: the reminder job looks one day ahead (notifications.reminders.MAX_LEAD).
+        if value is not None and not 0 <= value <= 24 * 60:
+            raise serializers.ValidationError("Pick a reminder between the task's time and one day before.")
+        return value
+
     def validate_title(self, value):
         value = value.strip()
         if not value:

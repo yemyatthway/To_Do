@@ -130,3 +130,23 @@ class OverdueTests(APITestCase):
         response = self.client.get("/api/tasks/", {"overdue_before": now.isoformat()})
         self.assertEqual(response.status_code, 200)
         self.assertEqual([t["title"] for t in response.data], ["missed yesterday", "missed"])
+
+
+class ReminderLeadTests(APITestCase):
+    def test_any_lead_from_at_the_time_to_a_day(self):
+        from datetime import timedelta as td
+
+        from apps.notifications.reminders import _lead, due_reminders
+
+        user = User.objects.create_user("mia@example.com", "Sunny-Clock-2026", email_verified_at=timezone.now(), reminders_enabled=True)
+        self.client.force_authenticate(user)
+        due = (timezone.now() + td(hours=3)).isoformat()
+        ok = self.client.post("/api/tasks/", {"title": "Flight", "due_at": due, "remind_before_minutes": 120}, format="json")
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertEqual(self.client.post("/api/tasks/", {"title": "x", "due_at": due, "remind_before_minutes": 2000}, format="json").status_code, 400)
+        self.assertEqual(self.client.post("/api/tasks/", {"title": "x", "due_at": due, "remind_before_minutes": 0}, format="json").status_code, 201)
+
+        task = Task.objects.get(title="Flight")
+        self.assertNotIn(task, due_reminders(timezone.now()))  # 3 h away, reminder at 2 h before
+        self.assertIn(task, due_reminders(timezone.now() + td(hours=1, minutes=1)))
+        self.assertEqual([_lead(m) for m in (5, 60, 90, 120, 1440)], ["5 min", "1 h", "1 h 30 min", "2 h", "1 day"])

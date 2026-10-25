@@ -41,8 +41,19 @@ def _reminder_body(task, now):
     # Written in the owner's own time zone, wherever they are.
     at = task.due_at.astimezone(_owner_zone(task.owner)).strftime("%-I:%M %p")
     minutes = round((task.due_at - now).total_seconds() / 60)
-    text = f"Starts in {minutes} min · {at}" if minutes > 0 else f"Due now · {at}"
+    text = f"Starts in {_lead(minutes)} · {at}" if minutes > 0 else f"Due now · {at}"
     return f"High priority · {text}" if task.priority == Task.Priority.HIGH else text
+
+
+def _lead(minutes):
+    """45 -> '45 min', 90 -> '1 h 30 min', 120 -> '2 h', 1440 -> '1 day'."""
+    if minutes >= 24 * 60:
+        days = round(minutes / (24 * 60))
+        return f"{days} day{'s' if days != 1 else ''}"
+    hours, rest = divmod(minutes, 60)
+    if not hours:
+        return f"{rest} min"
+    return f"{hours} h {rest} min" if rest else f"{hours} h"
 
 
 def send_due_reminders(now=None):

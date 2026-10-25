@@ -22,6 +22,17 @@ export function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
 
+/** Reminder choices, in minutes before the task (0 = at the task's time). */
+export const REMINDER_LEADS = [0, 5, 10, 15, 30, 60, 120, 1440] as const
+
+/** 0 -> 'At the time', 30 -> '30 min before', 60 -> '1 hour before', 1440 -> '1 day before'. */
+export function formatLead(minutes: number) {
+  if (minutes === 0) return 'At the time'
+  if (minutes % 1440 === 0) return `${minutes / 1440} day${minutes === 1440 ? '' : 's'} before`
+  if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? '' : 's'} before`
+  return `${minutes} min before`
+}
+
 export const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 export const formatLongDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
 export const formatShortDay = (d: Date) => `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.getDate()}`

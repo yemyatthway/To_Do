@@ -4,7 +4,7 @@ import { Icon } from '../icons'
 import { Calendar } from './Calendar'
 import { TimePicker } from './TimePicker'
 import { gsap, useGsap } from '../motion'
-import { addDays, dueDate, fromInputs, startOfDay, toDateInput, toTimeInput } from '../time'
+import { addDays, dueDate, formatLead, fromInputs, REMINDER_LEADS, startOfDay, toDateInput, toTimeInput } from '../time'
 
 const parseDate = (value: string) => {
   const [y, m, d] = value.split('-').map(Number)
@@ -22,7 +22,7 @@ const PRIORITIES: { value: Priority; label: string; color: string }[] = [
   { value: 'medium', label: 'Medium', color: '#2f6fd6' },
   { value: 'high', label: 'High', color: '#b8431f' },
 ]
-const REMIND_MINUTES = 10
+const DEFAULT_LEAD = 10
 
 export interface SheetDefaults {
   date: Date
@@ -52,6 +52,8 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   const [category, setCategory] = useState<Category>(task?.category ?? 'personal')
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'medium')
   const [remind, setRemind] = useState(task ? task.remind_before_minutes !== null : true)
+  // How long before the task the reminder comes (minutes); kept when the switch goes off and on.
+  const [lead, setLead] = useState<number>(task?.remind_before_minutes ?? DEFAULT_LEAD)
   const [done, setDone] = useState(task?.done ?? false)
   const canRemind = Boolean(time) && remindersOn
   // Turning the time off and on again brings back the last time, so a mistaken tap costs nothing.
@@ -155,7 +157,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
         category,
         priority,
         // With reminders off account-wide the switch is locked, so keep whatever the task already had.
-        remind_before_minutes: !remindersOn ? (task?.remind_before_minutes ?? null) : time && remind ? REMIND_MINUTES : null,
+        remind_before_minutes: !remindersOn ? (task?.remind_before_minutes ?? null) : time && remind ? lead : null,
         done,
       })
       leave(onClose)
@@ -290,19 +292,36 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
         <div className="toggle-row">
           <span>
             <Icon name="bell" />
-            Remind me {REMIND_MINUTES} min before
+            Remind me{canRemind && remind ? ` · ${formatLead(lead).toLowerCase()}` : ''}
           </span>
           <button
             type="button"
             className="switch"
             role="switch"
             aria-checked={canRemind && remind}
-            aria-label="Remind me 10 minutes before"
+            aria-label="Remind me"
             aria-describedby={canRemind ? undefined : 'remind-hint'}
             disabled={!canRemind}
             onClick={() => setRemind(!remind)}
           />
         </div>
+        {canRemind && remind && (
+          <div className="chips lead-chips" role="radiogroup" aria-label="When to remind me">
+            {REMINDER_LEADS.map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                role="radio"
+                aria-checked={lead === minutes}
+                aria-pressed={lead === minutes}
+                className="chip"
+                onClick={() => setLead(minutes)}
+              >
+                {minutes === 0 ? 'At the time' : formatLead(minutes).replace(' before', '')}
+              </button>
+            ))}
+          </div>
+        )}
         {!remindersOn ? (
           <span className="hint" id="remind-hint">
             Reminders are off. Turn them on with the bell button or in your profile.

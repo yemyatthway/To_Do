@@ -230,7 +230,7 @@ export function RemindersGuide({
           </button>
         )}
         <p className="hint" style={{ textAlign: 'center', margin: 0 }}>
-          Each device is set up on its own. Reminders come 10 minutes before timed tasks; high-priority ones stay on screen.
+          Each device is set up on its own. Reminders come before timed tasks (you choose how long on each task); high-priority ones stay on screen.
         </p>
       </div>
     </div>,

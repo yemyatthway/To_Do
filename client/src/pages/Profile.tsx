@@ -156,7 +156,7 @@ export function Profile(props: ProfileProps) {
               Task reminders
             </span>
             <span className="hint">
-              A notification 10 minutes before each timed task.{' '}
+              A notification before each timed task (10 min by default; change it on any task).{' '}
               <button type="button" className="link-btn" onClick={onOpenRemindersGuide}>
                 Set up on your devices
               </button>

@@ -4206,3 +4206,16 @@ select.field:focus-visible {
 .service-status.bad .dot {
   background: var(--dIcon);
 }
+
+/* Reminder lead choices under "Remind me" */
+.lead-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.lead-chips .chip {
+  padding: 7px 12px;
+  font-size: 13px;
+}
