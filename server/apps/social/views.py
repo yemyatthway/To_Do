@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 
-from . import services
+from . import linked, services
 from .models import Friendship, Share, SharedTask
 
 
@@ -87,6 +87,11 @@ class FriendshipDeleteApi(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class RemindFriendSerializer(serializers.Serializer):
+    recipient_id = serializers.IntegerField()
+    task_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, max_length=services.MAX_TASKS_PER_SHARE)
+
+
 class ShareCreateSerializer(serializers.Serializer):
     recipient_id = serializers.IntegerField()
     task_ids = serializers.ListField(child=serializers.IntegerField(), min_length=1, max_length=services.MAX_TASKS_PER_SHARE)
@@ -110,6 +115,16 @@ class SharesApi(APIView):
         serializer.is_valid(raise_exception=True)
         share = services.share_tasks(me=request.user, **serializer.validated_data)
         return Response(ShareSerializer(share).data, status=status.HTTP_201_CREATED)
+
+
+class RemindFriendApi(APIView):
+    """POST {recipient_id, task_ids}: put your tasks straight into a friend's list (with reminders),
+    kept in sync with yours. Lands in their inbox instead if they switched that off."""
+
+    def post(self, request):
+        serializer = RemindFriendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(linked.add_for_friend(me=request.user, **serializer.validated_data), status=status.HTTP_201_CREATED)
 
 
 class ShareAddApi(APIView):

@@ -36,6 +36,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     timezone = models.CharField(max_length=64, blank=True)
     reminders_enabled = models.BooleanField(default=False)
     tutorial_seen = models.BooleanField(default=False)
+    # Friends may put tasks straight into this list (with reminders); off = they land in the inbox.
+    friends_can_add_tasks = models.BooleanField(default=True)
     email_verified_at = models.DateTimeField(null=True, blank=True)
     # When the welcome email went out (once per account; see mail.send_welcome_once).
     welcomed_at = models.DateTimeField(null=True, blank=True)

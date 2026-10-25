@@ -7,6 +7,12 @@ from .models import Task
 
 
 class TaskSerializer(serializers.ModelSerializer):
+    # "Remind a friend": who put this task in your list, whether it still follows their changes,
+    # and (on your own tasks) which friends you added it for.
+    added_by_name = serializers.SerializerMethodField()
+    linked = serializers.SerializerMethodField()
+    shared_with = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
@@ -22,8 +28,22 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "deleted_at",
+            "added_by_name",
+            "linked",
+            "shared_with",
         ]
         read_only_fields = ["completed_at", "created_at", "updated_at", "deleted_at"]
+
+    def get_added_by_name(self, task):
+        return (task.added_by.full_name or task.added_by.email) if task.added_by_id and task.added_by else None
+
+    def get_linked(self, task):
+        return task.linked_from_id is not None
+
+    def get_shared_with(self, task):
+        if not task.pk:
+            return []
+        return [(c.owner.full_name or c.owner.email).split()[0] for c in task.linked_copies.all()]
 
     def validate_title(self, value):
         value = value.strip()
@@ -49,6 +69,12 @@ class TaskSerializer(serializers.ModelSerializer):
             for key in ("due_at", "remind_before_minutes")
         ):
             instance.reminder_sent_at = None
+        # Editing what a friend set (time, title...) makes this copy your own: it stops following theirs.
+        if instance.linked_from_id and any(
+            key in validated_data and validated_data[key] != getattr(instance, key)
+            for key in ("title", "notes", "due_at", "category", "priority")
+        ):
+            instance.linked_from = None
         if "done" in validated_data and validated_data["done"] != instance.done:
             instance.completed_at = timezone.now() if validated_data["done"] else None
         return super().update(instance, validated_data)

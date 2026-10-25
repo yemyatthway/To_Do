@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -50,9 +50,19 @@ class TaskViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
 
+    def perform_update(self, serializer):
+        from apps.social.linked import SYNCED_FIELDS, sync_copies
+
+        before = {field: getattr(serializer.instance, field) for field in SYNCED_FIELDS}
+        task = serializer.save()
+        sync_copies(task, before)  # friends you reminded get the change too
+
     def perform_destroy(self, task):
+        from apps.social.linked import cancel_copies
+
         task.deleted_at = timezone.now()
         task.save(update_fields=["deleted_at"])
+        cancel_copies(task)
 
     def _trash(self):
         cutoff = timezone.now() - timedelta(days=settings.TASK_RESTORE_DAYS)
@@ -80,7 +90,9 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # Users only ever see their own tasks; other people's ids 404.
-        queryset = Task.objects.filter(owner=self.request.user)
+        queryset = Task.objects.filter(owner=self.request.user).select_related("added_by").prefetch_related(
+            Prefetch("linked_copies", queryset=Task.objects.select_related("owner"))
+        )
         if self.action != "list":
             return queryset
 

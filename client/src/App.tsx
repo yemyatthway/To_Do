@@ -759,9 +759,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             initialFriendId={sendDialog.friendId}
             initialTaskIds={sendDialog.taskIds}
             onClose={() => setSendDialog(null)}
-            onSent={(friend, count) => {
+            onSent={(title, detail) => {
               setSendDialog(null)
-              notify(`Sent ${count} task${count === 1 ? '' : 's'}`, `${friend.full_name || friend.email} can add them to their list.`)
+              notify(title, detail)
+              load() // your tasks now show who they were added for
             }}
           />
         </Suspense>

@@ -32,6 +32,10 @@ class Task(models.Model):
     reminder_sent_at = models.DateTimeField(null=True, blank=True)
     # Soft delete: shown under "Recently deleted" and restorable for settings.TASK_RESTORE_DAYS.
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    # A task a friend put in this list ("Remind a friend"). While linked_from is set, the friend's
+    # changes to the original (time, title...) are copied here; editing those here unlinks it.
+    linked_from = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="linked_copies")
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

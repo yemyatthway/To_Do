@@ -25,7 +25,13 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }
   const due = dueDate(task)
   // From another day (an overdue task), say which day too.
   const when = due ? (sameDay(due, now) ? formatTime(due) : `${formatShortDay(due)}, ${formatTime(due)}`) : 'Anytime'
-  const meta = [when, CATEGORY_LABEL[task.category]].join(' · ')
+  // "Remind a friend": who put it in your list, or who you added yours for.
+  const people = task.added_by_name
+    ? `from ${task.added_by_name.split(' ')[0]}`
+    : task.shared_with?.length
+      ? `with ${task.shared_with.join(', ')}`
+      : ''
+  const meta = [when, CATEGORY_LABEL[task.category], people].filter(Boolean).join(' · ')
   const relative = relativeLabel(task, now)
   const revealed = offset <= -REVEAL / 2
 

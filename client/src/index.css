@@ -4100,3 +4100,20 @@ select.field:focus-visible {
   color: var(--dIcon);
   font-weight: 600;
 }
+
+/* Task sheet: "Added by Mia…" / "Also in Ko Aung's list…" */
+.friend-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+
+.friend-note .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--accT);
+}

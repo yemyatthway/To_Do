@@ -88,7 +88,9 @@ Make yourself an admin with `uv run python manage.py createsuperuser` (or set `i
 
 ## Friends and sharing
 
-Find people, send friend requests, and send friends **copies** of your tasks with an optional note. Nobody can ever see your list: a share is a snapshot, and it waits in the recipient's "Sent to you" inbox until they add it (all or some) or dismiss it. If an added task lands at the same time as one they already have, both are kept and they're told. If a shared task's day has already passed for them, it's added under Anytime. People with notifications on also get a push (sent in the background, tapping it opens Friends) when someone sends them a friend request, accepts theirs, or sends them tasks.
+Find people, send friend requests, and send friends **copies** of your tasks with an optional note. Nobody can ever see your list: a share is a snapshot, and it waits in the recipient's "Sent to you" inbox until they add it (all or some) or dismiss it. If an added task lands at the same time as one they already have, both are kept and they're told. If a shared task's day has already passed for them, it's added under Anytime. **Add & remind** (the default in "Share with a friend") skips the inbox: the task goes straight into the friend's list with a reminder, marked "from Mia", and stays linked: when you move, rename or delete yours, their copy follows and they're told. They can tick it done or change its reminder freely; editing its time or title makes it their own copy. Unfriending unlinks everything. Anyone can turn this off in Profile ("Friends can add tasks to my list"); then it lands in their inbox instead (`POST /api/social/remind/`).
+
+People with notifications on also get a push (sent in the background, tapping it opens Friends) when someone sends them a friend request, accepts theirs, or sends them tasks.
 
 ## Timer
 

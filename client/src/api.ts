@@ -15,6 +15,12 @@ export interface Task {
   updated_at: string
   /** Set while it's in "Recently deleted". */
   deleted_at?: string | null
+  /** Put in your list by this friend ("Remind a friend"). */
+  added_by_name?: string | null
+  /** Still follows the friend's changes to the original. */
+  linked?: boolean
+  /** Your task: first names of friends you added it for. */
+  shared_with?: string[]
 }
 
 export type TaskInput = Pick<Task, 'title' | 'notes' | 'due_at' | 'category' | 'priority' | 'remind_before_minutes' | 'done'>
@@ -30,6 +36,8 @@ export interface User {
   timezone: string
   reminders_enabled: boolean
   tutorial_seen: boolean
+  /** Friends may put tasks straight into your list. */
+  friends_can_add_tasks: boolean
   is_staff: boolean
   date_joined: string
 }
@@ -86,7 +94,7 @@ export interface Page<T> {
   results: T[]
 }
 
-export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'timezone' | 'reminders_enabled' | 'tutorial_seen'>>
+export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks'>>
 
 interface Session {
   access: string
@@ -304,6 +312,16 @@ export const admin = {
 
 export type Relationship = 'none' | 'friends' | 'outgoing' | 'incoming'
 
+export interface RemindResult {
+  /** "inbox" when the friend only takes tasks through their inbox (it was sent there instead). */
+  mode: 'added' | 'inbox'
+  added: number
+  /** They already had these from you. */
+  already: number
+  /** Already over, so not added. */
+  past: number
+}
+
 export interface Person {
   id: number
   full_name: string
@@ -348,6 +366,8 @@ export const social = {
   accept: (friendshipId: number) => request<Person>(`/api/social/friends/${friendshipId}/accept/`, json('POST', {})),
   remove: (friendshipId: number) => request<void>(`/api/social/friends/${friendshipId}/`, { method: 'DELETE' }),
   inbox: () => request<Share[]>('/api/social/shares/'),
+  /** "Remind a friend": straight into their list with reminders, kept in sync with yours. */
+  remind: (recipient_id: number, task_ids: number[]) => request<RemindResult>('/api/social/remind/', json('POST', { recipient_id, task_ids })),
   send: (recipient_id: number, task_ids: number[], message: string) =>
     request<Share>('/api/social/shares/', json('POST', { recipient_id, task_ids, message })),
   add: (shareId: number, item_ids?: number[]) => request<AddSharedResult>(`/api/social/shares/${shareId}/add/`, json('POST', item_ids ? { item_ids } : {})),

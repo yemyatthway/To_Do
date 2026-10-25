@@ -315,6 +315,21 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
           )
         )}
 
+        {task?.added_by_name && (
+          <p className="hint friend-note">
+            <Icon name="users" />
+            {task.linked
+              ? `Added by ${task.added_by_name}. When they change the time or title, it updates here too. Editing those yourself makes it your own copy.`
+              : `Added by ${task.added_by_name}. This is your own copy now.`}
+          </p>
+        )}
+        {!task?.added_by_name && Boolean(task?.shared_with?.length) && (
+          <p className="hint friend-note">
+            <Icon name="users" />
+            {`Also in ${task!.shared_with!.join(', ')}'s list. Changing the time or title, or deleting it, updates theirs too.`}
+          </p>
+        )}
+
         {task && (
           <div className="task-actions">
             <button type="button" className={`task-action done-action${done ? ' is-done' : ''}`} onClick={() => setDone(!done)} aria-pressed={done}>

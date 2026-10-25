@@ -35,7 +35,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "email_verified", "code_expires_at", "full_name", "timezone", "reminders_enabled", "tutorial_seen", "is_staff", "date_joined"]
+        fields = ["id", "email", "email_verified", "code_expires_at", "full_name", "timezone", "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "is_staff", "date_joined"]
         read_only_fields = ["id", "email_verified", "is_staff", "date_joined"]
 
     def get_code_expires_at(self, user):

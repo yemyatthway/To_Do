@@ -82,9 +82,13 @@ def accept_request(*, me, friendship_id):
 
 def remove_friendship(*, me, friendship_id):
     """Decline an incoming request, cancel an outgoing one, or unfriend."""
-    deleted, _ = Friendship.objects.filter(Q(requester=me) | Q(addressee=me), pk=friendship_id).delete()
-    if not deleted:
+    friendship = Friendship.objects.filter(Q(requester=me) | Q(addressee=me), pk=friendship_id).select_related("requester", "addressee").first()
+    if friendship is None:
         raise NotFound("That friendship doesn't exist.")
+    friendship.delete()
+    from .linked import unlink_between  # linked imports this module
+
+    unlink_between(friendship.requester, friendship.addressee)
 
 
 def share_tasks(*, me, recipient_id, task_ids, message=""):

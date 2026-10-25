@@ -173,6 +173,30 @@ export function Profile(props: ProfileProps) {
           />
         </div>
 
+        <div className="toggle-row">
+          <span style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon name="users" />
+              Friends can add tasks to my list
+            </span>
+            <span className="hint">With a reminder, like "Go out at 7 PM". Off: they land in your Friends inbox for you to add.</span>
+          </span>
+          <button
+            type="button"
+            className="switch"
+            role="switch"
+            aria-checked={user.friends_can_add_tasks}
+            aria-label="Friends can add tasks to my list"
+            onClick={async () => {
+              try {
+                onUserChange(await auth.updateMe({ friends_can_add_tasks: !user.friends_can_add_tasks }))
+              } catch (err) {
+                notify("Couldn't save that", err instanceof Error ? err.message : String(err))
+              }
+            }}
+          />
+        </div>
+
         <div className="pref-row">
           <span className="label">Appearance</span>
           <div className="segmented" role="group" aria-label="Appearance">
