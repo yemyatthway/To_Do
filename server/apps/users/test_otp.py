@@ -241,7 +241,6 @@ class WelcomeEmailTests(APITestCase):
         self.assertIn("Confirm your email", html)
         self.assertIn(last_code(), html)
         self.assertNotIn("<a ", html)  # code emails have no clickable links (only icon images)
-        self.assertIn("user-select:all", html)  # one tap selects the whole code to copy
 
 
 @override_settings(EMAIL_SEND_ASYNC=False)

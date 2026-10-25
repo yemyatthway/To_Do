@@ -4071,25 +4071,6 @@ select.field:focus-visible {
   background: var(--row);
 }
 
-.code-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.paste-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-}
-
-.paste-btn .icon {
-  width: 15px;
-  height: 15px;
-}
 
 /* "Code expires in 9:41" under the code box */
 .code-expiry {

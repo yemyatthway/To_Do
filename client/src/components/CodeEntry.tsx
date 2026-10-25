@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { detectDevice } from '../device'
 import { Icon } from '../icons'
 
 export interface CodeSent {
@@ -71,33 +70,6 @@ export function CodeEntry({
     }
   }
 
-  // "Paste" button: reads the clipboard (the browser may ask once) and sends the code if it finds one.
-  // iPhone/iPad Safari only allows that after a second tap on its own "Paste" bubble, which is easy
-  // to miss, so there the button opens the keyboard instead: iOS offers the emailed code right above it.
-  const canPaste = typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText)
-  const ios = typeof navigator !== 'undefined' && detectDevice().platform === 'ios'
-  async function paste() {
-    if (ios) {
-      setError('')
-      setInfo('Tap the code above the keyboard, or press and hold the box and choose Paste.')
-      inputRef.current?.focus()
-      return
-    }
-    try {
-      const digits = (await navigator.clipboard.readText()).match(/\d{6}/)?.[0]
-      if (!digits) {
-        setError("The copied text doesn't contain a 6-digit code.")
-        return
-      }
-      setCode(digits)
-      setError('')
-      if (digits !== submitted.current) void submit(digits)
-    } catch {
-      setError('Your browser blocked pasting. Press and hold (or right-click) the box and choose Paste.')
-      inputRef.current?.focus()
-    }
-  }
-
   async function resend() {
     setError('')
     setInfo('')
@@ -120,17 +92,9 @@ export function CodeEntry({
   return (
     <div className="code-entry">
       <div className="field-group">
-        <div className="code-label-row">
-          <label className="label" htmlFor="code-input">
-            6-digit code
-          </label>
-          {canPaste && (
-            <button type="button" className="text-btn paste-btn" onClick={() => void paste()}>
-              <Icon name="inbox" />
-              Paste
-            </button>
-          )}
-        </div>
+        <label className="label" htmlFor="code-input">
+          6-digit code
+        </label>
         <input
           id="code-input"
           ref={inputRef}
