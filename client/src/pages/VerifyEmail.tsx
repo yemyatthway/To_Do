@@ -6,6 +6,16 @@ import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { isValidEmail } from '../user'
 
+// A code lasts 10 minutes and "Send again" opens 60 s after it was sent; work that out from its
+// expiry so a reload doesn't restart the wait.
+const CODE_LIFETIME_S = 600
+const RESEND_WAIT_S = 60
+function resendWait(expiresAt: string | null) {
+  if (!expiresAt) return 0
+  const sentAt = new Date(expiresAt).getTime() - CODE_LIFETIME_S * 1000
+  return Math.max(0, Math.ceil(RESEND_WAIT_S - (Date.now() - sentAt) / 1000))
+}
+
 /** Shown after sign-up (or an email change) until the emailed code is entered. */
 export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVerified: (user: User) => void; onLogout: () => void }) {
   const [changing, setChanging] = useState(false)
@@ -88,9 +98,10 @@ export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVeri
           <CodeEntry
             key={sentAt}
             submitLabel="Verify email"
-            initialWait={60}
+            initialWait={resendWait(user.code_expires_at)}
+            expiresAt={user.code_expires_at}
             onSubmit={async (code) => onVerified(await auth.verifyEmail(code))}
-            onResend={async () => (await auth.resendVerifyEmail()).resend_in}
+            onResend={() => auth.resendVerifyEmail()}
           />
         )}
 

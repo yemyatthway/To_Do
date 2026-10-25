@@ -48,6 +48,15 @@ def issue_code(user, purpose, challenge="", device=""):
     return settings.OTP_RESEND_SECONDS
 
 
+def code_expires_at(user, purpose, challenge=None):
+    """When the code waiting to be used runs out (None if there isn't one), for the app's countdown."""
+    codes = EmailCode.objects.filter(user=user, purpose=purpose, used_at__isnull=True, expires_at__gt=timezone.now())
+    if challenge is not None:
+        codes = codes.filter(challenge=challenge)
+    latest = codes.order_by("-created_at").first()
+    return latest.expires_at if latest else None
+
+
 def check_code(user, purpose, code, challenge=""):
     """Raises ValidationError with a helpful message unless the code is right."""
     code = re.sub(r"\D", "", str(code or ""))

@@ -14,10 +14,10 @@ logger = logging.getLogger("apps.users.mail")
 # lookalikes. Every email has a plain-text part too (templates/emails/<name>.txt).
 
 WELCOME_FEATURES = [
-    {"icon": "🕒", "title": "Your day on a clock", "body": "The clock shows the next 12 hours. Tap an hour to see its tasks, or press and hold to add one right there."},
-    {"icon": "🔔", "title": "Reminders that find you", "body": "Turn on the bell and get a notification before each task, even when the app is closed."},
-    {"icon": "🚩", "title": "Priorities", "body": "High-priority tasks go first in your list, stand out on the clock and their reminders stay on screen."},
-    {"icon": "👋", "title": "Friends", "body": "Add friends and send them copies of your tasks, like a shopping list or a plan for the weekend."},
+    {"icon": "clock", "title": "Your day on a clock", "body": "The clock shows the next 12 hours. Tap an hour to see its tasks, or press and hold to add one right there."},
+    {"icon": "bell", "title": "Reminders that find you", "body": "Turn on the bell and get a notification before each task, even when the app is closed."},
+    {"icon": "flag", "title": "Priorities", "body": "High-priority tasks go first in your list, stand out on the clock and their reminders stay on screen."},
+    {"icon": "users", "title": "Friends", "body": "Add friends and send them copies of your tasks, like a shopping list or a plan for the weekend."},
 ]
 
 
@@ -31,6 +31,8 @@ def _deliver(message):
 
 def render(template, context):
     """(text, html) for templates/emails/<template>.txt and .html."""
+    # Icons are PNGs served by the app (client/public/email/): email apps block SVG and icon fonts.
+    context = {"icons": f"{settings.APP_URL.rstrip('/')}/email/", **context}
     return render_to_string(f"emails/{template}.txt", context), render_to_string(f"emails/{template}.html", context)
 
 
@@ -48,6 +50,7 @@ def send(*, to, subject, template, context):
 def code_context(purpose, code, device=""):
     if purpose == "login":
         return {
+            "eyebrow": "New device sign-in",
             "heading": "Your sign-in code",
             "intro": "Someone is signing in to your To-Do account from a new device. If it's you, enter this code to finish.",
             "preheader": f"{code} is your sign-in code. It expires in {settings.OTP_TTL_MINUTES} minutes.",
@@ -56,6 +59,7 @@ def code_context(purpose, code, device=""):
             "device": device or "a new browser",
         }
     return {
+        "eyebrow": "Verify your email",
         "heading": "Confirm your email",
         "intro": "Thanks for signing up! Enter this code in the app to confirm it's really your address.",
         "preheader": f"{code} is your verification code. It expires in {settings.OTP_TTL_MINUTES} minutes.",
@@ -87,5 +91,5 @@ def send_welcome_once(user):
         return False
     if not User.all_objects.filter(pk=user.pk, welcomed_at__isnull=True).update(welcomed_at=timezone.now()):
         return False
-    send(to=user.email, subject="Welcome to To-Do 🎉", template="welcome", context=welcome_context(user))
+    send(to=user.email, subject="Welcome to To-Do", template="welcome", context=welcome_context(user))
     return True

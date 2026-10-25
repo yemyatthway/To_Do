@@ -1,30 +1,54 @@
 {% extends "emails/base.html" %}
-{% block content %}
-<h1 class="h1" style="margin:0 0 10px;font-size:26px;line-height:1.3;font-weight:800;color:#1e2b45;">Welcome to To-Do{% if name %}, {{ name }}{% endif %}! &#127881;</h1>
-<p class="text" style="margin:0 0 26px;font-size:15px;line-height:1.6;color:#4b5b78;">Your account is ready. Here's how to get the most out of it:</p>
 
+{% block hero %}
+<p style="margin:30px 0 8px;font:600 12px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#cfe0ff;">Your account is ready</p>
+<p style="margin:0;font:800 30px/1.2 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.5px;color:#ffffff;">Welcome{% if name %}, {{ name }}{% endif %}</p>
+{% endblock %}
+
+{% block content %}
+<p class="text" style="margin:0 0 24px;font-size:16px;line-height:1.65;color:#4b5b78;">Thanks for joining To-Do. Here's how to get the most out of it in your first minute:</p>
+
+<!-- Feature cards -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
   {% for feature in features %}
   <tr>
-    <td width="48" valign="top" style="padding:0 14px 18px 0;">
-      <div class="feature-icon" style="width:44px;height:44px;border-radius:14px;background:#eaf1fd;text-align:center;font-size:22px;line-height:44px;">{{ feature.icon }}</div>
-    </td>
-    <td valign="top" style="padding:0 0 18px;">
-      <div class="strong" style="font-size:15px;font-weight:700;color:#1e2b45;margin:2px 0 3px;">{{ feature.title }}</div>
-      <div class="text" style="font-size:14px;line-height:1.55;color:#4b5b78;">{{ feature.body }}</div>
+    <td style="padding:0 0 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="panel" style="background:#f6f9fe;border:1px solid #e6edf8;border-radius:18px;">
+        <tr>
+          <td width="56" valign="top" style="padding:16px 0 16px 16px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+              <td class="chip" width="44" height="44" align="center" valign="middle" style="width:44px;height:44px;border-radius:14px;background:#e3edff;"><img src="{{ icons }}{{ feature.icon }}.png" width="22" height="22" alt="" style="display:block;border:0;"></td>
+            </tr></table>
+          </td>
+          <td valign="top" style="padding:16px 18px 16px 14px;">
+            <div class="strong" style="font-size:15px;font-weight:700;color:#14213d;margin:1px 0 4px;">{{ feature.title }}</div>
+            <div class="text" style="font-size:14px;line-height:1.55;color:#4b5b78;">{{ feature.body }}</div>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
   {% endfor %}
 </table>
 
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:10px auto 0;">
+<!-- Button -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:18px auto 0;">
   <tr>
-    <td align="center" bgcolor="#3f80e6" style="border-radius:14px;background:#3f80e6;background-image:linear-gradient(180deg,#5b95ef,#2f6fd6);">
-      <a href="{{ app_url }}" style="display:inline-block;padding:14px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:14px;">Open To-Do</a>
+    <td align="center" bgcolor="#2f6fd6" style="border-radius:999px;background:#2f6fd6;background-image:linear-gradient(135deg,#2f6fd6,#5b9bff);box-shadow:0 10px 22px rgba(47,111,214,0.32);">
+      <a href="{{ app_url }}" style="display:inline-block;padding:15px 34px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:999px;">Open To-Do &rarr;</a>
     </td>
   </tr>
 </table>
 
-<p class="muted" style="margin:26px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;text-align:center;">Tip: on iPhone, add To-Do to your Home Screen (Share &rarr; Add to Home Screen) to get reminders.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:30px;">
+  <tr><td class="rule" style="border-top:1px solid #edf1f7;font-size:0;line-height:0;">&nbsp;</td></tr>
+</table>
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:18px auto 0;">
+  <tr>
+    <td valign="top" style="padding:1px 8px 0 0;"><img src="{{ icons }}phone.png" width="16" height="16" alt="" style="display:block;border:0;"></td>
+    <td valign="top" class="muted" style="font-size:13px;line-height:1.6;color:#8a97ad;">On iPhone: open To-Do in Safari &rarr; Share &rarr; <strong>Add to Home Screen</strong> to get reminders.</td>
+  </tr>
+</table>
 {% endblock %}
-{% block footer %}You're receiving this because you created a To-Do account with this address.{% endblock %}
+
+{% block footer %}You're getting this because you created a To-Do account with this address.{% endblock %}

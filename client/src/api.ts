@@ -24,6 +24,8 @@ export interface User {
   email: string
   /** False until the emailed code is entered; the app shows the verify screen until then. */
   email_verified: boolean
+  /** Until the email is confirmed: when the emailed code expires. */
+  code_expires_at: string | null
   full_name: string
   timezone: string
   reminders_enabled: boolean
@@ -98,6 +100,8 @@ export interface LoginChallenge {
   email: string
   /** Seconds until "Send again" works. */
   resend_in: number
+  /** When the emailed code stops working. */
+  expires_at: string | null
 }
 
 /** Right password for an account its owner deleted recently: it can still be restored. */
@@ -218,7 +222,7 @@ async function startSession(path: string, body: object) {
   const response = await rawFetch(path, { method: 'POST', body: JSON.stringify(body) }, false)
   if (!response.ok) throw await toError(response)
   const data: Session | DeletedAccount | (LoginChallenge & { two_factor_required: true }) = await response.json()
-  if ('two_factor_required' in data) return { challenge: data.challenge, email: data.email, resend_in: data.resend_in }
+  if ('two_factor_required' in data) return { challenge: data.challenge, email: data.email, resend_in: data.resend_in, expires_at: data.expires_at }
   if ('account_deleted' in data) return data
   accessToken = data.access
   return data.user
@@ -240,12 +244,12 @@ export const auth = {
   /** Also a DeletedAccount for a recently deleted account; call again with restore to bring it back. */
   login: (email: string, password: string, restore = false) => startSession('/api/auth/login/', { email, password, restore }),
   verifyLogin: (challenge: string, code: string) => startSession('/api/auth/login/verify/', { challenge, code }) as Promise<User>,
-  resendLogin: (challenge: string) => postPublic<{ resend_in: number }>('/api/auth/login/resend/', { challenge }),
+  resendLogin: (challenge: string) => postPublic<{ resend_in: number; expires_at: string | null }>('/api/auth/login/resend/', { challenge }),
   register: (input: { full_name: string; email: string; password: string; timezone: string }) =>
     startSession('/api/auth/register/', input) as Promise<User>,
   checkEmail: (email: string) => postPublic<EmailCheck>('/api/auth/check-email/', { email }),
   verifyEmail: (code: string) => request<User>('/api/auth/verify-email/', json('POST', { code })),
-  resendVerifyEmail: () => request<{ resend_in: number }>('/api/auth/verify-email/resend/', json('POST', {})),
+  resendVerifyEmail: () => request<{ resend_in: number; expires_at: string | null }>('/api/auth/verify-email/resend/', json('POST', {})),
   devices: () => request<TrustedDevice[]>('/api/auth/devices/'),
   removeDevice: (id: number) => request<void>(`/api/auth/devices/${id}/`, { method: 'DELETE' }),
   async logout() {

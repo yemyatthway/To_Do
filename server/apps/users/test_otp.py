@@ -240,4 +240,30 @@ class WelcomeEmailTests(APITestCase):
         html = message.alternatives[0][0]
         self.assertIn("Confirm your email", html)
         self.assertIn(last_code(), html)
-        self.assertNotIn("http", html.split("<body")[1].split("</body>")[0].replace("http://www.w3.org", ""))  # no links in code emails
+        self.assertNotIn("<a ", html)  # code emails have no clickable links (only icon images)
+        self.assertIn("user-select:all", html)  # one tap selects the whole code to copy
+
+
+@override_settings(EMAIL_SEND_ASYNC=False)
+class CodeExpiryTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_app_gets_the_expiry_time_for_its_countdown(self):
+        created = self.client.post("/api/auth/register/", {"full_name": "A", "email": "a@example.com", "password": PASSWORD}, format="json")
+        expires = created.data["user"]["code_expires_at"]
+        self.assertIsNotNone(expires)
+        left = (EmailCode.objects.get().expires_at - timezone.now()).total_seconds()
+        self.assertTrue(9 * 60 < left <= 10 * 60)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {created.data['access']}")
+        EmailCode.objects.update(created_at=timezone.now() - timedelta(minutes=2))
+        resent = self.client.post("/api/auth/verify-email/resend/")
+        self.assertIn("expires_at", resent.data)
+        self.client.post("/api/auth/verify-email/", {"code": last_code()}, format="json")
+        self.assertIsNone(self.client.get("/api/auth/me/").data["code_expires_at"])  # verified: nothing pending
+
+    def test_new_device_sign_in_includes_it(self):
+        User.objects.create_user("mia@example.com", PASSWORD, email_verified_at=timezone.now())
+        step = self.client.post("/api/auth/login/", {"email": "mia@example.com", "password": PASSWORD}, format="json").data
+        self.assertIsNotNone(step["expires_at"])

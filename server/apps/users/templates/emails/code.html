@@ -1,29 +1,61 @@
 {% extends "emails/base.html" %}
-{% block content %}
-<h1 class="h1" style="margin:0 0 10px;font-size:24px;line-height:1.3;font-weight:800;color:#1e2b45;">{{ heading }}</h1>
-<p class="text" style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#4b5b78;">{{ intro }}</p>
 
+{% block hero %}
+<p style="margin:26px 0 0;font:600 12px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#cfe0ff;">{{ eyebrow }}</p>
+{% endblock %}
+
+{% block content %}
+<h1 class="h1" style="margin:0 0 12px;font-size:27px;line-height:1.25;font-weight:800;letter-spacing:-0.4px;color:#14213d;">{{ heading }}</h1>
+<p class="text" style="margin:0 0 26px;font-size:15px;line-height:1.65;color:#4b5b78;">{{ intro }}</p>
+
+<!-- The code as one piece of text, so a tap (or double-click) selects all six digits to copy. -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr>
-    <td align="center" class="codebox" style="background:#f3f7fe;border:1px solid #dbe6f7;border-radius:18px;padding:22px 12px;">
-      <div class="muted" style="font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#8a97ad;margin:0 0 8px;">Your code</div>
-      <div class="code" style="font-family:'SF Mono',Menlo,Consolas,'Courier New',monospace;font-size:36px;font-weight:700;letter-spacing:12px;color:#2f6fd6;padding-left:12px;">{{ code }}</div>
+    <td align="center" class="codebox" style="background:#f2f6ff;border:1px solid #d6e2fb;border-radius:20px;padding:22px 12px 18px;">
+      <div class="code" style="font-family:'SF Mono',Menlo,Consolas,'Courier New',monospace;font-size:38px;line-height:1.1;font-weight:700;letter-spacing:12px;padding-left:12px;color:#2f6fd6;-webkit-user-select:all;user-select:all;">{{ code }}</div>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:12px auto 0;">
+        <tr>
+          <td valign="middle" style="padding-right:6px;"><img src="{{ icons }}copy.png" width="14" height="14" alt="" style="display:block;border:0;"></td>
+          <td valign="middle" class="muted" style="font-size:12px;line-height:1;color:#8a97ad;">Tap the code to select it, then copy and paste it in the app</td>
+        </tr>
+      </table>
     </td>
   </tr>
 </table>
 
-<p class="text" style="margin:20px 0 0;font-size:14px;line-height:1.6;color:#4b5b78;text-align:center;">Expires in <strong class="strong" style="color:#1e2b45;">{{ minutes }} minutes</strong>. Only the newest code works.</p>
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:20px auto 0;">
+  <tr>
+    <td class="chip" style="background:#eef3fc;border-radius:999px;padding:9px 16px 9px 12px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td valign="middle" style="padding-right:8px;"><img src="{{ icons }}timer.png" width="16" height="16" alt="" style="display:block;border:0;"></td>
+          <td valign="middle" class="text" style="font-size:13px;line-height:1;color:#4b5b78;white-space:nowrap;">Expires in <strong class="strong" style="color:#14213d;">{{ minutes }} minutes</strong></td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
 
 {% if device %}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
   <tr>
-    <td class="note" style="background:#fbf6ec;border:1px solid #f1e3c3;border-radius:14px;padding:14px 16px;font-size:13px;line-height:1.6;color:#6b5a33;">
-      <strong>Signing in from:</strong> {{ device }}<br>
-      Not you? Don't share this code with anyone, and change your password in the app.
+    <td class="alert" style="background:#fff8ea;border:1px solid #f3e2bb;border-radius:16px;padding:14px 16px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td valign="top" style="padding:2px 12px 0 0;"><img src="{{ icons }}shield.png" width="20" height="20" alt="" style="display:block;border:0;"></td>
+          <td valign="top" class="alert" style="font-size:14px;line-height:1.6;color:#6b5428;">
+            <strong>Signing in from:</strong> {{ device }}<br>
+            Wasn't you? Don't share this code, and change your password in the app.
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
 </table>
 {% endif %}
 
-<p class="muted" style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;">If you didn't ask for this code, you can safely ignore this email. We'll never ask you for it by phone or message.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:30px;">
+  <tr><td class="rule" style="border-top:1px solid #edf1f7;font-size:0;line-height:0;">&nbsp;</td></tr>
+</table>
+<p class="muted" style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;">Only the newest code works. Didn't ask for this? You can ignore this email. We'll never ask for this code by phone, message or email.</p>
 {% endblock %}

@@ -64,7 +64,7 @@ class TestPushView(APIView):
         subscription = serializer.save(request.user)
 
         try:
-            send_push(subscription, "It works! 🎉", "This push came from your Django server.")
+            send_push(subscription, "It works!", "This push came from your Django server.")
         except WebPushException as exc:
             detail = exc.response.text if exc.response is not None else str(exc)
             return Response({"detail": f"Push failed: {detail}"}, status=status.HTTP_502_BAD_GATEWAY)

@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .email_check import check_email
+from .otp import code_expires_at
 from .models import TrustedDevice, User
 from .validators import is_valid_timezone
 
@@ -29,10 +30,18 @@ def _validate_timezone(value):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    # Until the email is confirmed: when the emailed code runs out (for the countdown), else null.
+    code_expires_at = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ["id", "email", "email_verified", "full_name", "timezone", "reminders_enabled", "tutorial_seen", "is_staff", "date_joined"]
+        fields = ["id", "email", "email_verified", "code_expires_at", "full_name", "timezone", "reminders_enabled", "tutorial_seen", "is_staff", "date_joined"]
         read_only_fields = ["id", "email_verified", "is_staff", "date_joined"]
+
+    def get_code_expires_at(self, user):
+        if user.email_verified or not user.pk:
+            return None
+        return code_expires_at(user, "verify")
 
     def validate_email(self, value):
         value = value.strip().lower()

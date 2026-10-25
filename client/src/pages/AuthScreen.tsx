@@ -240,8 +240,9 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
             <CodeEntry
               submitLabel="Verify and log in"
               initialWait={challenge.resend_in}
+              expiresAt={challenge.expires_at}
               onSubmit={async (code) => onAuthenticated(await auth.verifyLogin(challenge.challenge, code))}
-              onResend={async () => (await auth.resendLogin(challenge.challenge)).resend_in}
+              onResend={() => auth.resendLogin(challenge.challenge)}
             />
             <p className="list-sub" style={{ margin: 0, textAlign: 'center' }}>
               <button type="button" className="link-btn" onClick={backToLogin}>

@@ -4070,3 +4070,52 @@ select.field:focus-visible {
   border-radius: 14px;
   background: var(--row);
 }
+
+.code-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.paste-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.paste-btn .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* "Code expires in 9:41" under the code box */
+.code-expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.code-expiry .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.code-expiry strong {
+  color: var(--text);
+}
+
+.code-expiry.soon,
+.code-expiry.soon strong {
+  color: var(--dIcon);
+}
+
+.code-expiry.expired {
+  color: var(--dIcon);
+  font-weight: 600;
+}

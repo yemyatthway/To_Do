@@ -142,7 +142,13 @@ class LoginApi(APIView):
             except ValidationError as exc:  # hourly cap reached
                 return Response(exc.detail, status=status.HTTP_429_TOO_MANY_REQUESTS)
             return Response(
-                {"two_factor_required": True, "challenge": challenge, "email": otp.mask_email(user.email), "resend_in": resend_in}
+                {
+                    "two_factor_required": True,
+                    "challenge": challenge,
+                    "email": otp.mask_email(user.email),
+                    "resend_in": resend_in,
+                    "expires_at": otp.code_expires_at(user, EmailCode.Purpose.LOGIN),
+                }
             )
         if restoring:
             restore_account(user=user)
@@ -191,7 +197,7 @@ class LoginResendApi(APIView):
         serializer.is_valid(raise_exception=True)
         user, nonce, _ = otp.read_challenge(serializer.validated_data["challenge"])
         resend_in = otp.issue_code(user, EmailCode.Purpose.LOGIN, challenge=nonce, device=otp.device_name(request.headers.get("User-Agent")))
-        return Response({"resend_in": resend_in})
+        return Response({"resend_in": resend_in, "expires_at": otp.code_expires_at(user, EmailCode.Purpose.LOGIN, nonce)})
 
 
 class VerifyEmailApi(APIView):
@@ -223,7 +229,8 @@ class ResendVerifyEmailApi(APIView):
     def post(self, request):
         if request.user.email_verified:
             return Response({"detail": "Your email is already verified."}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"resend_in": otp.issue_code(request.user, EmailCode.Purpose.VERIFY_EMAIL)})
+        resend_in = otp.issue_code(request.user, EmailCode.Purpose.VERIFY_EMAIL)
+        return Response({"resend_in": resend_in, "expires_at": otp.code_expires_at(request.user, EmailCode.Purpose.VERIFY_EMAIL)})
 
 
 class EmailCheckApi(APIView):
