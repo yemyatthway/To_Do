@@ -59,6 +59,10 @@ Same login/logout model as afm_sys, adapted for a Vite frontend (Django sets the
 
 The user record also stores the device's time zone (updated automatically, used for reminder text), whether reminders are on, and `tutorial_seen` (set once the first-visit question is answered or the tour ends, so it never shows again on any device).
 
+## Overdue
+
+Unfinished tasks from earlier days appear at the top of **Today** under "Overdue" (oldest first). Each has **Today →** (moves it to today at the same time, or the next full hour if that time has passed), the usual circle to mark it done, and **Move all to today** when there are several. Progress shows how many are overdue. The list comes from `GET /api/tasks/?overdue_before=<start of today>`.
+
 ## Priority
 
 High / Medium / Low isn't just a label: within the same time (and in Anytime) tasks are listed High → Low, high-priority tasks get a bigger ringed dot on the clock, Progress shows "By priority this week", and a high-priority reminder is sent with high urgency and stays on screen until dismissed.
