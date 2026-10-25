@@ -97,6 +97,12 @@ class RegisterApi(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         events.record(user, AuthEvent.Kind.SIGNUP)
+        # Signing up logs you straight in, so it's your first login too (admin "Last login").
+        ip = _client_ip(request)
+        user.last_login_at = timezone.now()
+        user.last_login_ip = ip
+        user.save(update_fields=["last_login_at", "last_login_ip"])
+        events.record(user, AuthEvent.Kind.LOGIN, ip=ip)
         otp.issue_code(user, EmailCode.Purpose.VERIFY_EMAIL)
         response = _session_response(user, status.HTTP_201_CREATED)
         # The browser that created the account doesn't need a sign-in code later.

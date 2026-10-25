@@ -26,10 +26,17 @@ class AuthEventLogTests(APITestCase):
             events,
             [
                 ("signup", None, "mia@example.com"),
+                ("login", "10.0.0.1", "mia@example.com"),  # signing up logs you in
                 ("logout", None, "mia@example.com"),
                 ("login", "10.0.0.2", "mia@example.com"),
             ],
         )
+
+    def test_sign_up_counts_as_first_login(self):
+        self.client.post("/api/auth/register/", {"full_name": "Mia", "email": "mia@example.com", "password": PASSWORD}, format="json", REMOTE_ADDR="10.0.0.9")
+        user = User.objects.get(email="mia@example.com")
+        self.assertIsNotNone(user.last_login_at)
+        self.assertEqual(user.last_login_ip, "10.0.0.9")
 
     def test_forwarded_ip_is_used(self):
         User.objects.create_user("mia@example.com", PASSWORD)
