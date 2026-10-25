@@ -29,6 +29,25 @@ async function currentSubscription() {
   return (await registration?.pushManager.getSubscription()) ?? null
 }
 
+/** What this device can do about reminders right now (when the account has them on). */
+export type DeviceReminderState = 'ready' | 'needs-permission' | 'blocked' | 'unsupported'
+export function deviceReminderState(): DeviceReminderState {
+  if (!isPushSupported()) return 'unsupported'
+  if (Notification.permission === 'denied') return 'blocked'
+  return Notification.permission === 'granted' ? 'ready' : 'needs-permission'
+}
+
+/**
+ * Reminders on + permission given: (re)send this device's registration to the server. The server
+ * can lose it (account deleted then restored, a ban, an expired push address) while the phone
+ * still thinks it's set up, so this runs every time the app opens; the server just updates it.
+ */
+export async function syncThisDevice() {
+  if (deviceReminderState() !== 'ready') return false
+  await subscribeThisDevice() // already allowed, so no prompt: it reuses or renews the subscription
+  return true
+}
+
 /** False when asking would fail anyway: no push support (e.g. iPhone outside the Home Screen app) or blocked. */
 export function canAskForNotifications() {
   return isPushSupported() && Notification.permission !== 'denied'

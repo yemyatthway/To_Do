@@ -12,7 +12,7 @@ import { useLiveRefresh } from './live'
 import { usePageVisible } from './visibility'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
-import { canAskForNotifications, deviceCanReceive, subscribeThisDevice, unsubscribeThisDevice } from './push'
+import { canAskForNotifications, deviceReminderState, subscribeThisDevice, syncThisDevice, unsubscribeThisDevice, type DeviceReminderState } from './push'
 import { useTheme } from './theme'
 import { initials } from './user'
 import {
@@ -324,13 +324,16 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     if (zone && zone !== user.timezone) auth.updateMe({ timezone: zone }).then(onUserChange).catch(() => undefined)
   }, [user.timezone, onUserChange])
 
-  // Reminders are on for the account but this browser lost its subscription (cleared data, new key): re-register quietly.
+  // Reminders on: make sure the server knows this device, every time the app opens. Fixes the
+  // phone and server disagreeing (account restored, ban lifted, cleared data, expired address).
+  const [deviceState, setDeviceState] = useState<DeviceReminderState>(() => deviceReminderState())
   useEffect(() => {
-    if (!user.reminders_enabled || typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-    deviceCanReceive().then((ok) => {
-      if (!ok) subscribeThisDevice().catch(() => undefined)
-    })
+    if (!user.reminders_enabled) return
+    syncThisDevice()
+      .catch(() => undefined)
+      .finally(() => setDeviceState(deviceReminderState()))
   }, [user.reminders_enabled])
+  const [hideDeviceBanner, setHideDeviceBanner] = useState(false)
 
   const flushDeletes = useCallback(() => {
     for (const [id, timer] of pendingDeletes.current) {
@@ -450,6 +453,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     try {
       await subscribeThisDevice()
       onUserChange(await auth.updateMe({ reminders_enabled: true }))
+      setDeviceState(deviceReminderState())
       notify('Reminders on', 'You get a notification before timed tasks (10 min by default, changeable per task).')
       return true
     } catch (err) {
@@ -611,6 +615,38 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </button>
           </div>
         </header>
+
+        {user.reminders_enabled && deviceState !== 'ready' && !hideDeviceBanner && (
+          <div className="device-banner" role="status">
+            <Icon name="bellOff" />
+            <span>
+              <strong>Reminders are on, but not on this device.</strong>{' '}
+              {deviceState === 'needs-permission'
+                ? 'Allow notifications here to get them.'
+                : deviceState === 'blocked'
+                  ? 'Notifications are blocked for this site in your settings.'
+                  : 'This browser can\'t show them. On iPhone, open To-Do from your Home Screen.'}
+            </span>
+            {deviceState === 'needs-permission' ? (
+              <button
+                type="button"
+                className="primary-btn small"
+                onClick={async () => {
+                  if (await enableReminders()) setDeviceState(deviceReminderState())
+                }}
+              >
+                Turn on
+              </button>
+            ) : (
+              <button type="button" className="text-btn" onClick={() => setRemindersGuide(true)}>
+                How to fix
+              </button>
+            )}
+            <button type="button" className="icon-btn" aria-label="Hide for now" onClick={() => setHideDeviceBanner(true)}>
+              <Icon name="x" />
+            </button>
+          </div>
+        )}
 
         {loadError && (
           <div className="error-banner" role="alert">
