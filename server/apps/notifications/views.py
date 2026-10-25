@@ -7,7 +7,13 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import PushSubscription
+from datetime import timedelta
+
+from django.utils import timezone
+
+from apps.tasks.models import Task
+
+from .models import PushSubscription, ReminderRun
 from .push import send_push
 from .reminders import send_due_reminders
 
@@ -70,6 +76,50 @@ class TestPushView(APIView):
             return Response({"detail": f"Push failed: {detail}"}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({"detail": "Push sent."})
+
+
+class ReminderStatusView(APIView):
+    """GET ?endpoint=<this browser's subscription>: everything that has to be true for reminders
+    to arrive, for the "Check reminders" panel."""
+
+    def get(self, request):
+        user = request.user
+        now = timezone.now()
+        run = ReminderRun.last()
+        this_endpoint = request.query_params.get("endpoint", "")
+        upcoming = (
+            Task.objects.filter(owner=user, done=False, due_at__gte=now - timedelta(hours=1), due_at__lte=now + timedelta(days=2))
+            .order_by("due_at")[:5]
+        )
+        return Response(
+            {
+                "reminders_enabled": user.reminders_enabled,
+                "service": {
+                    "last_run_at": run.last_run_at if run else None,
+                    # cron-job.org calls every minute; a few minutes of silence means it stopped.
+                    "running": bool(run and run.last_run_at > now - timedelta(minutes=3)),
+                },
+                "devices": [
+                    {
+                        "id": s.pk,
+                        "this_device": s.endpoint == this_endpoint,
+                        "added_at": s.created_at,
+                        "last_success_at": s.last_success_at,
+                        "last_error": s.last_error if s.last_error_at and (not s.last_success_at or s.last_error_at > s.last_success_at) else "",
+                    }
+                    for s in user.push_subscriptions.order_by("-created_at")
+                ],
+                "upcoming": [
+                    {
+                        "title": t.title,
+                        "due_at": t.due_at,
+                        "remind_at": t.due_at - timedelta(minutes=t.remind_before_minutes) if t.remind_before_minutes else None,
+                        "sent": t.reminder_sent_at is not None,
+                    }
+                    for t in upcoming
+                ],
+            }
+        )
 
 
 class SendDueRemindersView(APIView):

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { BROWSER_LABEL, detectDevice, PLATFORM_LABEL, type Platform } from '../device'
 import { Icon } from '../icons'
+import { ReminderCheck } from './ReminderCheck'
 import { gsap, useGsap } from '../motion'
 import { deviceCanReceive, isPushSupported, sendTestNotification } from '../push'
 
@@ -190,6 +191,8 @@ export function RemindersGuide({
             {STATUS_TEXT[status]}
           </span>
         </div>
+
+        <ReminderCheck />
 
         <div className="segmented guide-tabs" role="tablist" aria-label="Device">
           {(Object.keys(STEPS) as (keyof typeof STEPS)[]).map((key) => (

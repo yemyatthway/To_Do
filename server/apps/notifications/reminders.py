@@ -47,8 +47,10 @@ def _reminder_body(task, now):
 
 def send_due_reminders(now=None):
     """Push every due reminder to its owner's browsers. Returns how many tasks were reminded."""
+    from .models import ReminderRun
+
     now = now or timezone.now()
-    sent = 0
+    sent = failed = 0
     for task in due_reminders(now):
         # Claim the task first: if two senders run at once (cron + loop, or two workers), only one
         # wins the update, so nobody gets the same reminder twice.
@@ -59,5 +61,7 @@ def send_due_reminders(now=None):
             try:
                 send_push(subscription, task.title, _reminder_body(task, now), url="/", urgent=task.priority == Task.Priority.HIGH)
             except WebPushException as exc:
+                failed += 1
                 logger.warning("Push to %s failed: %s", subscription, exc)
+    ReminderRun.record(sent, failed)
     return sent

@@ -77,6 +77,11 @@ export async function sendTestNotification() {
   await api.testPush(subscription.toJSON())
 }
 
+/** This browser's push address, if it has one (to recognise it in the server's device list). */
+export async function currentEndpoint() {
+  return (await currentSubscription())?.endpoint ?? null
+}
+
 /** True when this browser is set up to receive pushes right now. */
 export async function deviceCanReceive() {
   return isPushSupported() && Notification.permission === 'granted' && Boolean(await currentSubscription())

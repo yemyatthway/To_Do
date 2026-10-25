@@ -4117,3 +4117,92 @@ select.field:focus-visible {
   margin-top: 2px;
   color: var(--accT);
 }
+
+/* "Check reminders" list in the reminders guide */
+.reminder-check {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.check-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.check-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--row);
+  font-size: 14px;
+}
+
+.check-row > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.check-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+
+.check-icon .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+.check-row.ok .check-icon {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+}
+
+.check-row.bad .check-icon {
+  background: var(--dBg);
+  color: var(--dIcon);
+}
+
+.check-row.warn .check-icon {
+  background: var(--chip);
+  color: var(--accT);
+}
+
+/* Admin: reminder service line under the stat cards */
+.service-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sub);
+}
+
+.service-status .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.service-status.bad {
+  color: var(--dIcon);
+}
+
+.service-status.bad .dot {
+  background: var(--dIcon);
+}

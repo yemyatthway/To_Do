@@ -5,6 +5,7 @@ import { ActivityTable } from './admin/ActivityTable'
 import { errorMessage } from './admin/useServerTable'
 import { ConfirmDialog, UserPanel } from './admin/UserPanel'
 import { UsersTable } from './admin/UsersTable'
+import { timeAgo } from '../user'
 
 type Tab = 'users' | 'activity'
 
@@ -100,6 +101,7 @@ export function Admin({ me, now, notify }: AdminProps) {
         ))}
       </section>
       {statsError && <div className="error-banner">{statsError}</div>}
+      {stats && <ServiceStatus lastRun={stats.reminders_last_run} now={now} />}
 
       <div className="segmented admin-tabs" role="tablist" aria-label="Admin sections">
         {(
@@ -139,6 +141,18 @@ export function Admin({ me, now, notify }: AdminProps) {
       />
 
       {confirm && detail && <ConfirmDialog action={confirm} user={detail} onCancel={() => setConfirm(null)} onConfirm={applyAction} />}
+    </div>
+  )
+}
+
+/** Is the every-minute reminder job (cron-job.org) still calling the server? */
+function ServiceStatus({ lastRun, now }: { lastRun: string | null; now: Date }) {
+  const running = Boolean(lastRun && now.getTime() - new Date(lastRun).getTime() < 3 * 60_000)
+  return (
+    <div className={`service-status ${running ? 'ok' : 'bad'}`} role="status">
+      <span className="dot" aria-hidden="true" />
+      Reminder service: {running ? 'running' : 'not running'} · last check {timeAgo(lastRun, now).toLowerCase()}
+      {!running && ' · check the cron-job.org job'}
     </div>
   )
 }

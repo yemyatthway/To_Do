@@ -85,6 +85,8 @@ export interface AdminStats {
   deleted_users: number
   new_users_7d: number
   logins_24h: number
+  /** When the reminder check last ran (cron-job.org, every minute). */
+  reminders_last_run: string | null
 }
 
 export interface Page<T> {
@@ -292,6 +294,7 @@ export const api = {
   vapidKey: () => request<{ public_key: string }>('/api/push/vapid-public-key/'),
   subscribePush: (subscription: PushSubscriptionJSON) => request<void>('/api/push/subscribe/', json('POST', subscription)),
   unsubscribePush: (endpoint: string) => request<void>('/api/push/subscribe/', json('DELETE', { endpoint })),
+  reminderStatus: (endpoint?: string) => request<ReminderStatus>(`/api/push/status/?${new URLSearchParams(endpoint ? { endpoint } : {})}`),
   testPush: (subscription: PushSubscriptionJSON) => request<{ detail: string }>('/api/push/test/', json('POST', subscription)),
 }
 
@@ -311,6 +314,14 @@ export const admin = {
 }
 
 export type Relationship = 'none' | 'friends' | 'outgoing' | 'incoming'
+
+/** GET /api/push/status/: everything that must be true for reminders to arrive. */
+export interface ReminderStatus {
+  reminders_enabled: boolean
+  service: { last_run_at: string | null; running: boolean }
+  devices: { id: number; this_device: boolean; added_at: string; last_success_at: string | null; last_error: string }[]
+  upcoming: { title: string; due_at: string; remind_at: string | null; sent: boolean }[]
+}
 
 export interface RemindResult {
   /** "inbox" when the friend only takes tasks through their inbox (it was sent there instead). */

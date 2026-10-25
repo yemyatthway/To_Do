@@ -12,6 +12,8 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.models import ReminderRun
+
 from .models import AuthEvent, User
 from .services import ban_user, restore_deadline, unban_user
 
@@ -113,6 +115,8 @@ class AdminStatsApi(APIView):
                 "deleted_users": User.all_objects.filter(deleted_at__isnull=False).count(),
                 "new_users_7d": users.filter(date_joined__gte=now - timedelta(days=7)).count(),
                 "logins_24h": AuthEvent.objects.filter(kind=AuthEvent.Kind.LOGIN, created_at__gte=now - timedelta(days=1)).count(),
+                # When cron-job.org last triggered the reminder check (stale = no reminders going out).
+                "reminders_last_run": (ReminderRun.last().last_run_at if ReminderRun.last() else None),
             }
         )
 

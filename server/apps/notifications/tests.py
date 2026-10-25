@@ -95,3 +95,30 @@ class SubscriptionApiTests(APITestCase):
     def test_requires_login(self):
         self.client.force_authenticate(None)
         self.assertEqual(self.client.post("/api/push/subscribe/", self.body, format="json").status_code, 401)
+
+
+class ReminderStatusTests(APITestCase):
+    def test_status_shows_service_devices_and_next_reminders(self):
+        from datetime import timedelta as td
+
+        from apps.tasks.models import Task
+
+        from .models import ReminderRun
+
+        user = User.objects.create_user("mia@example.com", PASSWORD, reminders_enabled=True, email_verified_at=timezone.now())
+        PushSubscription.objects.create(user=user, endpoint="https://push.example.com/me", p256dh="k", auth="a")
+        Task.objects.create(owner=user, title="Gym", due_at=timezone.now() + td(minutes=30), remind_before_minutes=10)
+        self.client.force_authenticate(user)
+
+        data = self.client.get("/api/push/status/", {"endpoint": "https://push.example.com/me"}).data
+        self.assertTrue(data["reminders_enabled"])
+        self.assertFalse(data["service"]["running"])  # nothing has called send-due yet
+        self.assertTrue(data["devices"][0]["this_device"])
+        self.assertEqual(data["upcoming"][0]["title"], "Gym")
+
+        with mock.patch("apps.notifications.reminders.send_push"):
+            from .reminders import send_due_reminders
+
+            send_due_reminders()
+        self.assertIsNotNone(ReminderRun.last())
+        self.assertTrue(self.client.get("/api/push/status/").data["service"]["running"])
