@@ -254,6 +254,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     return id ? { chatId: id, at: Date.now() } : undefined
   })
   const [chatBadge, setChatBadge] = useState(0)
+  const clearChatStart = useCallback(() => setChatStart(undefined), [])
   const [sendDialog, setSendDialog] = useState<{ friendId?: number; taskIds?: number[] } | null>(null)
   const [socialBadge, setSocialBadge] = useState(0)
   const [day, setDay] = useState(() => startOfDay(new Date()))
@@ -760,7 +761,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </Reveal>
           ) : view === 'chats' ? (
             <Reveal key="chats">
-              <Chats myId={user.id} now={now} notify={notify} start={chatStart} onUnread={setChatBadge} />
+              <Chats myId={user.id} now={now} notify={notify} start={chatStart} onUnread={setChatBadge} onStarted={clearChatStart} />
             </Reveal>
           ) : view === 'admin' && user.is_staff ? (
             <Reveal key="admin">

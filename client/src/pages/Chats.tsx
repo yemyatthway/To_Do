@@ -20,9 +20,11 @@ interface ChatsProps {
   /** Open straight into a chat: from a notification, or "Message" on a friend. */
   start?: { chatId?: number; friendId?: number; at: number }
   onUnread: (count: number) => void
+  /** The chat in `start` is open: forget it, so the Chats tab shows the list next time. */
+  onStarted: () => void
 }
 
-export function Chats({ myId, now, notify, start, onUnread }: ChatsProps) {
+export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsProps) {
   const [chats, setChats] = useState<Chat[] | null>(null)
   const [friends, setFriends] = useState<Person[]>([])
   const [error, setError] = useState('')
@@ -77,7 +79,8 @@ export function Chats({ myId, now, notify, start, onUnread }: ChatsProps) {
     // oxlint-disable-next-line react/set-state-in-effect
     if (start.chatId) setOpenId(start.chatId)
     else if (start.friendId) void openWith(start.friendId)
-  }, [start, openWith])
+    onStarted()
+  }, [start, openWith, onStarted])
 
   const active = chats?.find((c) => c.id === openId) ?? (opened?.id === openId ? opened : null)
   const withMessages = new Set(chats?.map((c) => c.friend.id))

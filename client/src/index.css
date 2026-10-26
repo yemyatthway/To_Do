@@ -3023,6 +3023,22 @@ body > .scrim.center {
   gap: 8px;
 }
 
+/* Each list on the Friends page scrolls inside its card once it's longer than the screen allows,
+   so you never scroll the whole page to reach Find people. */
+.friends-page .share-list,
+.friends-page .people {
+  max-height: max(240px, calc(var(--screen-room) - 120px));
+  overflow-y: auto;
+  /* Room for row shadows at the edges. */
+  margin: -4px;
+  padding: 4px;
+}
+
+.friends-page .share-list > li,
+.friends-page .people > li {
+  flex-shrink: 0;
+}
+
 .person {
   display: flex;
   align-items: center;
