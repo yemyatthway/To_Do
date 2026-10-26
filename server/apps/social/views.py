@@ -8,7 +8,7 @@ from .models import Friendship, Share, SharedTask
 
 
 def person(user, me=None, friendship=None):
-    data = {"id": user.pk, "full_name": user.full_name, "email": services.mask_email(user.email)}
+    data = {"id": user.pk, "full_name": user.full_name, "username": user.username, "email": services.mask_email(user.email)}
     if me is not None:
         data["relationship"], data["friendship_id"] = services.relationship(me, friendship)
     return data

@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, auth, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { api, auth, chat, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
 import { Toast, type ToastData } from './components/Toast'
 import type { TourStep } from './components/Tour'
@@ -9,6 +9,7 @@ import { clearSavedTimer, useTimer, type TimerState } from './timer/useTimer'
 import { enter, useGsap } from './motion'
 import { AuthScreen } from './pages/AuthScreen'
 import { useLiveRefresh } from './live'
+import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
@@ -28,7 +29,7 @@ import {
   startOfWeek,
 } from './time'
 
-type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer'
+type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats'
 
 // Screens most visits never open load on demand, so the first paint stays small.
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
@@ -36,9 +37,11 @@ const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
 const Timer = lazy(() => import('./pages/Timer').then((m) => ({ default: m.Timer })))
 const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.Friends })))
+const Chats = lazy(() => import('./pages/Chats').then((m) => ({ default: m.Chats })))
 const RemindersGuide = lazy(() => import('./components/RemindersGuide').then((m) => ({ default: m.RemindersGuide })))
 const SendTasksDialog = lazy(() => import('./components/SendTasksDialog').then((m) => ({ default: m.SendTasksDialog })))
 const Tour = lazy(() => import('./components/Tour').then((m) => ({ default: m.Tour })))
+const ChooseUsername = lazy(() => import('./components/ChooseUsername').then((m) => ({ default: m.ChooseUsername })))
 const WelcomeDialog = lazy(() => import('./components/Tour').then((m) => ({ default: m.WelcomeDialog })))
 
 // Fetch those screens in idle time after sign-in, so opening one later is instant.
@@ -47,6 +50,7 @@ function preloadScreens() {
     import('./pages/Profile')
     import('./pages/Progress')
     import('./pages/Friends')
+    import('./pages/Chats')
     import('./pages/Timer')
     import('./components/Tour')
   }
@@ -103,6 +107,12 @@ const TOUR_STEPS: TourStep[] = [
     gesture: 'tap',
   },
   {
+    target: 'chats',
+    title: 'Chats',
+    body: "Message your friends. You see when they're online, typing, and when they've seen your message.",
+    gesture: 'tap',
+  },
+  {
     target: 'reminders',
     title: 'Reminders',
     body: 'Turn reminders on to get a notification before your tasks (10 minutes by default; pick another time on any task). Tap again to turn them off.',
@@ -114,11 +124,10 @@ const TOUR_STEPS: TourStep[] = [
     body: 'Start a countdown, like a 25-minute focus session, optionally for a task. It keeps running on every screen and chimes when time is up.',
     gesture: 'tap',
   },
-  { target: 'theme', title: 'Light or dark', body: 'Switch themes anytime. Auto in your profile follows your device.', gesture: 'tap' },
   {
     target: 'profile',
     title: 'Your profile',
-    body: "Change your name, email or password, and replay this tutorial whenever you like. That's it, enjoy!",
+    body: "Change your name, email, password or light/dark theme, and replay this tutorial whenever you like. That's it, enjoy!",
     gesture: 'tap',
   },
 ]
@@ -235,8 +244,16 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const theme = useTheme()
   const now = useNow(30_000)
 
-  // Tapping a "sent you tasks" notification opens /?view=friends.
-  const [view, setView] = useState<View>(() => (new URLSearchParams(window.location.search).get('view') === 'friends' ? 'friends' : 'home'))
+  // Tapping a notification opens /?view=friends or /?view=chats&chat=<id>.
+  const [view, setView] = useState<View>(() => {
+    const asked = new URLSearchParams(window.location.search).get('view')
+    return asked === 'friends' || asked === 'chats' ? asked : 'home'
+  })
+  const [chatStart, setChatStart] = useState<{ chatId?: number; friendId?: number; at: number } | undefined>(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('chat'))
+    return id ? { chatId: id, at: Date.now() } : undefined
+  })
+  const [chatBadge, setChatBadge] = useState(0)
   const [sendDialog, setSendDialog] = useState<{ friendId?: number; taskIds?: number[] } | null>(null)
   const [socialBadge, setSocialBadge] = useState(0)
   const [day, setDay] = useState(() => startOfDay(new Date()))
@@ -516,6 +533,23 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
 
   useEffect(preloadScreens, [])
 
+  // Panels that scroll on their own (task list, chats) size themselves to the screen below the
+  // header, which changes height with banners and window width.
+  const mainRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (!main?.parentElement) return
+    const update = () => document.documentElement.style.setProperty('--main-top', `${Math.round(main.getBoundingClientRect().top + window.scrollY)}px`)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(main.parentElement)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+
   useEffect(() => {
     if (window.location.search) window.history.replaceState(null, '', window.location.pathname)
   }, [])
@@ -534,7 +568,40 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [loadBadge])
   useLiveRefresh(loadBadge, 20_000)
 
-  const dark = theme.resolved === 'dark'
+  // The live connection (chat, online status, instant updates). Off if the server has no key.
+  useEffect(() => {
+    void startLive(user.id)
+    if (user.is_staff) void startAdminLive()
+    return stopLive
+  }, [user.id, user.is_staff])
+
+  const loadChatBadge = useCallback(() => {
+    chat
+      .list()
+      .then((c) => setChatBadge(c.unread))
+      .catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    loadChatBadge()
+  }, [loadChatBadge])
+  useLiveRefresh(loadChatBadge, 30_000)
+  useEffect(() => onLive((e) => e.name === 'chat' && loadChatBadge()), [loadChatBadge])
+
+  // A chat notification tapped while the app is already open.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type !== 'open') return
+      const url = new URL(String(event.data.url), window.location.origin)
+      const id = Number(url.searchParams.get('chat'))
+      if (url.searchParams.get('view') === 'chats') {
+        setView('chats')
+        if (id) setChatStart({ chatId: id, at: Date.now() })
+      }
+    }
+    navigator.serviceWorker?.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
+  }, [])
+
   const remindersOn = user.reminders_enabled
   const headings: Record<View, [string, string]> = {
     home: [formatLongDate(now), greeting(now)],
@@ -543,6 +610,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     timer: ['Focus', 'Timer'],
     admin: ['Staff only', 'Admin dashboard'],
     friends: ['People', 'Friends'],
+    chats: ['Messages', 'Chats'],
   }
 
   const bell = (className: string) => (
@@ -592,12 +660,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           <div className="header-actions">
             <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => setView('timer')} />
             <button
-              className="round-btn"
-              data-tour="theme"
-              aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-              onClick={theme.toggle}
+              className="round-btn desktop-only"
+              data-tour="chats"
+              aria-label={chatBadge ? `Chats, ${chatBadge} unread` : 'Chats'}
+              aria-pressed={view === 'chats'}
+              onClick={() => setView('chats')}
             >
-              <Icon name={dark ? 'sun' : 'moon'} className={dark ? 'sun' : ''} />
+              <Icon name="chat" />
+              {chatBadge > 0 && <span className="nav-badge" aria-hidden="true">{chatBadge}</span>}
             </button>
             {bell(`round-btn${remindersOn ? ' on' : ''}`)}
             <button
@@ -657,7 +727,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           </div>
         )}
 
-        <main>
+        <main ref={mainRef}>
           <Suspense fallback={<p className="empty">Loading…</p>}>
           {view === 'timer' ? (
             <Reveal key="timer">
@@ -678,11 +748,19 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                 now={now}
                 notify={notify}
                 onSendTasks={(friend) => setSendDialog({ friendId: friend?.id })}
+                onMessage={(friend) => {
+                  setChatStart({ friendId: friend.id, at: Date.now() })
+                  setView('chats')
+                }}
                 onChanged={() => {
                   load()
                   loadBadge()
                 }}
               />
+            </Reveal>
+          ) : view === 'chats' ? (
+            <Reveal key="chats">
+              <Chats myId={user.id} now={now} notify={notify} start={chatStart} onUnread={setChatBadge} />
             </Reveal>
           ) : view === 'admin' && user.is_staff ? (
             <Reveal key="admin">
@@ -741,12 +819,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         </button>
         <button
           className="nav-btn"
-          data-tour="progress"
-          aria-label="Progress"
-          aria-current={view === 'progress' ? 'page' : undefined}
-          onClick={() => setView('progress')}
+          data-tour="chats"
+          aria-label={chatBadge ? `Chats, ${chatBadge} unread` : 'Chats'}
+          aria-current={view === 'chats' ? 'page' : undefined}
+          onClick={() => setView('chats')}
         >
-          <Icon name="chart" />
+          <Icon name="chat" />
+          {chatBadge > 0 && <span className="nav-badge" aria-hidden="true">{chatBadge}</span>}
         </button>
         <button className="fab" data-tour="new-task" aria-label="New task" onClick={() => openCreate(day)}>
           <Icon name="plus" />
@@ -816,7 +895,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           notify={notify}
         />
       )}
-      {!user.tutorial_seen && !touring && (
+      {/* Accounts from before usernames choose theirs once (before anything else). */}
+      {!user.username_confirmed && <ChooseUsername user={user} onDone={onUserChange} />}
+      {user.username_confirmed && !user.tutorial_seen && !touring && (
         <WelcomeDialog
           name={user.full_name}
           onAnswer={(firstTime) => {

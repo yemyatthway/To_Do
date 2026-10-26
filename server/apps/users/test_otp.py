@@ -26,7 +26,7 @@ class EmailVerificationTests(APITestCase):
         cache.clear()
 
     def register(self, email="aung@example.com"):
-        return self.client.post("/api/auth/register/", {"full_name": "Ko Aung", "email": email, "password": PASSWORD}, format="json")
+        return self.client.post("/api/auth/register/", {"full_name": "Ko Aung", "username": email.partition("@")[0].replace("+", "_"), "email": email, "password": PASSWORD}, format="json")
 
     def test_sign_up_sends_a_code_and_the_app_waits_for_it(self):
         response = self.register()
@@ -175,7 +175,7 @@ class EmailCheckTests(APITestCase):
     @override_settings(EMAIL_ALLOW_RESERVED_DOMAINS=False)
     def test_sign_up_rejects_a_domain_without_mail(self):
         with mock.patch.object(email_check, "domain_accepts_mail", return_value=False):
-            response = self.client.post("/api/auth/register/", {"full_name": "A", "email": "a@nowhere-mail.invalid", "password": PASSWORD}, format="json")
+            response = self.client.post("/api/auth/register/", {"full_name": "A", "username": "auser", "email": "a@nowhere-mail.invalid", "password": PASSWORD}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("can't receive email", response.data["email"][0])
 
@@ -209,7 +209,7 @@ class WelcomeEmailTests(APITestCase):
         cache.clear()
 
     def test_sent_once_after_sign_up_is_confirmed(self):
-        response = self.client.post("/api/auth/register/", {"full_name": "Ko Aung", "email": "aung@example.com", "password": PASSWORD}, format="json")
+        response = self.client.post("/api/auth/register/", {"full_name": "Ko Aung", "username": "aung", "email": "aung@example.com", "password": PASSWORD}, format="json")
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
         self.assertFalse(any("Welcome" in m.subject for m in mail.outbox))  # not before the email is confirmed
         self.client.post("/api/auth/verify-email/", {"code": last_code()}, format="json")
@@ -234,7 +234,7 @@ class WelcomeEmailTests(APITestCase):
         self.assertEqual(len([m for m in mail.outbox if "Welcome" in m.subject]), 1)
 
     def test_code_email_is_designed_and_has_a_text_part(self):
-        self.client.post("/api/auth/register/", {"full_name": "A", "email": "a@example.com", "password": PASSWORD}, format="json")
+        self.client.post("/api/auth/register/", {"full_name": "A", "username": "auser", "email": "a@example.com", "password": PASSWORD}, format="json")
         message = mail.outbox[-1]
         self.assertIn(last_code(), message.body)
         html = message.alternatives[0][0]
@@ -249,7 +249,7 @@ class CodeExpiryTests(APITestCase):
         cache.clear()
 
     def test_app_gets_the_expiry_time_for_its_countdown(self):
-        created = self.client.post("/api/auth/register/", {"full_name": "A", "email": "a@example.com", "password": PASSWORD}, format="json")
+        created = self.client.post("/api/auth/register/", {"full_name": "A", "username": "auser", "email": "a@example.com", "password": PASSWORD}, format="json")
         expires = created.data["user"]["code_expires_at"]
         self.assertIsNotNone(expires)
         left = (EmailCode.objects.get().expires_at - timezone.now()).total_seconds()

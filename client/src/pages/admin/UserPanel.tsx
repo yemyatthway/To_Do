@@ -72,6 +72,7 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
               </span>
               <div style={{ minWidth: 0 }}>
                 <p className="profile-name">{detail.full_name || 'No name'}</p>
+                <p className="list-sub profile-handle">@{detail.username}</p>
                 <p className="list-sub profile-email">{detail.email}</p>
                 <span className={`badge badge-${detail.status}`}>{STATUS_LABEL[detail.status]}</span>
                 {detail.is_staff && <span className="badge badge-staff">Admin</span>}

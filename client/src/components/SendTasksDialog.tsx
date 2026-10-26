@@ -153,6 +153,8 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
                     {initials(f)}
                   </span>
                   {nameOf(f)}
+                  {/* Two friends with the same name: the username tells them apart. */}
+                  {friends.some((o) => o.id !== f.id && nameOf(o) === nameOf(f)) && <span className="task-meta">@{f.username}</span>}
                 </button>
               ))}
             </div>

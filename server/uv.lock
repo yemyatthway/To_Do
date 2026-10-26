@@ -929,6 +929,7 @@ name = "server"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "django" },
     { name = "django-cors-headers" },
     { name = "django-environ" },
@@ -938,11 +939,13 @@ dependencies = [
     { name = "gunicorn" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pywebpush" },
+    { name = "requests" },
     { name = "whitenoise" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=43" },
     { name = "django", specifier = ">=5.2,<5.3" },
     { name = "django-cors-headers", specifier = ">=4.9.0" },
     { name = "django-environ", specifier = ">=0.14.0" },
@@ -952,6 +955,7 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pywebpush", specifier = ">=2.5.0" },
+    { name = "requests", specifier = ">=2.32" },
     { name = "whitenoise", specifier = ">=6.12.0" },
 ]
 

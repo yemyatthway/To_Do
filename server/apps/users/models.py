@@ -9,7 +9,12 @@ class AllUsersManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("Email is required.")
-        user = self.model(email=self.normalize_email(email).strip().lower(), **extra_fields)
+        email = self.normalize_email(email).strip().lower()
+        if not extra_fields.get("username"):
+            from .usernames import suggest
+
+            extra_fields["username"] = suggest(extra_fields.get("full_name", ""), email)
+        user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.password_changed_at = dj_timezone.now()
         user.save(using=self._db)
@@ -32,6 +37,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Always stored lowercase (see save), so this is case-insensitive too.
     email = models.EmailField(max_length=160, unique=True)
     full_name = models.CharField(max_length=160, blank=True)
+    # Public and unique, stored lowercase (see usernames.py). Accounts from before usernames got one
+    # made from their name; `username_confirmed_at` stays empty until they've chosen or kept it.
+    username = models.CharField(max_length=20, unique=True)
+    username_confirmed_at = models.DateTimeField(null=True, blank=True)
     # IANA name ("Asia/Yangon"), kept in sync with the user's device so reminder text shows their local time.
     timezone = models.CharField(max_length=64, blank=True)
     reminders_enabled = models.BooleanField(default=False)
@@ -73,6 +82,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     def save(self, *args, **kwargs):
         if self.email:
             self.email = self.email.strip().lower()
+        if self.username:
+            self.username = self.username.strip().lstrip("@").lower()
         super().save(*args, **kwargs)
 
     def __str__(self):

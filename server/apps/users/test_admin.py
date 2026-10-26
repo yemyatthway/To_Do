@@ -15,7 +15,7 @@ class AuthEventLogTests(APITestCase):
 
     def test_signup_login_logout_are_logged_and_only_login_keeps_ip(self):
         self.client.post(
-            "/api/auth/register/", {"full_name": "Mia", "email": "mia@example.com", "password": PASSWORD}, format="json", REMOTE_ADDR="10.0.0.1"
+            "/api/auth/register/", {"full_name": "Mia", "username": "mia", "email": "mia@example.com", "password": PASSWORD}, format="json", REMOTE_ADDR="10.0.0.1"
         )
         self.client.post("/api/auth/logout/")
         self.client.post("/api/auth/login/", {"email": "mia@example.com", "password": PASSWORD}, format="json", REMOTE_ADDR="10.0.0.2")
@@ -33,7 +33,7 @@ class AuthEventLogTests(APITestCase):
         )
 
     def test_sign_up_counts_as_first_login(self):
-        self.client.post("/api/auth/register/", {"full_name": "Mia", "email": "mia@example.com", "password": PASSWORD}, format="json", REMOTE_ADDR="10.0.0.9")
+        self.client.post("/api/auth/register/", {"full_name": "Mia", "username": "mia", "email": "mia@example.com", "password": PASSWORD}, format="json", REMOTE_ADDR="10.0.0.9")
         user = User.objects.get(email="mia@example.com")
         self.assertIsNotNone(user.last_login_at)
         self.assertEqual(user.last_login_ip, "10.0.0.9")

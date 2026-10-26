@@ -3,16 +3,22 @@ import { ApiError, auth, isChallenge, isDeletedAccount, type DeletedAccount, typ
 import { AuthScene } from '../components/AuthScene'
 import { Banner } from '../components/Banner'
 import { CodeEntry } from '../components/CodeEntry'
+import { Rule, type RuleState } from '../components/CheckRule'
+import { UsernameField } from '../components/UsernameField'
+import { usernameBlocks, useUsernameCheck } from '../components/usernameCheck'
 import { Icon } from '../icons'
 import { enter, gsap, useGsap } from '../motion'
 import { deviceTimezone } from '../time'
-import { isValidEmail, PASSWORD_RULES } from '../user'
+import { isValidEmail, normalizeUsername, PASSWORD_RULES, usernameFromName } from '../user'
 
 type Mode = 'login' | 'register'
 
 export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user: User) => void; notice?: string }) {
   const [mode, setMode] = useState<Mode>('login')
   const [fullName, setFullName] = useState('')
+  const [username, setUsername] = useState('')
+  // Until they type one, the username follows the name ("Ryen Kai" -> ryenkai).
+  const [usernameEdited, setUsernameEdited] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -31,6 +37,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
   const [emailTouched, setEmailTouched] = useState(false)
 
   const registering = mode === 'register'
+  const usernameStatus = useUsernameCheck(registering ? username : '')
   const cardRef = useRef<HTMLFormElement>(null)
 
   const pageRef = useRef<HTMLDivElement>(null)
@@ -100,6 +107,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
   function validate() {
     const next: Record<string, string> = {}
     if (registering && !fullName.trim()) next.full_name = 'Enter your name.'
+    if (registering && usernameBlocks(usernameStatus)) next.username = usernameStatus.message
     if (!email.trim()) next.email = 'Enter your email.'
     else if (!isValidEmail(email)) next.email = 'Enter a valid email, like name@example.com.'
     if (!password) next.password = 'Enter your password.'
@@ -124,6 +132,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
       const result = registering
         ? await auth.register({
             full_name: fullName.trim(),
+            username: normalizeUsername(username),
             email: email.trim(),
             password,
             timezone: deviceTimezone(),
@@ -287,11 +296,26 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
                   onChange={(e) => {
                     editing()
                     setFullName(e.target.value)
+                    if (!usernameEdited) setUsername(usernameFromName(e.target.value))
                     setErrors((p) => ({ ...p, full_name: '' }))
                   }}
                 />
                 {fieldError('full_name')}
               </label>
+            )}
+
+            {registering && (
+              <UsernameField
+                value={username}
+                status={usernameStatus}
+                error={errors.username}
+                onChange={(value) => {
+                  editing()
+                  setUsername(value)
+                  setUsernameEdited(true)
+                  setErrors((p) => ({ ...p, username: '' }))
+                }}
+              />
             )}
 
             <label className="field-group">
@@ -399,19 +423,5 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
         )}
       </form>
     </div>
-  )
-}
-
-type RuleState = 'ok' | 'bad' | 'wait' | 'checking'
-
-/** One line of a live checklist (email or password): a tick, a cross, or an empty circle. */
-function Rule({ state, label }: { state: RuleState; label: string }) {
-  return (
-    <li className={state === 'ok' ? 'ok' : state === 'bad' ? 'bad' : ''}>
-      <Icon name={state === 'ok' ? 'check' : state === 'bad' ? 'x' : 'circle'} />
-      {label}
-      {state === 'checking' && <span className="rule-note"> · checking…</span>}
-      <span className="sr-only">{state === 'ok' ? ' (passed)' : state === 'bad' ? ' (failed)' : ' (not checked yet)'}</span>
-    </li>
   )
 }

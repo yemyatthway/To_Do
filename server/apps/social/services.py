@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import close_old_connections, transaction
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, When
 from django.utils import timezone
 from pywebpush import WebPushException
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -27,16 +27,20 @@ def mask_email(email):
 
 
 def search_users(*, me, query, limit=20):
-    """Name contains the query, or the email matches exactly. Never lists yourself or banned accounts."""
+    """"@kai" looks up usernames starting with "kai". Otherwise: the name contains it, a username
+    starts with it, or the email matches exactly. An exact username comes first. Never lists
+    yourself or banned accounts."""
     query = query.strip()
-    if len(query) < 2:
+    handle = query.lstrip("@").lower()
+    if len(handle) < 2:
         return []
-    return list(
-        User.objects.filter(is_active=True)
-        .exclude(pk=me.pk)
-        .filter(Q(full_name__icontains=query) | Q(email__iexact=query))
-        .order_by("full_name", "email")[:limit]
-    )
+    people = User.objects.filter(is_active=True).exclude(pk=me.pk)
+    if query.startswith("@"):
+        people = people.filter(username__startswith=handle)
+    else:
+        people = people.filter(Q(full_name__icontains=query) | Q(username__startswith=handle) | Q(email__iexact=query))
+    exact = Case(When(username=handle, then=0), default=1, output_field=IntegerField())
+    return list(people.order_by(exact, "full_name", "username")[:limit])
 
 
 def relationship(me, friendship):
@@ -86,6 +90,9 @@ def remove_friendship(*, me, friendship_id):
     if friendship is None:
         raise NotFound("That friendship doesn't exist.")
     friendship.delete()
+    from apps.live import ably
+
+    ably.to_users([friendship.requester_id, friendship.addressee_id], "social")
     from .linked import unlink_between  # linked imports this module
 
     unlink_between(friendship.requester, friendship.addressee)
@@ -176,10 +183,13 @@ def _send_in_background(*args):
         close_old_connections()  # the worker thread gives back the DB connection it may have opened
 
 
-def _notify(user, title, body, url="/"):
-    """Best-effort push (friend request, accepted, tasks sent) to someone who has notifications on.
-    Sent in the background so the person tapping "Add friend" or "Send" never waits on a push
-    service; sharing works the same without it."""
+def _notify(user, title, body, url="/", event="social"):
+    """Tell someone something happened: a live event so their open app updates at once (always),
+    plus a push notification if they have notifications on. Both go out in the background so the
+    person tapping "Add friend" or "Send" never waits; everything works the same without them."""
+    from apps.live import ably
+
+    ably.to_users([user.pk], event)
     if not user.reminders_enabled:
         return
     subscriptions = list(user.push_subscriptions.all())

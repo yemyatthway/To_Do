@@ -30,6 +30,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "id",
             "email",
             "full_name",
+            "username",
             "status",
             "email_verified",
             "is_active",
@@ -96,7 +97,7 @@ def _paged(request, view, queryset, serializer):
     return paginator.get_paginated_response(serializer(page, many=True).data)
 
 
-USER_ORDERING = {"name": "full_name", "email": "email", "joined": "date_joined", "last_login": "last_login_at", "tasks": "task_count"}
+USER_ORDERING = {"name": "full_name", "username": "username", "email": "email", "joined": "date_joined", "last_login": "last_login_at", "tasks": "task_count"}
 EVENT_ORDERING = {"time": "created_at", "email": "email", "kind": "kind"}
 SINCE = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
 
@@ -131,7 +132,8 @@ class AdminUserListApi(APIView):
         params = request.query_params
         queryset = _users()
         if search := params.get("search", "").strip():
-            queryset = queryset.filter(Q(email__icontains=search) | Q(full_name__icontains=search))
+            handle = search.lstrip("@").lower()
+            queryset = queryset.filter(Q(email__icontains=search) | Q(full_name__icontains=search) | Q(username__startswith=handle))
         status_filter = params.get("status")
         if status_filter == "banned":
             queryset = queryset.filter(banned_at__isnull=False, deleted_at__isnull=True)

@@ -94,7 +94,9 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
                       {u.full_name || 'No name'}
                       {u.is_staff && <span className="badge badge-staff">Admin</span>}
                     </span>
-                    <span className="task-meta">{u.email}</span>
+                    <span className="task-meta">
+                      @{u.username} · {u.email}
+                    </span>
                   </span>
                 </td>
                 <td data-label="Status">

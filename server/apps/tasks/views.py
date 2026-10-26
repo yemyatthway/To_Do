@@ -47,8 +47,15 @@ class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     pagination_class = None
 
+    def _changed(self):
+        """Your other open devices (phone + laptop) update at once."""
+        from apps.live import ably
+
+        ably.to_users([self.request.user.pk], "tasks")
+
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+        self._changed()
 
     def perform_update(self, serializer):
         from apps.social.linked import SYNCED_FIELDS, sync_copies
@@ -56,6 +63,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         before = {field: getattr(serializer.instance, field) for field in SYNCED_FIELDS}
         task = serializer.save()
         sync_copies(task, before)  # a shared plan: everyone else's copy changes too
+        self._changed()
 
     def perform_destroy(self, task):
         from apps.social.linked import cancel_copies
@@ -63,6 +71,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.deleted_at = timezone.now()
         task.save(update_fields=["deleted_at"])
         cancel_copies(task)
+        self._changed()
 
     def _trash(self):
         cutoff = timezone.now() - timedelta(days=settings.TASK_RESTORE_DAYS)

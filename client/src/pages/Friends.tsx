@@ -3,7 +3,7 @@ import { useLiveRefresh } from '../live'
 import { social, type Person, type Share } from '../api'
 import { Icon } from '../icons'
 import { formatShortDay, formatTime } from '../time'
-import { initials, timeAgo } from '../user'
+import { handle, initials, timeAgo } from '../user'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const nameOf = (p: Person) => p.full_name || p.email
@@ -13,11 +13,13 @@ interface FriendsProps {
   notify: (title: string, detail?: string) => void
   /** Open the send dialog, optionally with a friend already picked. */
   onSendTasks: (friend?: Person) => void
+  /** Open the chat with this friend. */
+  onMessage: (friend: Person) => void
   /** Tasks were added to my list: reload them and the badge. */
   onChanged: () => void
 }
 
-export function Friends({ now, notify, onSendTasks, onChanged }: FriendsProps) {
+export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: FriendsProps) {
   const [inbox, setInbox] = useState<Share[] | null>(null)
   const [lists, setLists] = useState<{ friends: Person[]; incoming: Person[]; outgoing: Person[] } | null>(null)
   const [error, setError] = useState('')
@@ -152,6 +154,10 @@ export function Friends({ now, notify, onSendTasks, onChanged }: FriendsProps) {
           <ul className="people">
             {lists.friends.map((p) => (
               <PersonRow key={p.id} person={p}>
+                <button className="text-btn" onClick={() => onMessage(p)} aria-label={`Message ${nameOf(p)}`}>
+                  <Icon name="chat" />
+                  <span className="hide-narrow">Message</span>
+                </button>
                 <button className="text-btn" onClick={() => onSendTasks(p)} aria-label={`Send tasks to ${nameOf(p)}`}>
                   <Icon name="send" />
                   <span className="hide-narrow">Send</span>
@@ -183,7 +189,7 @@ function PersonRow({ person, note, children }: { person: Person; note?: string; 
       </span>
       <span className="person-main">
         <span className="person-name">{nameOf(person)}</span>
-        <span className="task-meta">{note ?? person.email}</span>
+        <span className="task-meta">{[handle(person), note].filter(Boolean).join(' · ')}</span>
       </span>
       <span className="person-actions">{children}</span>
     </li>
@@ -235,7 +241,7 @@ function ShareCard({
         <span className="person-main">
           <span className="person-name">{nameOf(share.sender)}</span>
           <span className="task-meta">
-            sent {share.tasks.length} task{share.tasks.length === 1 ? '' : 's'} · {timeAgo(share.created_at, now)}
+            {handle(share.sender)} · sent {share.tasks.length} task{share.tasks.length === 1 ? '' : 's'} · {timeAgo(share.created_at, now)}
           </span>
         </span>
       </div>
@@ -324,7 +330,7 @@ function FindPeople({ busy, onAct }: { busy: string | null; onAct: (key: string,
         <input
           className="field"
           type="search"
-          placeholder="Name, or their exact email"
+          placeholder="Name, @username, or exact email"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)

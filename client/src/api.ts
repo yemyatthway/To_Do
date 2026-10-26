@@ -33,6 +33,10 @@ export interface User {
   /** Until the email is confirmed: when the emailed code expires. */
   code_expires_at: string | null
   full_name: string
+  /** Public and unique, lowercase, without the "@". */
+  username: string
+  /** False for accounts from before usernames, until they keep or change the one they were given. */
+  username_confirmed: boolean
   timezone: string
   reminders_enabled: boolean
   tutorial_seen: boolean
@@ -48,6 +52,7 @@ export interface AdminUser {
   id: number
   email: string
   full_name: string
+  username: string
   status: AccountStatus
   email_verified: boolean
   is_active: boolean
@@ -96,7 +101,7 @@ export interface Page<T> {
   results: T[]
 }
 
-export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks'>>
+export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'username' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks'>>
 
 interface Session {
   access: string
@@ -128,6 +133,14 @@ export interface EmailCheck {
   suggestion: string | null
   /** Each rule on its own (null: not checked because an earlier one failed). */
   checks: { format: boolean; real_inbox: boolean | null; receives_mail: boolean | null }
+}
+
+export interface UsernameCheck {
+  ok: boolean
+  username: string
+  message: string
+  /** A free one to offer when the typed one is taken. */
+  suggestion: string | null
 }
 
 export interface TrustedDevice {
@@ -255,9 +268,14 @@ export const auth = {
   login: (email: string, password: string, restore = false) => startSession('/api/auth/login/', { email, password, restore }),
   verifyLogin: (challenge: string, code: string) => startSession('/api/auth/login/verify/', { challenge, code }) as Promise<User>,
   resendLogin: (challenge: string) => postPublic<{ resend_in: number; expires_at: string | null }>('/api/auth/login/resend/', { challenge }),
-  register: (input: { full_name: string; email: string; password: string; timezone: string }) =>
+  register: (input: { full_name: string; username: string; email: string; password: string; timezone: string }) =>
     startSession('/api/auth/register/', input) as Promise<User>,
   checkEmail: (email: string) => postPublic<EmailCheck>('/api/auth/check-email/', { email }),
+  /** Signed in, your own current username counts as free. */
+  checkUsername: (username: string, signedIn: boolean) =>
+    signedIn
+      ? request<UsernameCheck>('/api/auth/check-username/', json('POST', { username }))
+      : postPublic<UsernameCheck>('/api/auth/check-username/', { username }),
   verifyEmail: (code: string) => request<User>('/api/auth/verify-email/', json('POST', { code })),
   resendVerifyEmail: () => request<{ resend_in: number; expires_at: string | null }>('/api/auth/verify-email/resend/', json('POST', {})),
   devices: () => request<TrustedDevice[]>('/api/auth/devices/'),
@@ -336,6 +354,7 @@ export interface RemindResult {
 export interface Person {
   id: number
   full_name: string
+  username: string
   /** Partly hidden, e.g. m•••@gmail.com. */
   email: string
   relationship?: Relationship
@@ -384,4 +403,40 @@ export const social = {
   add: (shareId: number, item_ids?: number[]) => request<AddSharedResult>(`/api/social/shares/${shareId}/add/`, json('POST', item_ids ? { item_ids } : {})),
   dismiss: (shareId: number) => request<void>(`/api/social/shares/${shareId}/dismiss/`, json('POST', {})),
   summary: () => request<{ incoming_requests: number; new_shares: number }>('/api/social/summary/'),
+}
+
+export interface ChatMessage {
+  id: number
+  conversation: number
+  sender: number
+  mine: boolean
+  text: string
+  deleted: boolean
+  created_at: string
+}
+
+export interface Chat {
+  id: number
+  friend: Person
+  last_message: ChatMessage | null
+  last_message_at: string | null
+  unread: number
+  /** When the friend last read this chat, for "Seen". */
+  friend_read_at: string | null
+}
+
+export const chat = {
+  list: () => request<{ chats: Chat[]; unread: number }>('/api/chat/'),
+  open: (userId: number) => request<Chat>(`/api/chat/with/${userId}/`, json('POST', {})),
+  messages: (id: number, before?: number) =>
+    request<{ chat: Chat; messages: ChatMessage[] }>(`/api/chat/${id}/messages/${before ? `?before=${before}` : ''}`),
+  send: (id: number, text: string) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text })),
+  read: (id: number) => request<{ read_at: string }>(`/api/chat/${id}/read/`, json('POST', {})),
+  remove: (id: number, messageId: number) => request<void>(`/api/chat/${id}/messages/${messageId}/`, { method: 'DELETE' }),
+}
+
+export type LivePass = { enabled: false } | { enabled: true; client_id: string; token_request: import('ably').TokenRequest }
+
+export const live = {
+  token: () => request<LivePass>('/api/live/token/'),
 }

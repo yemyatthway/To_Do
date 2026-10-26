@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiError, api, auth, type Task, type TrustedDevice, type User } from '../api'
+import { UsernameField } from '../components/UsernameField'
+import { usernameBlocks, useUsernameCheck } from '../components/usernameCheck'
 import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import type { ThemePreference } from '../theme'
-import { initials, isValidEmail, PASSWORD_RULES, timeAgo } from '../user'
+import { initials, isValidEmail, normalizeUsername, PASSWORD_RULES, timeAgo } from '../user'
 
 interface ProfileProps {
   user: User
@@ -32,6 +34,8 @@ export function Profile(props: ProfileProps) {
   const [deleting, setDeleting] = useState(false)
 
   const [fullName, setFullName] = useState(user.full_name)
+  const [username, setUsername] = useState(user.username)
+  const usernameStatus = useUsernameCheck(username, { current: user.username, signedIn: true })
   const [email, setEmail] = useState(user.email)
   const [infoErrors, setInfoErrors] = useState<Record<string, string>>({})
   const [savingInfo, setSavingInfo] = useState(false)
@@ -41,18 +45,22 @@ export function Profile(props: ProfileProps) {
   const [pwErrors, setPwErrors] = useState<Record<string, string>>({})
   const [savingPw, setSavingPw] = useState(false)
 
-  const infoChanged = fullName.trim() !== user.full_name || email.trim().toLowerCase() !== user.email
+  const usernameChanged = normalizeUsername(username) !== user.username
+  const infoChanged = fullName.trim() !== user.full_name || usernameChanged || email.trim().toLowerCase() !== user.email
 
   async function saveInfo(e: React.FormEvent) {
     e.preventDefault()
     const next: Record<string, string> = {}
     if (!fullName.trim()) next.full_name = 'Enter your name.'
+    if (usernameChanged && usernameBlocks(usernameStatus)) next.username = usernameStatus.message
     if (!isValidEmail(email)) next.email = 'Enter a valid email, like name@example.com.'
     setInfoErrors(next)
     if (Object.keys(next).length) return
     setSavingInfo(true)
     try {
-      onUserChange(await auth.updateMe({ full_name: fullName.trim(), email: email.trim() }))
+      onUserChange(
+        await auth.updateMe({ full_name: fullName.trim(), email: email.trim(), ...(usernameChanged ? { username: normalizeUsername(username) } : {}) }),
+      )
       notify('Profile saved')
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length) {
@@ -100,6 +108,7 @@ export function Profile(props: ProfileProps) {
         </span>
         <div style={{ minWidth: 0 }}>
           <h2 className="profile-name">{user.full_name || 'Your profile'}</h2>
+          <span className="list-sub profile-handle">@{user.username}</span>
           <span className="list-sub profile-email">{user.email}</span>
           <span className="list-sub">Member since {joined}</span>
         </div>
@@ -121,6 +130,15 @@ export function Profile(props: ProfileProps) {
           />
           {infoErrors.full_name && <span className="field-error">{infoErrors.full_name}</span>}
         </label>
+        <UsernameField
+          value={username}
+          status={usernameStatus}
+          error={infoErrors.username}
+          onChange={(value) => {
+            setUsername(value)
+            setInfoErrors((p) => ({ ...p, username: '' }))
+          }}
+        />
         <label className="field-group">
           <span className="label">
             Email

@@ -18,7 +18,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from . import events, mail, otp
+from . import events, mail, otp, usernames
 from .email_check import check_email, email_checks
 from .models import AuthEvent, EmailCode, TrustedDevice, User
 from .serializers import (
@@ -27,6 +27,7 @@ from .serializers import (
     CodeSerializer,
     DeleteAccountSerializer,
     EmailCheckSerializer,
+    UsernameCheckSerializer,
     LoginCodeSerializer,
     LoginSerializer,
     RegisterSerializer,
@@ -252,6 +253,28 @@ class EmailCheckApi(APIView):
         email = serializer.validated_data["email"]
         ok, message, suggestion = check_email(email)
         return Response({"ok": ok, "message": message, "suggestion": suggestion, "checks": email_checks(email)})
+
+
+class UsernameCheckApi(APIView):
+    """Live check while typing a username: the rules, and whether it's free. Your own current
+    username counts as free."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "username_check"
+
+    def post(self, request):
+        serializer = UsernameCheckSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        value = usernames.normalize(serializer.validated_data["username"])
+        me = request.user if request.user.is_authenticated else None
+        if me is not None and value == me.username:
+            return Response({"ok": True, "username": value, "message": "", "suggestion": None})
+        message = usernames.problem(value)
+        suggestion = None
+        if message is None and usernames.is_taken(value, exclude=me):
+            message = "That username is taken."
+            suggestion = usernames.free_variant(value)
+        return Response({"ok": message is None, "username": value, "message": message or "", "suggestion": suggestion})
 
 
 class DevicesApi(APIView):

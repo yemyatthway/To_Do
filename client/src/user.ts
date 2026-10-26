@@ -34,3 +34,26 @@ export function timeAgo(iso: string | null, now = new Date()) {
 
 export const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+/** Mirrors the server's username rules (usernames.py); the server also checks it's free. */
+export const normalizeUsername = (value: string) => value.trim().replace(/^@+/, '').toLowerCase()
+
+export function usernameProblem(value: string) {
+  if (value.length < 3) return 'Use at least 3 characters.'
+  if (value.length > 20) return 'Use at most 20 characters.'
+  if (!/^[a-z0-9](?:[a-z0-9._]*[a-z0-9])?$/.test(value)) return 'Use lowercase letters, numbers, dots and underscores, starting and ending with a letter or number.'
+  if (value.includes('..')) return 'No two dots in a row.'
+  return null
+}
+
+/** "Ryen Kai" -> "ryenkai": a first suggestion while someone types their name. */
+export const usernameFromName = (name: string) =>
+  name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '') // accents: é -> e
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 20)
+
+/** "Mia Thompson" with "@mia.t" under it, wherever people are listed. */
+export const handle = (p: { username?: string }) => (p.username ? `@${p.username}` : '')

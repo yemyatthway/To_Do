@@ -5,6 +5,7 @@ from .auth_apis import (
     DeviceDeleteApi,
     DevicesApi,
     EmailCheckApi,
+    UsernameCheckApi,
     LoginApi,
     LoginResendApi,
     LoginVerifyApi,
@@ -21,6 +22,7 @@ app_name = "auth"
 urlpatterns = [
     path("register/", RegisterApi.as_view(), name="register"),
     path("check-email/", EmailCheckApi.as_view(), name="check-email"),
+    path("check-username/", UsernameCheckApi.as_view(), name="check-username"),
     path("login/", LoginApi.as_view(), name="login"),
     path("login/verify/", LoginVerifyApi.as_view(), name="login-verify"),
     path("login/resend/", LoginResendApi.as_view(), name="login-resend"),

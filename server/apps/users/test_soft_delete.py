@@ -45,7 +45,7 @@ class AccountSoftDeleteTests(APITestCase):
         self.assertEqual(self.client.get("/api/social/users/", {"q": "mia@example.com"}).data, [])
         # The email stays reserved while the account can come back.
         self.client.force_authenticate(None)
-        taken = self.client.post("/api/auth/register/", {"full_name": "M", "email": "mia@example.com", "password": PASSWORD}, format="json")
+        taken = self.client.post("/api/auth/register/", {"full_name": "M", "username": "mia", "email": "mia@example.com", "password": PASSWORD}, format="json")
         self.assertIn("Log in to restore it", taken.data["email"][0])
 
     def test_restore_needs_the_password_and_an_email_code_then_everything_is_back(self):

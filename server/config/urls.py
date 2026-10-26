@@ -14,6 +14,8 @@ urlpatterns = [
     path("api/tasks/", include("apps.tasks.urls")),
     path("api/push/", include("apps.notifications.urls")),
     path("api/social/", include("apps.social.urls")),
+    path("api/chat/", include("apps.chat.urls")),
+    path("api/live/", include("apps.live.urls")),
     path("api/cron/prune/", PruneView.as_view()),
 ]
 

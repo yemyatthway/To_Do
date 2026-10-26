@@ -85,7 +85,7 @@ def add_for_friend(*, me, recipient_id, task_ids):
             title, body = f"{_name(me)} added a task for you", f"{copies[0].title} · {when(copies[0], recipient)}"
         else:
             title, body = f"{_name(me)} added {len(copies)} tasks for you", ", ".join(c.title for c in copies[:3])
-        _notify(recipient, title, body, url="/")
+        _notify(recipient, title, body, url="/", event="tasks")
     return {"mode": "added", "added": len(copies), "already": len(upcoming) - len(fresh), "past": past}
 
 
@@ -121,7 +121,7 @@ def sync_copies(task, before):
             title, body = f"{editor} renamed a task", f"{before['title']} is now {other.title}"
         else:
             title, body = f"{editor} updated a task", f"{other.title}: new {', '.join(f for f in changed)}"
-        _notify(other.owner, title, body, url="/")
+        _notify(other.owner, title, body, url="/", event="tasks")
     return len(others)
 
 
@@ -131,14 +131,14 @@ def cancel_copies(task):
     if task.linked_from_id:
         root = Task.all_objects.filter(pk=task.linked_from_id).select_related("owner").first()
         if root and root.deleted_at is None:
-            _notify(root.owner, f"{_name(task.owner)} left a plan", f"{task.title} was removed from their list.", url="/")
+            _notify(root.owner, f"{_name(task.owner)} left a plan", f"{task.title} was removed from their list.", url="/", event="tasks")
         return 0
     copies = list(Task.objects.filter(linked_from=task).select_related("owner"))
     now = timezone.now()
     for copy in copies:
         copy.deleted_at = now
         copy.save(update_fields=["deleted_at"])
-        _notify(copy.owner, f"{_name(task.owner)} cancelled a task", f"{copy.title} was removed from your list.", url="/")
+        _notify(copy.owner, f"{_name(task.owner)} cancelled a task", f"{copy.title} was removed from your list.", url="/", event="tasks")
     return len(copies)
 
 

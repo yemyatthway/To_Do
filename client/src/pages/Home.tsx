@@ -119,15 +119,17 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
             Show all
           </button>
         </div>
-        <ul className="task-list">{(inHour.length ? inHour : nearest).map(row)}</ul>
-        {inHour.length > 0 && after && (
-          <p className="next-hint">
-            <Icon name="arrow" />
-            <span>
-              Next after this hour: <strong>{after.title}, {formatTime(dueDate(after)!)}</strong>
-            </span>
-          </p>
-        )}
+        <div className="list-scroll">
+          <ul className="task-list">{(inHour.length ? inHour : nearest).map(row)}</ul>
+          {inHour.length > 0 && after && (
+            <p className="next-hint">
+              <Icon name="arrow" />
+              <span>
+                Next after this hour: <strong>{after.title}, {formatTime(dueDate(after)!)}</strong>
+              </span>
+            </p>
+          )}
+        </div>
       </>
     )
   } else {
@@ -159,51 +161,54 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
           </span>
           <Segments done={doneCount} total={timed.length} />
         </button>
-        {upcoming.length + openAnytime.length + done.length + (isToday ? overdue.length : 0) === 0 && (
-          <div className="empty-state">
-            <p className="empty-title">{isToday ? 'Nothing planned yet' : `Nothing planned for ${formatShortDay(day)}`}</p>
-            <p className="empty">Press and hold an hour on the clock, or tap + to add your first task.</p>
-          </div>
-        )}
-        {isToday && overdue.length > 0 && (
-          <section className="overdue" aria-labelledby="overdue-h">
-            <div className="overdue-head">
-              <h3 id="overdue-h" className="section-label">
-                <Icon name="clock" />
-                Overdue · {overdue.length}
-              </h3>
-              {overdue.length > 1 && (
-                <button type="button" className="text-btn" onClick={() => onMoveToToday(overdue)}>
-                  Move all to today
-                </button>
-              )}
+        {/* The heading stays put; the tasks scroll inside the panel. */}
+        <div className="list-scroll">
+          {upcoming.length + openAnytime.length + done.length + (isToday ? overdue.length : 0) === 0 && (
+            <div className="empty-state">
+              <p className="empty-title">{isToday ? 'Nothing planned yet' : `Nothing planned for ${formatShortDay(day)}`}</p>
+              <p className="empty">Press and hold an hour on the clock, or tap + to add your first task.</p>
             </div>
-            <ul className="task-list">
-              {overdue.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  now={now}
-                  fresh={false}
-                  onToggle={() => onToggle(task)}
-                  onOpen={() => onOpen(task)}
-                  onDelete={() => onDelete(task)}
-                  action={
-                    <button type="button" className="move-today" onClick={() => onMoveToToday([task])} aria-label={`Move ${task.title} to today`}>
-                      Today
-                      <Icon name="arrow" />
-                    </button>
-                  }
-                />
-              ))}
-            </ul>
-          </section>
-        )}
-        <ul className="task-list">{upcoming.map(row)}</ul>
-        {openAnytime.length > 0 && <h3 className="section-label">Anytime</h3>}
-        <ul className="task-list">{openAnytime.map(row)}</ul>
-        {done.length > 0 && <h3 className="section-label">Done</h3>}
-        <ul className="task-list">{done.map(row)}</ul>
+          )}
+          {isToday && overdue.length > 0 && (
+            <section className="overdue" aria-labelledby="overdue-h">
+              <div className="overdue-head">
+                <h3 id="overdue-h" className="section-label">
+                  <Icon name="clock" />
+                  Overdue · {overdue.length}
+                </h3>
+                {overdue.length > 1 && (
+                  <button type="button" className="text-btn" onClick={() => onMoveToToday(overdue)}>
+                    Move all to today
+                  </button>
+                )}
+              </div>
+              <ul className="task-list">
+                {overdue.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    now={now}
+                    fresh={false}
+                    onToggle={() => onToggle(task)}
+                    onOpen={() => onOpen(task)}
+                    onDelete={() => onDelete(task)}
+                    action={
+                      <button type="button" className="move-today" onClick={() => onMoveToToday([task])} aria-label={`Move ${task.title} to today`}>
+                        Today
+                        <Icon name="arrow" />
+                      </button>
+                    }
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+          <ul className="task-list">{upcoming.map(row)}</ul>
+          {openAnytime.length > 0 && <h3 className="section-label">Anytime</h3>}
+          <ul className="task-list">{openAnytime.map(row)}</ul>
+          {done.length > 0 && <h3 className="section-label">Done</h3>}
+          <ul className="task-list">{done.map(row)}</ul>
+        </div>
       </>
     )
   }

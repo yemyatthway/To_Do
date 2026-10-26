@@ -42,3 +42,10 @@ services:
         sync: false
       - key: DEFAULT_FROM_EMAIL
         sync: false
+      # Live updates (chat, shared tasks, friends, admin): the Ably root API key.
+      - key: ABLY_API_KEY
+        sync: false
+      # Encrypts chat messages at rest. Make one with:
+      # uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: CHAT_ENCRYPTION_KEYS
+        sync: false

@@ -1,3 +1,4 @@
+import sys
 from datetime import timedelta
 from pathlib import Path
 import environ
@@ -32,6 +33,8 @@ INSTALLED_APPS = [
     "apps.tasks",
     "apps.notifications",
     "apps.social",
+    "apps.chat",
+    "apps.live",
 ]
 
 AUTH_USER_MODEL = "users.User"
@@ -52,6 +55,8 @@ REST_FRAMEWORK = {
         "user_search": "60/min",
         "otp": "20/hour",
         "email_check": "60/min",
+        "username_check": "60/min",
+        "chat": "120/min",
     },
 }
 
@@ -153,6 +158,15 @@ else:
     EMAIL_FILE_PATH = BASE_DIR / ".dev-emails"
 # Send in a background thread so login/sign-up answer immediately (tests turn this off).
 EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)
+# Live updates (chat, shared tasks, friends, admin) through Ably. Empty = off: the app refreshes instead.
+ABLY_API_KEY = env("ABLY_API_KEY", default="")
+if "test" in sys.argv[1:2]:
+    ABLY_API_KEY = ""  # tests never talk to the real service; the ones that need a key set a fake one
+LIVE_SEND_ASYNC = env.bool("LIVE_SEND_ASYNC", default=True)
+# Chat messages are encrypted at rest with these Fernet keys (newest first, comma-separated).
+CHAT_ENCRYPTION_KEYS = env.list("CHAT_ENCRYPTION_KEYS", default=[])
+CHAT_ALLOW_DERIVED_KEY = env.bool("CHAT_ALLOW_DERIVED_KEY", default=False)
+
 # Friend/share notifications go out in a background thread (tests switch this off).
 PUSH_SEND_ASYNC = env.bool("PUSH_SEND_ASYNC", default=True)
 # The app's address, for the "Open To-Do" button in the welcome email.

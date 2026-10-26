@@ -24,7 +24,7 @@ class AuthTests(APITestCase):
     def test_register_creates_user_and_session(self):
         response = self.client.post(
             "/api/auth/register/",
-            {"full_name": " Ko Aung ", "email": "Aung@Example.com", "password": PASSWORD, "timezone": "Asia/Yangon"},
+            {"full_name": " Ko Aung ", "username": "aung", "email": "Aung@Example.com", "password": PASSWORD, "timezone": "Asia/Yangon"},
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.data)
@@ -37,18 +37,18 @@ class AuthTests(APITestCase):
         self.assertEqual(cookie["path"], "/api/auth/")
 
     def test_register_rejects_weak_password_duplicate_email_and_bad_timezone(self):
-        weak = self.client.post("/api/auth/register/", {"full_name": "A", "email": "a@example.com", "password": "short"}, format="json")
+        weak = self.client.post("/api/auth/register/", {"full_name": "A", "username": "auser", "email": "a@example.com", "password": "short"}, format="json")
         self.assertEqual(weak.status_code, 400)
         self.assertIn("non_field_errors", weak.data)
 
         dupe = self.client.post(
-            "/api/auth/register/", {"full_name": "A", "email": "MIA@example.com", "password": PASSWORD}, format="json"
+            "/api/auth/register/", {"full_name": "A", "username": "mia", "email": "MIA@example.com", "password": PASSWORD}, format="json"
         )
         self.assertIn("email", dupe.data)
 
         zone = self.client.post(
             "/api/auth/register/",
-            {"full_name": "A", "email": "b@example.com", "password": PASSWORD, "timezone": "Mars/Base"},
+            {"full_name": "A", "username": "buser", "email": "b@example.com", "password": PASSWORD, "timezone": "Mars/Base"},
             format="json",
         )
         self.assertIn("timezone", zone.data)

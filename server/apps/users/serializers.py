@@ -1,7 +1,9 @@
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 from rest_framework import serializers
 
+from . import usernames
 from .email_check import check_email
 from .otp import code_expires_at
 from .models import TrustedDevice, User
@@ -23,6 +25,17 @@ def _validate_deliverable(value):
     return value
 
 
+def _validate_username(value, user=None):
+    value = usernames.normalize(value)
+    if user is not None and value == user.username:
+        return value
+    if message := usernames.problem(value):
+        raise serializers.ValidationError(message)
+    if usernames.is_taken(value, exclude=user):
+        raise serializers.ValidationError("That username is taken. Try another.")
+    return value
+
+
 def _validate_timezone(value):
     if value and not is_valid_timezone(value):
         raise serializers.ValidationError("Unknown time zone.")
@@ -32,11 +45,30 @@ def _validate_timezone(value):
 class UserSerializer(serializers.ModelSerializer):
     # Until the email is confirmed: when the emailed code runs out (for the countdown), else null.
     code_expires_at = serializers.SerializerMethodField()
+    # False for accounts from before usernames, until they keep or change the one they were given.
+    username_confirmed = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "email_verified", "code_expires_at", "full_name", "timezone", "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "is_staff", "date_joined"]
+        fields = [
+            "id", "email", "email_verified", "code_expires_at", "full_name", "username", "username_confirmed", "timezone",
+            "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "is_staff", "date_joined",
+        ]
         read_only_fields = ["id", "email_verified", "is_staff", "date_joined"]
+        # validate_username gives the friendlier "taken" message (and allows keeping your own).
+        extra_kwargs = {"username": {"validators": []}}
+
+    def get_username_confirmed(self, user):
+        return user.username_confirmed_at is not None
+
+    def validate_username(self, value):
+        return _validate_username(value, self.instance)
+
+    def update(self, instance, validated_data):
+        # Saving a username (even the same one) counts as choosing it.
+        if "username" in validated_data:
+            instance.username_confirmed_at = timezone.now()
+        return super().update(instance, validated_data)
 
     def get_code_expires_at(self, user):
         if user.email_verified or not user.pk:
@@ -56,7 +88,10 @@ class UserSerializer(serializers.ModelSerializer):
         return _validate_deliverable(value)
 
     def validate_full_name(self, value):
-        return value.strip()
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Enter your name.")
+        return value
 
     def validate_timezone(self, value):
         return _validate_timezone(value)
@@ -64,6 +99,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=160)
+    username = serializers.CharField(max_length=40)
     email = serializers.EmailField(max_length=160)
     password = serializers.CharField(trim_whitespace=False, write_only=True)
     timezone = serializers.CharField(max_length=64, required=False, allow_blank=True)
@@ -83,6 +119,9 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError("An account with this email already exists.")
         return _validate_deliverable(value)
 
+    def validate_username(self, value):
+        return _validate_username(value)
+
     def validate_timezone(self, value):
         return _validate_timezone(value)
 
@@ -91,7 +130,7 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        return User.objects.create_user(**validated_data, username_confirmed_at=timezone.now())
 
 
 class LoginSerializer(serializers.Serializer):
@@ -127,6 +166,10 @@ class ChallengeSerializer(serializers.Serializer):
 
 class EmailCheckSerializer(serializers.Serializer):
     email = serializers.CharField(max_length=200, allow_blank=True)
+
+
+class UsernameCheckSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=60, allow_blank=True)
 
 
 class TrustedDeviceSerializer(serializers.ModelSerializer):

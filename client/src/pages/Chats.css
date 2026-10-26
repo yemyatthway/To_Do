@@ -1,0 +1,387 @@
+/* ---------- Chats ---------- */
+
+.chats-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.chats-page h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Phones: the list, or one open chat. */
+.chats-page.has-thread .chat-list-pane,
+.chats-page:not(.has-thread) .chat-thread-pane {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .chats-page {
+    grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.6fr);
+  }
+
+  .chats-page.has-thread .chat-list-pane,
+  .chats-page:not(.has-thread) .chat-thread-pane {
+    display: flex;
+  }
+
+  .thread-back {
+    display: none;
+  }
+}
+
+/* The chat list fits the screen and scrolls inside, like the open chat beside it. */
+.chat-list-pane {
+  max-height: var(--screen-room);
+}
+
+.chat-list > li {
+  flex-shrink: 0;
+}
+
+.chat-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.chat-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 18px;
+  background: var(--row);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chat-row[aria-current='true'] {
+  background: var(--chip);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-row:hover {
+    background: var(--rowNew);
+  }
+}
+
+.chat-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-row-top,
+.chat-row-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.chat-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-preview.unread {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.nav-badge.static {
+  flex: none;
+}
+
+.chat-hint {
+  margin: 0;
+}
+
+.chat-avatar {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  font-size: 14px;
+}
+
+.online-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--okFill);
+  box-shadow: 0 0 0 2.5px var(--glassSolid);
+}
+
+.chat-placeholder {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  color: var(--sub);
+}
+
+.chat-placeholder .icon {
+  width: 34px;
+  height: 34px;
+}
+
+.chat-placeholder p {
+  margin: 0;
+  max-width: 320px;
+}
+
+/* ---------- One chat ---------- */
+
+.chat-thread-pane {
+  padding: 0;
+  overflow: hidden;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  /* Fills the screen under the header (and above the bottom bar on phones). */
+  height: var(--screen-room);
+}
+
+@media (min-width: 960px) {
+  .thread {
+    max-height: 860px;
+  }
+
+  .chat-list-pane {
+    max-height: min(var(--screen-room), 860px);
+  }
+}
+
+.thread-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--track);
+}
+
+.thread-back {
+  flex: none;
+}
+
+.live-status {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.thread-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.load-older {
+  align-self: center;
+  margin-bottom: 8px;
+}
+
+.bubbles {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin-top: auto; /* few messages sit at the bottom, like every messenger */
+}
+
+.day-sep {
+  align-self: center;
+  margin: 12px auto 8px;
+  width: fit-content;
+  padding: 3px 12px;
+  border-radius: 10px;
+  background: var(--chipOff);
+  color: var(--sub);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bubble-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.bubble-row.grouped {
+  margin-top: 3px;
+}
+
+.bubble-row.mine {
+  align-items: flex-end;
+}
+
+.bubble {
+  max-width: min(78%, 520px);
+  padding: 9px 13px 7px;
+  border-radius: 20px 20px 20px 6px;
+  background: var(--row);
+  box-shadow: 0 1px 2px var(--glassSh);
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble-row.mine .bubble {
+  border-radius: 20px 20px 6px 20px;
+  background: var(--acc);
+  color: #fff;
+  cursor: pointer;
+}
+
+.bubble-time {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.7;
+  vertical-align: bottom;
+}
+
+.bubble.pending {
+  opacity: 0.6;
+}
+
+.bubble.failed {
+  background: var(--dBg) !important;
+  color: var(--dIcon) !important;
+}
+
+.bubble.deleted {
+  background: transparent !important;
+  color: var(--sub) !important;
+  box-shadow: inset 0 0 0 1px var(--track);
+  font-style: italic;
+  cursor: default;
+}
+
+.bubble-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.bubble-actions .danger {
+  color: var(--dIcon);
+}
+
+.bubble-note {
+  font-size: 12px;
+  color: var(--sub);
+  margin-top: 3px;
+}
+
+.bubble-note.mine {
+  text-align: right;
+}
+
+.typing-bubble {
+  display: inline-flex;
+  gap: 4px;
+  padding: 13px 14px;
+  margin-top: 8px;
+}
+
+.typing-bubble span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sub);
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+
+.typing-bubble span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing-bubble span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-bubble span {
+    animation: none;
+  }
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--track);
+}
+
+.composer textarea.field {
+  flex: 1;
+  min-height: 46px;
+  max-height: 140px;
+  padding: 12px 16px;
+  font-size: 16px; /* 16px stops iPhone zooming in */
+  line-height: 1.35;
+}
+
+.send-btn {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

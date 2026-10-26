@@ -27,8 +27,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-      const open = windows.find((w) => new URL(w.url).pathname === url)
-      return open ? open.focus() : self.clients.openWindow(url)
+      // Already open: bring it forward and let it switch screens (e.g. to the chat) itself.
+      const open = windows.find((w) => new URL(w.url).origin === self.location.origin)
+      if (!open) return self.clients.openWindow(url)
+      open.postMessage({ type: 'open', url })
+      return open.focus()
     }),
   )
 })
