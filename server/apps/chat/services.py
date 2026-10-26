@@ -1,4 +1,5 @@
 import threading
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import close_old_connections, transaction
@@ -10,10 +11,11 @@ from apps.social.models import Friendship
 from apps.social.services import _notify
 from apps.users.models import User
 
-from .models import Conversation, Message
+from .models import Conversation, HiddenMessage, Message
 
 MAX_LENGTH = 2000
 PAGE = 50
+EDIT_HOURS = 24  # your own messages can be edited for a day
 
 
 def _pair(a, b):
@@ -37,12 +39,25 @@ def open_with(me, user_id):
     return conversation
 
 
-def send(me, conversation, text):
+def _clean(text):
     text = (text or "").strip()
     if not text:
         raise ValidationError({"text": ["Write a message first."]})
     if len(text) > MAX_LENGTH:
         raise ValidationError({"text": [f"Keep it under {MAX_LENGTH} characters."]})
+    return text
+
+
+def visible(me, conversation):
+    """The messages this person sees: not ones they deleted for themselves or cleared."""
+    messages = conversation.messages.exclude(hidden_for__user=me)
+    if cleared := conversation.cleared_at(me):
+        messages = messages.filter(created_at__gt=cleared)
+    return messages
+
+
+def send(me, conversation, text):
+    text = _clean(text)
     other = conversation.other(me)
     if not other.is_active or not Friendship.are_friends(me, other):
         raise PermissionDenied("You're no longer friends, so you can't send messages here.")
@@ -83,7 +98,7 @@ def _push_in_background(*args):
 
 
 def history(me, conversation, before=None):
-    messages = conversation.messages.select_related("sender")
+    messages = visible(me, conversation).select_related("sender")
     if before:
         messages = messages.filter(pk__lt=before)
     page = list(messages.order_by("-created_at", "-id")[:PAGE])
@@ -100,6 +115,38 @@ def mark_read(me, conversation):
     return now
 
 
+def edit_message(me, conversation, message_id, text):
+    message = conversation.messages.filter(pk=message_id, sender=me, deleted_at__isnull=True).first()
+    if message is None:
+        raise NotFound("You can only edit your own messages.")
+    if timezone.now() - message.created_at > timedelta(hours=EDIT_HOURS):
+        raise ValidationError({"text": [f"Messages can only be edited for {EDIT_HOURS} hours."]})
+    text = _clean(text)
+    if text != message.text:
+        message.text = text
+        message.edited_at = timezone.now()
+        message.save(update_fields=["body", "edited_at"])
+        ably.to_chat(conversation.pk, "edited", message_data(message, viewer=None))
+        ably.to_users([conversation.user_a_id, conversation.user_b_id], "chat", {"conversation": conversation.pk})
+    return message
+
+
+def hide_message(me, conversation, message_id):
+    """Delete for me: any message in the chat, only on my side."""
+    message = conversation.messages.filter(pk=message_id).first()
+    if message is None:
+        raise NotFound("That message doesn't exist.")
+    HiddenMessage.objects.get_or_create(message=message, user=me)
+    ably.to_users([me.pk], "chat", {"conversation": conversation.pk, "hidden": message.pk})
+
+
+def clear_chat(me, conversation):
+    """Empties the chat on my side only; new messages show up as usual."""
+    field = conversation.set_cleared(me, timezone.now())
+    conversation.save(update_fields=[field])
+    ably.to_users([me.pk], "chat", {"conversation": conversation.pk, "cleared": True})
+
+
 def delete_message(me, conversation, message_id):
     message = conversation.messages.filter(pk=message_id, sender=me, deleted_at__isnull=True).first()
     if message is None:
@@ -114,7 +161,7 @@ def delete_message(me, conversation, message_id):
 
 def unread_count(me, conversation):
     read_at = conversation.read_at(me)
-    messages = conversation.messages.exclude(sender=me).filter(deleted_at__isnull=True)
+    messages = visible(me, conversation).exclude(sender=me).filter(deleted_at__isnull=True)
     if read_at:
         messages = messages.filter(created_at__gt=read_at)
     return messages.count()
@@ -132,5 +179,6 @@ def message_data(message, viewer):
         "mine": viewer is not None and message.sender_id == viewer.pk,
         "text": message.text,
         "deleted": message.deleted_at is not None,
+        "edited": message.edited_at is not None and message.deleted_at is None,
         "created_at": message.created_at.isoformat(),
     }

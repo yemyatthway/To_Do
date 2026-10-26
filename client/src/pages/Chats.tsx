@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { chat, social, type Chat, type ChatMessage, type Person } from '../api'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
-import { isLive, joinChat, onLive, watchOnline } from '../realtime'
+import { isLive, joinChat, onLive, watchOnline, watchTyping } from '../realtime'
 import { addDays, formatLongDate, formatShortDay, formatTime, sameDay } from '../time'
 import { handle, initials } from '../user'
 import { usePageVisible } from '../visibility'
@@ -12,6 +12,7 @@ const errorMessage = (err: unknown) => (err instanceof Error ? err.message : Str
 const nameOf = (p: Person) => p.full_name || p.email
 const MAX_LENGTH = 2000
 const PAGE = 50
+const EDIT_HOURS = 24 // same as the server
 
 interface ChatsProps {
   myId: number
@@ -29,7 +30,8 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsPr
   const [friends, setFriends] = useState<Person[]>([])
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState<number | null>(start?.chatId ?? null)
-  const [opened, setOpened] = useState<Chat | null>(null) // a chat with no messages yet isn't in the list
+  // The open chat, kept even when it isn't in the list (no messages yet, or just cleared).
+  const [opened, setOpened] = useState<Chat | null>(null)
   const [picking, setPicking] = useState(false)
   const [online, setOnline] = useState<Set<number>>(new Set())
 
@@ -52,6 +54,42 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsPr
   // With the live connection every change arrives as an event; without it, check now and then.
   useLiveRefresh(refresh, isLive() ? 60_000 : 8_000)
   useEffect(() => onLive((e) => e.name === 'chat' && void refresh()), [refresh])
+
+  // "typing…" under a friend's name in the list (most recent chats).
+  const [typingIn, setTypingIn] = useState<Set<number>>(new Set())
+  const typingTimers = useRef(new Map<number, number>())
+  const watched = (chats ?? [])
+    .slice(0, 20)
+    .map((c) => `${c.id}:${c.friend.id}`)
+    .join(',')
+  useEffect(() => {
+    const list = watched ? watched.split(',').map((pair) => pair.split(':').map(Number)) : []
+    const timers = typingTimers.current
+    const stop = watchTyping(
+      list.map(([id, friendId]) => ({ id, friendId })),
+      (chatId) => {
+        setTypingIn((s) => new Set(s).add(chatId))
+        clearTimeout(timers.get(chatId))
+        timers.set(
+          chatId,
+          window.setTimeout(() => setTypingIn((s) => new Set([...s].filter((id) => id !== chatId))), 4000),
+        )
+      },
+    )
+    return () => {
+      stop()
+      timers.forEach((t) => clearTimeout(t))
+    }
+  }, [watched])
+  // A new message ends their "typing…".
+  useEffect(
+    () =>
+      onLive((e) => {
+        const id = (e.data as { conversation?: number } | null)?.conversation
+        if (e.name === 'chat' && id) setTypingIn((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : s))
+      }),
+    [],
+  )
 
   const friendIds = friends.map((f) => f.id).join(',')
   useEffect(() => {
@@ -137,7 +175,14 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsPr
             <ul className="chat-list">
               {chats.map((c) => (
                 <li key={c.id}>
-                  <button className="chat-row" aria-current={c.id === openId ? 'true' : undefined} onClick={() => setOpenId(c.id)}>
+                  <button
+                    className="chat-row"
+                    aria-current={c.id === openId ? 'true' : undefined}
+                    onClick={() => {
+                      setOpened(c) // stays open even if it leaves the list (e.g. cleared)
+                      setOpenId(c.id)
+                    }}
+                  >
                     <Avatar person={c.friend} online={online.has(c.friend.id)} />
                     <span className="chat-row-main">
                       <span className="chat-row-top">
@@ -145,7 +190,11 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsPr
                         {c.last_message_at && <span className="chat-when">{listTime(new Date(c.last_message_at), now)}</span>}
                       </span>
                       <span className="chat-row-bottom">
-                        <span className={`task-meta chat-preview${c.unread ? ' unread' : ''}`}>{preview(c)}</span>
+                        {typingIn.has(c.id) ? (
+                          <span className="task-meta chat-preview live-status">typing…</span>
+                        ) : (
+                          <span className={`task-meta chat-preview${c.unread ? ' unread' : ''}`}>{preview(c)}</span>
+                        )}
                         {c.unread > 0 && (
                           <span className="nav-badge static" aria-label={`${c.unread} unread`}>
                             {c.unread}
@@ -240,6 +289,8 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
   const [here, setHere] = useState(false)
   const [draft, setDraft] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
+  const [editing, setEditing] = useState<Shown | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [error, setError] = useState('')
   const visible = usePageVisible()
   const scroller = useRef<HTMLDivElement>(null)
@@ -252,8 +303,9 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
 
   const own = useCallback((m: ChatMessage): Shown => ({ ...m, mine: m.sender === myId }), [myId])
 
-  /** Merge the latest page with what's on screen (keeps older pages and messages still sending). */
-  const loadLatest = useCallback(async () => {
+  /** Merge the latest page with what's on screen (keeps older pages and messages still sending).
+   *  `replace` starts over, e.g. after the chat was cleared on another device. */
+  const loadLatest = useCallback(async (replace = false) => {
     try {
       const page = await chat.messages(info.id)
       setFriendReadAt(page.chat.friend_read_at)
@@ -263,7 +315,7 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
       }
       const latest = page.messages.map(own)
       setMessages((list) => {
-        if (!list) return latest
+        if (!list || replace) return latest
         const ids = new Set(latest.map((m) => m.id))
         const oldest = latest[0]?.id ?? Infinity
         const older = list.filter((m) => m.id > 0 && m.id < oldest && !ids.has(m.id))
@@ -301,7 +353,10 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
           }
         } else if (name === 'deleted') {
           const id = (data as { id: number }).id
-          setMessages((list) => list?.map((m) => (m.id === id ? { ...m, deleted: true, text: '' } : m)) ?? list)
+          setMessages((list) => list?.map((m) => (m.id === id ? { ...m, deleted: true, edited: false, text: '' } : m)) ?? list)
+        } else if (name === 'edited') {
+          const changed = data as ChatMessage
+          setMessages((list) => list?.map((m) => (m.id === changed.id ? { ...m, text: changed.text, edited: true } : m)) ?? list)
         } else if (name === 'read') {
           const read = data as { user: number; at: string }
           if (read.user === friend.id) setFriendReadAt(read.at)
@@ -321,6 +376,16 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
       clearTimeout(typingTimer.current)
     }
   }, [info.id, friend.id, own])
+
+  // Deleted for me or cleared on another of my devices: show what the server shows.
+  useEffect(
+    () =>
+      onLive((e) => {
+        const d = e.data as { conversation?: number; hidden?: number; cleared?: boolean } | null
+        if (e.name === 'chat' && d?.conversation === info.id && (d.hidden || d.cleared)) void loadLatest(true)
+      }),
+    [info.id, loadLatest],
+  )
 
   // Reading: mark as read whenever their newest message is on screen.
   const lastFromFriend = messages?.filter((m) => m.sender === friend.id).at(-1)?.id
@@ -362,7 +427,7 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
     const id = retryId ?? tempId.current--
     // Runs on send, not during render (the linter can't tell).
     // oxlint-disable-next-line react/purity
-    const temp: Shown = { id, conversation: info.id, sender: myId, mine: true, text: body, deleted: false, created_at: new Date().toISOString(), pending: true }
+    const temp: Shown = { id, conversation: info.id, sender: myId, mine: true, text: body, deleted: false, edited: false, created_at: new Date().toISOString(), pending: true }
     stick.current = true
     setMessages((list) => (retryId ? list?.map((m) => (m.id === id ? temp : m)) : [...(list ?? []), temp]) ?? null)
     try {
@@ -383,22 +448,68 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
     const text = draft
     if (!text.trim()) return
     setDraft('')
-    void send(text)
+    if (editing) void saveEdit(editing, text)
+    else void send(text)
     input.current?.focus()
   }
 
-  async function remove(m: Shown) {
+  function startEdit(m: Shown) {
+    setSelected(null)
+    setEditing(m)
+    setDraft(m.text)
+    requestAnimationFrame(() => input.current?.focus())
+  }
+
+  function cancelEdit() {
+    setEditing(null)
+    setDraft('')
+  }
+
+  async function saveEdit(m: Shown, text: string) {
+    setEditing(null)
+    const body = text.trim()
+    if (body === m.text) return
+    setMessages((list) => list?.map((x) => (x.id === m.id ? { ...x, text: body, edited: true } : x)) ?? null)
+    try {
+      await chat.edit(info.id, m.id, body)
+      onChanged()
+    } catch (err) {
+      setMessages((list) => list?.map((x) => (x.id === m.id ? m : x)) ?? null)
+      notify("Couldn't edit that message", errorMessage(err))
+    }
+  }
+
+  /** For everyone (your own message: it shows as deleted on both sides), or just for you (gone from your side). */
+  async function remove(m: Shown, forMe: boolean) {
     setSelected(null)
     if (m.failed) {
       setMessages((list) => list?.filter((x) => x.id !== m.id) ?? null)
       return
     }
+    const before = messages
+    setMessages((list) =>
+      forMe ? (list?.filter((x) => x.id !== m.id) ?? null) : (list?.map((x) => (x.id === m.id ? { ...x, deleted: true, edited: false, text: '' } : x)) ?? null),
+    )
+    if (editing?.id === m.id) cancelEdit()
     try {
-      await chat.remove(info.id, m.id)
-      setMessages((list) => list?.map((x) => (x.id === m.id ? { ...x, deleted: true, text: '' } : x)) ?? null)
+      await chat.remove(info.id, m.id, forMe)
       onChanged()
     } catch (err) {
+      setMessages(before)
       notify("Couldn't delete that message", errorMessage(err))
+    }
+  }
+
+  async function clearChat() {
+    setConfirmClear(false)
+    const before = messages
+    setMessages([])
+    try {
+      await chat.clear(info.id)
+      onChanged()
+    } catch (err) {
+      setMessages(before)
+      notify("Couldn't clear the chat", errorMessage(err))
     }
   }
 
@@ -427,7 +538,21 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
             {handle(friend)} · <span className={typing || online ? 'live-status' : undefined}>{status}</span>
           </span>
         </span>
+        <button className="icon-btn" aria-label="Clear chat" aria-expanded={confirmClear} onClick={() => setConfirmClear((c) => !c)}>
+          <Icon name="trash" />
+        </button>
       </header>
+      {confirmClear && (
+        <div className="clear-bar" role="alert">
+          <span>Clear this chat for you? {nameOf(friend)} keeps their copy.</span>
+          <button className="text-btn" onClick={() => setConfirmClear(false)}>
+            Cancel
+          </button>
+          <button className="text-btn danger" onClick={clearChat}>
+            Clear
+          </button>
+        </div>
+      )}
 
       <div
         className="thread-scroll"
@@ -441,7 +566,7 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
-            <button className="text-btn" onClick={loadLatest}>
+            <button className="text-btn" onClick={() => void loadLatest()}>
               Retry
             </button>
           </div>
@@ -467,35 +592,56 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
                   {newDay && <div className="day-sep">{dayLabel(at, now)}</div>}
                   <div className={`bubble-row${m.mine ? ' mine' : ''}${grouped ? ' grouped' : ''}`}>
                     <div
-                      className={`bubble${m.deleted ? ' deleted' : ''}${m.pending ? ' pending' : ''}${m.failed ? ' failed' : ''}`}
-                      role={m.mine && !m.deleted ? 'button' : undefined}
-                      tabIndex={m.mine && !m.deleted ? 0 : undefined}
-                      aria-label={m.mine && !m.deleted ? 'Message options' : undefined}
+                      className={`bubble${m.deleted ? ' deleted' : ''}${m.pending ? ' pending' : ''}${m.failed ? ' failed' : ''}${editing?.id === m.id ? ' editing' : ''}`}
+                      role={m.pending ? undefined : 'button'}
+                      tabIndex={m.pending ? undefined : 0}
+                      aria-label={m.pending ? undefined : 'Message options'}
                       onClick={(e) => {
-                        if (!m.mine || m.deleted || m.pending) return
+                        if (m.pending) return
                         e.stopPropagation()
                         setSelected((s) => (s === m.id ? null : m.id))
                       }}
                       onKeyDown={(e) => {
-                        if (m.mine && !m.deleted && (e.key === 'Enter' || e.key === ' ')) {
+                        if (!m.pending && (e.key === 'Enter' || e.key === ' ')) {
                           e.preventDefault()
                           setSelected((s) => (s === m.id ? null : m.id))
                         }
                       }}
                     >
                       {m.deleted ? (m.mine ? 'You deleted this message' : 'This message was deleted') : m.text}
-                      <span className="bubble-time">{formatTime(at)}</span>
+                      <span className="bubble-time">
+                        {m.edited && 'edited · '}
+                        {formatTime(at)}
+                      </span>
                     </div>
                     {selected === m.id && (
                       <div className="bubble-actions" onClick={(e) => e.stopPropagation()}>
-                        {m.failed && (
-                          <button className="text-btn" onClick={() => send(m.text, m.id)}>
-                            <Icon name="undo" /> Try again
-                          </button>
+                        {m.failed ? (
+                          <>
+                            <button className="text-btn" onClick={() => send(m.text, m.id)}>
+                              <Icon name="undo" /> Try again
+                            </button>
+                            <button className="text-btn danger" onClick={() => remove(m, true)}>
+                              <Icon name="trash" /> Discard
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {m.mine && !m.deleted && now.getTime() - at.getTime() < EDIT_HOURS * 3_600_000 && (
+                              <button className="text-btn" onClick={() => startEdit(m)}>
+                                <Icon name="edit" /> Edit
+                              </button>
+                            )}
+                            {m.mine && !m.deleted && (
+                              <button className="text-btn danger" onClick={() => remove(m, false)}>
+                                <Icon name="trash" /> Delete for everyone
+                              </button>
+                            )}
+                            <button className="text-btn danger" onClick={() => remove(m, true)}>
+                              <Icon name="trash" /> Delete for me
+                            </button>
+                          </>
                         )}
-                        <button className="text-btn danger" onClick={() => remove(m)}>
-                          <Icon name="trash" /> {m.failed ? 'Discard' : 'Delete for everyone'}
-                        </button>
                       </div>
                     )}
                   </div>
@@ -517,6 +663,17 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
         )}
       </div>
 
+      {editing && (
+        <div className="edit-bar">
+          <Icon name="edit" />
+          <span>
+            Editing <span className="task-meta">{editing.text}</span>
+          </span>
+          <button type="button" className="icon-btn" aria-label="Cancel editing" onClick={cancelEdit}>
+            <Icon name="x" />
+          </button>
+        </div>
+      )}
       <form
         className="composer"
         onSubmit={(e) => {
@@ -538,14 +695,15 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
           }}
           onKeyDown={(e) => {
             // Enter sends, Shift+Enter makes a new line (phones keep their own return key).
+            if (e.key === 'Escape' && editing) cancelEdit()
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover)').matches) {
               e.preventDefault()
               submit()
             }
           }}
         />
-        <button className="primary-btn send-btn" type="submit" aria-label="Send" disabled={!draft.trim()}>
-          <Icon name="send" />
+        <button className="primary-btn send-btn" type="submit" aria-label={editing ? 'Save edit' : 'Send'} disabled={!draft.trim()}>
+          <Icon name={editing ? 'check' : 'send'} />
         </button>
       </form>
     </div>

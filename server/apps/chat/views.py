@@ -14,8 +14,8 @@ class SendSerializer(serializers.Serializer):
 
 def conversation_data(conversation, me):
     other = conversation.other(me)
-    last = conversation.messages.order_by("-created_at", "-id").select_related("sender").first()
     other_read = conversation.read_at(other)
+    last = services.visible(me, conversation).order_by("-created_at", "-id").select_related("sender").first()
     return {
         "id": conversation.pk,
         "friend": person(other),
@@ -40,7 +40,8 @@ class ChatListApi(APIView):
             .select_related("user_a", "user_b")
             .order_by("-last_message_at")[:100]
         )
-        items = [conversation_data(c, me) for c in conversations]
+        # A chat you cleared stays out of the list until something new arrives.
+        items = [data for c in conversations if (data := conversation_data(c, me))["last_message"]]
         return Response({"chats": items, "unread": sum(i["unread"] for i in items)})
 
 
@@ -80,8 +81,31 @@ class ReadApi(APIView):
         return Response({"read_at": services.mark_read(request.user, conversation)})
 
 
-class MessageDeleteApi(APIView):
+class MessageApi(APIView):
+    """PATCH {text}: edit your message. DELETE: delete it for everyone; ?for=me hides any message
+    just for you."""
+
+    throttle_scope = "chat"
+
+    def patch(self, request, conversation_id, message_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        serializer = SendSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = services.edit_message(request.user, conversation, message_id, serializer.validated_data["text"])
+        return Response(services.message_data(message, request.user))
+
     def delete(self, request, conversation_id, message_id):
         conversation = services.conversation_for(request.user, conversation_id)
-        services.delete_message(request.user, conversation, message_id)
+        if request.query_params.get("for") == "me":
+            services.hide_message(request.user, conversation, message_id)
+        else:
+            services.delete_message(request.user, conversation, message_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ClearApi(APIView):
+    """POST: clear this chat on your side only."""
+
+    def post(self, request, conversation_id):
+        services.clear_chat(request.user, services.conversation_for(request.user, conversation_id))
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -100,6 +100,54 @@ class ChatTests(APITestCase):
         self.assertIn(f"user%3A{self.aung.pk}", channels)
         send_push.assert_not_called()  # he's looking at it, so no push
 
+    def send(self, chat, text, user=None):
+        self.client.force_authenticate(user or self.mia)
+        return self.client.post(f"/api/chat/{chat['id']}/messages/", {"text": text}, format="json").data
+
+    def texts(self, chat, user):
+        self.client.force_authenticate(user)
+        return [m["text"] for m in self.client.get(f"/api/chat/{chat['id']}/messages/").data["messages"]]
+
+    def test_edit_your_own_message_within_a_day(self, send_push):
+        chat = self.open()
+        mine = self.send(chat, "See you at 7")
+        url = f"/api/chat/{chat['id']}/messages/{mine['id']}/"
+        edited = self.client.patch(url, {"text": "See you at 8"}, format="json")
+        self.assertEqual((edited.data["text"], edited.data["edited"]), ("See you at 8", True))
+        self.assertEqual(self.texts(chat, self.aung), ["See you at 8"])
+        # Not someone else's, and not after a day.
+        theirs = self.send(chat, "ok", user=self.aung)
+        self.client.force_authenticate(self.mia)
+        self.assertEqual(self.client.patch(f"/api/chat/{chat['id']}/messages/{theirs['id']}/", {"text": "hacked"}, format="json").status_code, 404)
+        Message.objects.filter(pk=mine["id"]).update(created_at=timezone.now() - timezone.timedelta(hours=25))
+        self.assertEqual(self.client.patch(url, {"text": "too late"}, format="json").status_code, 400)
+
+    def test_delete_for_me_hides_it_only_on_my_side(self, send_push):
+        chat = self.open()
+        theirs = self.send(chat, "a secret", user=self.aung)
+        self.send(chat, "unread one", user=self.aung)
+        self.client.force_authenticate(self.mia)
+        self.assertEqual(self.client.delete(f"/api/chat/{chat['id']}/messages/{theirs['id']}/?for=me").status_code, 204)
+        self.assertEqual(self.texts(chat, self.mia), ["unread one"])
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 1)  # the hidden one no longer counts
+        self.assertEqual(self.texts(chat, self.aung), ["a secret", "unread one"])  # Aung still has both
+        # It's still Aung's message: it isn't wiped for him.
+        self.assertIsNone(Message.objects.get(pk=theirs["id"]).deleted_at)
+
+    def test_clear_chat_empties_it_for_me_until_something_new_arrives(self, send_push):
+        chat = self.open()
+        self.send(chat, "one")
+        self.send(chat, "two", user=self.aung)
+        self.client.force_authenticate(self.mia)
+        self.assertEqual(self.client.post(f"/api/chat/{chat['id']}/clear/").status_code, 204)
+        self.assertEqual(self.texts(chat, self.mia), [])
+        self.assertEqual(self.client.get("/api/chat/").data["chats"], [])
+        self.assertEqual(self.texts(chat, self.aung), ["one", "two"])
+        self.send(chat, "three", user=self.aung)
+        self.assertEqual(self.texts(chat, self.mia), ["three"])
+        self.client.force_authenticate(self.mia)
+        self.assertEqual(self.client.get("/api/chat/").data["chats"][0]["last_message"]["text"], "three")
+
 
 @override_settings(ABLY_API_KEY=KEY)
 class LiveTokenTests(APITestCase):

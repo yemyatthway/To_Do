@@ -385,3 +385,68 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ---------- Edit, delete for me, clear chat ---------- */
+
+.bubble-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.bubble-row:not(.mine) .bubble-actions {
+  justify-content: flex-start;
+}
+
+.bubble.editing {
+  box-shadow: 0 0 0 2px var(--accSoft);
+}
+
+.clear-bar,
+.edit-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--track);
+}
+
+.clear-bar {
+  background: var(--dBg);
+}
+
+.clear-bar > span {
+  flex: 1;
+}
+
+.clear-bar .danger {
+  color: var(--dIcon);
+}
+
+.edit-bar {
+  border-bottom: none;
+  border-top: 1px solid var(--track);
+  color: var(--accT);
+  font-weight: 600;
+}
+
+.edit-bar > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-bar .task-meta {
+  font-weight: 400;
+}
+
+.edit-bar .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.edit-bar + .composer {
+  border-top: none;
+}

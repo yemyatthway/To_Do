@@ -412,6 +412,7 @@ export interface ChatMessage {
   mine: boolean
   text: string
   deleted: boolean
+  edited: boolean
   created_at: string
 }
 
@@ -432,7 +433,12 @@ export const chat = {
     request<{ chat: Chat; messages: ChatMessage[] }>(`/api/chat/${id}/messages/${before ? `?before=${before}` : ''}`),
   send: (id: number, text: string) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text })),
   read: (id: number) => request<{ read_at: string }>(`/api/chat/${id}/read/`, json('POST', {})),
-  remove: (id: number, messageId: number) => request<void>(`/api/chat/${id}/messages/${messageId}/`, { method: 'DELETE' }),
+  edit: (id: number, messageId: number, text: string) => request<ChatMessage>(`/api/chat/${id}/messages/${messageId}/`, json('PATCH', { text })),
+  /** For everyone (your own messages), or just for you (any message). */
+  remove: (id: number, messageId: number, forMe = false) =>
+    request<void>(`/api/chat/${id}/messages/${messageId}/${forMe ? '?for=me' : ''}`, { method: 'DELETE' }),
+  /** Empty the chat on your side only. */
+  clear: (id: number) => request<void>(`/api/chat/${id}/clear/`, json('POST', {})),
 }
 
 export type LivePass = { enabled: false } | { enabled: true; client_id: string; token_request: import('ably').TokenRequest }

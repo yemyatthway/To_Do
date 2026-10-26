@@ -15,6 +15,9 @@ class Conversation(models.Model):
     # When each side last read it (for unread counts and "Seen").
     read_a_at = models.DateTimeField(null=True, blank=True)
     read_b_at = models.DateTimeField(null=True, blank=True)
+    # "Clear chat" (just for that side): messages up to then are hidden for them.
+    cleared_a_at = models.DateTimeField(null=True, blank=True)
+    cleared_b_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -37,6 +40,14 @@ class Conversation(models.Model):
         setattr(self, field, when)
         return field
 
+    def cleared_at(self, user):
+        return self.cleared_a_at if self.user_a_id == user.pk else self.cleared_b_at
+
+    def set_cleared(self, user, when):
+        field = "cleared_a_at" if self.user_a_id == user.pk else "cleared_b_at"
+        setattr(self, field, when)
+        return field
+
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")
@@ -46,6 +57,7 @@ class Message(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     # "Delete for everyone": the text is wiped, the row stays so the conversation keeps its shape.
     deleted_at = models.DateTimeField(null=True, blank=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -58,3 +70,14 @@ class Message(models.Model):
     @text.setter
     def text(self, value):
         self.body = encrypt(value)
+
+
+class HiddenMessage(models.Model):
+    """"Delete for me": this message no longer shows for this person (the other side keeps it)."""
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="hidden_for")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["message", "user"], name="hide_message_once")]
