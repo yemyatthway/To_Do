@@ -23,6 +23,7 @@ import {
   type Filters,
   type SortChoice,
 } from '../tableLogic'
+import { Comments, HistoryFold } from './Comments'
 import { ConfirmAction } from './ConfirmAction'
 import { Loading, SkeletonRows } from './Loading'
 import { SearchField } from './SearchField'
@@ -63,6 +64,11 @@ interface TableViewProps {
   tableId: number
   userId: number
   canEdit: boolean
+  canComment: boolean
+  now: Date
+  /** A row to open straight away, from a notification or shared link. */
+  rowId?: number
+  onRowClosed: () => void
   members: Member[]
   notify: (title: string, detail?: string) => void
   showToast: (toast: Omit<ToastData, 'id'>) => void
@@ -125,6 +131,10 @@ function TableScreen({
   tableId,
   userId,
   canEdit,
+  canComment,
+  now,
+  rowId,
+  onRowClosed,
   members,
   notify,
   showToast,
@@ -147,7 +157,7 @@ function TableScreen({
   const [sort, setSort] = useState<SortChoice>({ column: 'no', descending: false })
   const [view, setView] = useState<'table' | 'board'>('table')
   const [groupBy, setGroupBy] = useState<string | null>(null)
-  const [openRow, setOpenRow] = useState<number | null>(null)
+  const [openRow, setOpenRow] = useState<number | null>(rowId ?? null)
   const [editing, setEditing] = useState<{ row: number; column: string } | null>(null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [deletingTable, setDeletingTable] = useState(false)
@@ -192,6 +202,15 @@ function TableScreen({
   }, [workspaceId, tableId, setTable, onSaved, onGone])
   useLiveRefresh(poll, 10_000)
 
+  // A notification tapped while this table is already open.
+  const linkedRow = useRef(rowId)
+  useEffect(() => {
+    if (rowId === linkedRow.current) return
+    linkedRow.current = rowId
+    // oxlint-disable-next-line react/set-state-in-effect
+    if (rowId) setOpenRow(rowId)
+  }, [rowId])
+
   const columns = table.columns
   const rows = useMemo(() => saver.overlay(table.rows), [saver, table.rows, saveState, editTick]) // eslint-disable-line react-hooks/exhaustive-deps
   const shown = useMemo(
@@ -204,6 +223,19 @@ function TableScreen({
   const activeFilters = columns.filter((c) => filters[c.id])
   const board = columns.find((c) => c.id === groupBy) ?? checkbox ?? filterable[0]
   const opened = rows.find((r) => r.id === openRow) ?? null
+
+  // The linked row no longer exists: say so rather than showing nothing.
+  useEffect(() => {
+    if (rowId && !table.rows.some((r) => r.id === rowId)) {
+      notify('That row was deleted')
+      onRowClosed()
+    }
+  }, [rowId, table.rows, notify, onRowClosed])
+
+  const closeRow = () => {
+    setOpenRow(null)
+    if (rowId) onRowClosed()
+  }
 
   function setCells(row: TableRowData, values: Record<string, CellValue>) {
     saver.edit(row.id, values, row.values)
@@ -391,6 +423,7 @@ function TableScreen({
                     {[row.no, ...columns.filter((c) => c.type !== 'checkbox' && displayValue(c, row.values[c.id], members) !== rowTitle(row, columns)).map((c) => displayValue(c, row.values[c.id], members))]
                       .filter((part) => part !== '')
                       .join(' · ')}
+                    {row.comment_count > 0 && ` · ${row.comment_count} ${row.comment_count === 1 ? 'comment' : 'comments'}`}
                   </span>
                 </button>
               </div>
@@ -425,6 +458,12 @@ function TableScreen({
               <button type="button" className="grid-cell grid-no grid-open" role="cell" aria-label={`Open row ${row.no}`} onClick={() => setOpenRow(row.id)}>
                 <Icon name="page" />
                 {row.no}
+                {row.comment_count > 0 && (
+                  <span className="row-comments" aria-label={`${row.comment_count} comments`}>
+                    <Icon name="chat" />
+                    {row.comment_count}
+                  </span>
+                )}
               </button>
               {columns.map((column) => (
                 <div key={column.id} className={`grid-cell grid-${column.type}`} role="cell">
@@ -456,7 +495,12 @@ function TableScreen({
           rows={rows}
           members={members}
           canEdit={canEdit}
-          onClose={() => setOpenRow(null)}
+          canComment={canComment}
+          now={now}
+          workspaceId={workspaceId}
+          tableId={tableId}
+          onCommentsChanged={() => void poll()}
+          onClose={closeRow}
           onCells={(values) => setCells(opened, values)}
           onHighlight={(on) => {
             saver.edit(opened.id, {}, {}, on)
@@ -694,7 +738,10 @@ function Board({
           {group.rows.map((row) => (
             <button key={row.id} type="button" className={`board-card${row.highlighted ? ' row-red' : ''}`} draggable={canEdit} onDragStart={() => setDragged(row.id)} onDragEnd={() => setDragged(null)} onClick={() => onOpen(row)}>
               <span className="task-title">{rowTitle(row, columns)}</span>
-              <span className="task-meta">No. {row.no}</span>
+              <span className="task-meta">
+                No. {row.no}
+                {row.comment_count > 0 && ` · ${row.comment_count} ${row.comment_count === 1 ? 'comment' : 'comments'}`}
+              </span>
             </button>
           ))}
         </section>
@@ -709,6 +756,11 @@ function RowSheet({
   rows,
   members,
   canEdit,
+  canComment,
+  now,
+  workspaceId,
+  tableId,
+  onCommentsChanged,
   onClose,
   onCells,
   onHighlight,
@@ -720,6 +772,11 @@ function RowSheet({
   rows: TableRowData[]
   members: Member[]
   canEdit: boolean
+  canComment: boolean
+  now: Date
+  workspaceId: number
+  tableId: number
+  onCommentsChanged: () => void
   onClose: () => void
   onCells: (values: Record<string, CellValue>) => void
   onHighlight: (on: boolean) => void
@@ -773,6 +830,8 @@ function RowSheet({
               <button type="button" className="switch" role="switch" aria-checked={row.highlighted} aria-label="Highlight in red" onClick={() => onHighlight(!row.highlighted)} />
             </div>
           )}
+          <Comments target={{ workspaceId, tableId, rowId: row.id }} now={now} members={members} canComment={canComment} onChanged={onCommentsChanged} />
+          <HistoryFold workspaceId={workspaceId} now={now} rowId={row.id} />
         </div>
         <div className="sheet-foot table-sheet-foot">
           <button type="button" className="text-btn" disabled={row.on_my_tasks} onClick={onAddToTasks}>

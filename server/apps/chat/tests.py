@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 from apps.social.models import Friendship
 from apps.users.models import User
 
-from .models import Conversation, Message
+from .models import Conversation, Message, MessageReaction
 
 PASSWORD = "Sunny-Clock-2026"
 KEY = "appid.keyname:topsecret"
@@ -191,3 +191,124 @@ class LiveTokenTests(APITestCase):
         user = User.objects.create_user("mia@example.com", PASSWORD, email_verified_at=timezone.now())
         self.client.force_authenticate(user)
         self.assertEqual(self.client.get("/api/live/token/").data, {"enabled": False})
+
+
+@override_settings(PUSH_SEND_ASYNC=False, LIVE_SEND_ASYNC=False)
+@mock.patch("apps.social.services.send_push")
+class RepliesAndReactionsTests(APITestCase):
+    def setUp(self):
+        now = timezone.now()
+        self.mia = User.objects.create_user("mia@example.com", PASSWORD, full_name="Mia", email_verified_at=now, reminders_enabled=True)
+        self.aung = User.objects.create_user("aung@example.com", PASSWORD, full_name="Ko Aung", email_verified_at=now, reminders_enabled=True)
+        self.sara = User.objects.create_user("sara@example.com", PASSWORD, full_name="Sara", email_verified_at=now)
+        Friendship.objects.create(requester=self.mia, addressee=self.aung, status=Friendship.Status.ACCEPTED)
+        Friendship.objects.create(requester=self.mia, addressee=self.sara, status=Friendship.Status.ACCEPTED)
+        from apps.notifications.models import PushSubscription
+
+        PushSubscription.objects.create(user=self.aung, endpoint="https://push.example.com/aung", p256dh="k", auth="a")
+        self.client.force_authenticate(self.mia)
+        self.chat = self.client.post(f"/api/chat/with/{self.aung.id}/").data["id"]
+        self.other_chat = self.client.post(f"/api/chat/with/{self.sara.id}/").data["id"]
+
+    def send(self, text="Hello", **more):
+        return self.client.post(f"/api/chat/{self.chat}/messages/", {"text": text, **more}, format="json")
+
+    def react(self, message, emoji="❤️"):
+        return self.client.post(f"/api/chat/{self.chat}/messages/{message}/react/", {"emoji": emoji}, format="json")
+
+    def test_a_reply_carries_what_it_answers(self, send_push):
+        first = self.send("Can you check this?").data
+        self.client.force_authenticate(self.aung)
+        reply = self.send("On it", reply_to=first["id"]).data
+        self.assertEqual(reply["reply"], {"id": first["id"], "sender": self.mia.id, "text": "Can you check this?", "deleted": False})
+        listed = self.client.get(f"/api/chat/{self.chat}/messages/").data["messages"][-1]
+        self.assertEqual(listed["reply"]["text"], "Can you check this?")
+        self.assertIsNone(self.send("Plain").data["reply"])
+
+    def test_a_reply_to_something_from_another_chat_is_just_a_message(self, send_push):
+        elsewhere = self.client.post(f"/api/chat/{self.other_chat}/messages/", {"text": "Secret"}, format="json").data
+        response = self.send("Hi", reply_to=elsewhere["id"])
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.data["reply"])
+        self.assertIsNone(self.send("Hi", reply_to=999999).data["reply"])
+
+    def test_a_deleted_original_never_shows_its_words(self, send_push):
+        first = self.send("Private").data
+        reply = self.send("About that", reply_to=first["id"]).data
+        self.client.delete(f"/api/chat/{self.chat}/messages/{first['id']}/")
+        listed = next(m for m in self.client.get(f"/api/chat/{self.chat}/messages/").data["messages"] if m["id"] == reply["id"])
+        self.assertEqual(listed["reply"], {"id": first["id"], "sender": self.mia.id, "text": "", "deleted": True})
+
+    def test_a_reply_outlives_an_erased_original(self, send_push):
+        first = self.send("Old").data
+        reply = self.send("New", reply_to=first["id"]).data
+        Message.objects.filter(pk=first["id"]).delete()
+        self.assertIsNone(next(m for m in self.client.get(f"/api/chat/{self.chat}/messages/").data["messages"] if m["id"] == reply["id"])["reply"])
+
+    def test_reacting_swaps_and_takes_back(self, send_push):
+        message = self.send().data["id"]
+        self.assertEqual(self.react(message).data["reactions"], [{"user": self.mia.id, "emoji": "❤️"}])
+        self.assertEqual(self.react(message, "🔥").data["reactions"], [{"user": self.mia.id, "emoji": "🔥"}])
+        self.assertEqual(MessageReaction.objects.count(), 1)
+        self.client.force_authenticate(self.aung)
+        both = self.react(message, "😮").data["reactions"]
+        self.assertEqual(sorted(r["emoji"] for r in both), ["🔥", "😮"])
+        listed = self.client.get(f"/api/chat/{self.chat}/messages/").data["messages"][-1]["reactions"]
+        self.assertEqual(len(listed), 2)
+        gone = self.client.delete(f"/api/chat/{self.chat}/messages/{message}/react/").data["reactions"]
+        self.assertEqual(gone, [{"user": self.mia.id, "emoji": "🔥"}])
+
+    def test_any_keyboard_emoji_works(self, send_push):
+        message = self.send().data["id"]
+        for emoji in ("😀", "❤️", "👍🏽", "👨‍👩‍👧‍👦", "🧑🏻‍❤️‍💋‍🧑🏼", "🤦🏽‍♂️", "🇲🇲", "1️⃣", "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "🫶"):
+            response = self.react(message, emoji)
+            self.assertEqual(response.status_code, 200, emoji)
+            self.assertEqual(response.data["reactions"][0]["emoji"], emoji)
+
+    def test_a_reaction_is_one_emoji_and_only_people_in_the_chat(self, send_push):
+        message = self.send().data["id"]
+        for bad in ("nope", "", 5, None, "😀😀", "😀 ", "a😀", "<b>", "1", "🇲", "😀" * 40):
+            self.assertEqual(self.react(message, bad).status_code, 400, bad)
+        self.client.force_authenticate(self.sara)
+        self.assertEqual(self.react(message).status_code, 404)
+        self.client.force_authenticate(self.mia)
+        self.assertEqual(self.client.post(f"/api/chat/{self.other_chat}/messages/{message}/react/", {"emoji": "❤️"}, format="json").status_code, 404)
+
+    def test_a_deleted_message_takes_no_reactions_and_shows_none(self, send_push):
+        message = self.send().data["id"]
+        self.react(message)
+        self.client.delete(f"/api/chat/{self.chat}/messages/{message}/")
+        self.assertEqual(self.react(message).status_code, 404)
+        self.assertEqual(self.client.get(f"/api/chat/{self.chat}/messages/").data["messages"][-1]["reactions"], [])
+
+    def test_a_message_you_hid_takes_no_reaction_from_you(self, send_push):
+        message = self.send().data["id"]
+        self.client.delete(f"/api/chat/{self.chat}/messages/{message}/?for=me")
+        self.assertEqual(self.react(message).status_code, 404)
+
+    def test_former_friends_cannot_react_but_can_take_it_back(self, send_push):
+        message = self.send().data["id"]
+        self.react(message)
+        Friendship.objects.filter(requester=self.mia, addressee=self.aung).delete()
+        self.assertEqual(self.react(message, "🔥").status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/chat/{self.chat}/messages/{message}/react/").status_code, 200)
+
+    def test_reactions_go_live_to_the_chat(self, send_push):
+        message = self.send().data["id"]
+        with mock.patch("apps.chat.services.ably.to_chat") as to_chat:
+            self.react(message)
+        to_chat.assert_called_once_with(self.chat, "reacted", {"id": message, "reactions": [{"user": self.mia.id, "emoji": "❤️"}]})
+
+    def test_reacting_to_their_message_tells_them_when_they_are_away(self, send_push):
+        self.client.force_authenticate(self.aung)
+        theirs = self.send().data["id"]
+        self.client.force_authenticate(self.mia)
+        mine = self.send().data["id"]
+        send_push.reset_mock()
+        self.client.force_authenticate(self.aung)
+        self.react(mine)
+        self.assertEqual(send_push.call_count, 0)  # Mia has no devices
+        self.client.force_authenticate(self.mia)
+        self.react(theirs)
+        self.assertEqual(send_push.call_count, 1)
+        self.assertIn("Reacted ❤️ to your message", send_push.call_args.args)

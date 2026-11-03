@@ -61,6 +61,7 @@ REST_FRAMEWORK = {
         "workspace_invite": "30/hour",
         "pages": "240/min",
         "tables": "300/min",
+        "comments": "120/min",
     },
 }
 

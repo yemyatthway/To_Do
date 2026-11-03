@@ -60,6 +60,8 @@ class Message(models.Model):
     edited_at = models.DateTimeField(null=True, blank=True)
     # Chosen by the app, so sending a message again can't post it twice.
     client_id = models.UUIDField(null=True, blank=True, editable=False)
+    # The message this one answers. The reply stays if that one is ever erased.
+    reply_to = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="replies")
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -86,3 +88,15 @@ class HiddenMessage(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["message", "user"], name="hide_message_once")]
+
+
+class MessageReaction(models.Model):
+    """One person's reaction to a message. Reacting again swaps it."""
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="reactions")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    emoji = models.CharField(max_length=32)  # a family or flag takes several characters
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["message", "user"], name="one_reaction_per_person")]

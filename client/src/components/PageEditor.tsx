@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, workspaces as api, type Block, type BlockType, type TeamPage } from '../api'
+import { ApiError, workspaces as api, type Block, type BlockType, type Member, type TeamPage } from '../api'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
 import { applyShortcut, backspaceAtStart, makeBlock, pasteLines, setType, splitAt, type Caret } from '../pageBlocks'
 import { PageSaver, pageStorage, type PageDoc, type SaveStatus } from '../pageSaver'
+import { Comments, HistoryFold } from './Comments'
 import { ConfirmAction } from './ConfirmAction'
 import { Loading, SkeletonRows } from './Loading'
 
@@ -19,6 +20,9 @@ interface PageEditorProps {
   pageId: number
   userId: number
   canEdit: boolean
+  canComment: boolean
+  members: Member[]
+  now: Date
   /** A newer title or edit time, for the list of pages. */
   onSaved: (page: TeamPage) => void
   onDeleted: (page: TeamPage) => void
@@ -81,7 +85,7 @@ function statusText(status: SaveStatus, canEdit: boolean) {
   }
 }
 
-function Editor({ workspaceId, userId, canEdit, page, onSaved, onDeleted, onGone }: PageEditorProps & { page: TeamPage }) {
+function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, onSaved, onDeleted, onGone }: PageEditorProps & { page: TeamPage }) {
   const [saver] = useState(() => new PageSaver(page, workspaceId, userId, (base, doc) => api.savePage(workspaceId, page.id, base, doc), canEdit ? pageStorage() : null))
   const [title, setTitle] = useState(saver.doc.title)
   const [blocks, setBlocks] = useState<Block[]>(() => (saver.doc.blocks.length ? saver.doc.blocks : [makeBlock()]))
@@ -271,6 +275,8 @@ function Editor({ workspaceId, userId, canEdit, page, onSaved, onDeleted, onGone
             <ReadOnlyBlock key={block.id} block={block} />
           ),
         )}
+        <Comments target={{ workspaceId, pageId: page.id }} now={now} members={members} canComment={canComment} />
+        <HistoryFold workspaceId={workspaceId} now={now} pageId={page.id} />
       </div>
 
       {deleting && (

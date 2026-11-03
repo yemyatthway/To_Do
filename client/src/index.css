@@ -2726,21 +2726,6 @@ body > .scrim.center {
   font-size: 14px;
 }
 
-.time-presets .chip {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 7px 12px;
-  line-height: 1.2;
-}
-
-.preset-time {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.8;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .time-select:hover {
     filter: brightness(1.04);
@@ -4914,6 +4899,7 @@ select.field:focus-visible {
 .page-status {
   font-size: 13px;
   color: var(--sub);
+  text-align: left;
 }
 
 .page-status.bad {
@@ -5469,4 +5455,809 @@ select.field:focus-visible {
 /* Dots are drawn as round line caps: thicker line, bigger dots. */
 .table-more .icon {
   stroke-width: 3.4;
+}
+
+/* ---------- Comments, history and notifications ---------- */
+
+.comments {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--track);
+  flex: none;
+}
+
+.comments .section-label {
+  margin: 0;
+}
+
+.comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.comment .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+  flex: none;
+}
+
+.comment-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.comment-delete {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--sub);
+  position: relative;
+}
+
+.comment-delete::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.comment-delete .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.comment-body {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mention {
+  color: var(--accT);
+  font-weight: 700;
+}
+
+.comment-composer {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.comment-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  resize: none;
+  overflow: hidden;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.comment-error {
+  flex: 1 1 100%;
+}
+
+.mention-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 6;
+  width: min(100%, 320px);
+  padding: 6px;
+  border-radius: 16px;
+  background: var(--glassSolid);
+  box-shadow: 0 12px 32px var(--glassSh);
+  display: flex;
+  flex-direction: column;
+}
+
+.mention-menu button {
+  display: flex;
+  flex-direction: column;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 11px;
+  text-align: left;
+  color: var(--text);
+}
+
+.mention-menu button.on,
+.mention-menu button:hover {
+  background: var(--chip);
+}
+
+.row-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  font-size: 12px;
+}
+
+.row-comments .icon {
+  width: 13px !important;
+  height: 13px !important;
+}
+
+.history-fold {
+  flex: none;
+  margin-top: 10px;
+}
+
+.history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.history-toggle .icon {
+  width: 15px;
+  height: 15px;
+  transition: rotate 0.2s ease;
+}
+
+.history-toggle[aria-expanded='true'] .icon {
+  rotate: 90deg;
+}
+
+.activity-list,
+.notice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-list > li,
+.notice-list > li {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--track);
+}
+
+.activity-list > li:last-child,
+.notice-list > li:last-child {
+  border-bottom: 0;
+}
+
+.activity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  padding: 9px 6px;
+  color: var(--text);
+  text-align: left;
+}
+
+button.activity-row:hover .activity-text {
+  color: var(--accT);
+}
+
+.activity-text {
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.activity-more {
+  margin: 10px auto;
+  display: block;
+}
+
+.notice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+}
+
+.notice-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 6px;
+  color: var(--text);
+  text-align: left;
+}
+
+.notice-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: transparent;
+}
+
+.notice-row.unread .notice-dot {
+  background: var(--acc);
+}
+
+.notice-title {
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.notice-row.unread .notice-title {
+  font-weight: 700;
+}
+
+.notice-body {
+  font-size: 13.5px;
+  color: var(--sub);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Phones: a running timer shows just its time, so the page title still fits beside it. */
+@media (max-width: 959px) {
+  .header-actions {
+    gap: 8px;
+  }
+
+  .timer-pill .icon {
+    display: none;
+  }
+
+  .timer-pill {
+    padding: 0 10px;
+  }
+}
+
+/* ---------- Keyboard and zoom on phones ---------- */
+
+/* iPhone Safari zooms into any field with text under 16px, and stays zoomed. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* See keyboard.ts. The keys take the bottom of the screen, so the bottom bar steps aside. */
+.keyboard-open .bottom-nav {
+  display: none;
+}
+
+.keyboard-open {
+  --page-end: 12px;
+  --screen-room: max(180px, calc(var(--vvh) - var(--main-top) - 12px));
+}
+
+.keyboard-open .scrim {
+  inset: auto 0 auto 0;
+  top: var(--vv-top);
+  height: var(--vvh);
+}
+
+.keyboard-open .sheet {
+  max-height: 100%;
+  border-radius: 24px;
+}
+
+.keyboard-open .sheet-foot {
+  padding-bottom: 12px;
+}
+
+.keyboard-open .sheet .grabber {
+  display: none;
+}
+
+/* Typing in a chat, panel or dialog: the page holds still, like a native app. */
+.keyboard-lock body {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--vv-top);
+  height: var(--vvh);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.keyboard-lock .header {
+  display: none;
+}
+
+/* ---------- Small dialogs ---------- */
+
+.confirm-card .confirm-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.confirm-actions {
+  width: 100%;
+}
+
+.confirm-actions .text-btn,
+.table-sheet-foot .text-btn {
+  justify-content: center;
+}
+
+/* ---------- New task: one line per setting ---------- */
+
+.task-form {
+  gap: 10px;
+}
+
+.task-title-input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding: 6px 2px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.task-title-input::placeholder {
+  color: var(--sub);
+  font-weight: 600;
+}
+
+.task-form-row {
+  min-height: 54px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.task-form-row .person-name {
+  flex: none;
+}
+
+.task-form-row > .icon:first-child {
+  color: var(--sub);
+}
+
+.more-go.turned {
+  rotate: 90deg;
+}
+
+.task-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 4px 14px;
+  border-bottom: 1px solid var(--track);
+}
+
+.task-row-body .field {
+  width: 100%;
+}
+
+/* Messages stay readable while typing: at the bottom they'd be behind the keys. */
+.keyboard-open .toast {
+  top: calc(var(--vv-top) + 12px);
+  bottom: auto;
+}
+
+/* ---------- Chat: message menu, replies, reactions and emoji ---------- */
+
+.reaction-key,
+.emoji-key,
+.reaction-emoji,
+.sticker-row {
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  line-height: 1.1;
+}
+
+.menu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+
+.message-menu {
+  position: fixed;
+  width: min(300px, calc(100vw - 20px));
+  padding: 8px;
+  border-radius: 24px;
+  background: var(--glassSolid);
+  border: 1px solid var(--glassB);
+  box-shadow: 0 18px 50px var(--glassSh), 0 2px 8px var(--glassSh);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reaction-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px;
+}
+
+.reaction-key {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--sub);
+  font-size: 25px;
+  transition: background 0.2s, scale 0.18s;
+}
+
+.reaction-key[aria-pressed='true'] {
+  background: var(--chip);
+}
+
+@media (hover: hover) {
+  .reaction-key:hover,
+  .emoji-key:hover {
+    background: var(--chip);
+  }
+
+  .reaction-key:hover {
+    scale: 1.15;
+  }
+}
+
+.reaction-more .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.reaction-bar + .menu-list {
+  border-top: 1px solid var(--track);
+  padding-top: 4px;
+}
+
+.reaction-bar + .menu-list:empty {
+  display: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 10px;
+  border-radius: 13px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.menu-item .icon {
+  width: 19px;
+  height: 19px;
+  color: var(--sub);
+}
+
+.menu-item.danger,
+.menu-item.danger .icon {
+  color: var(--dIcon);
+}
+
+@media (hover: hover) {
+  .menu-item:hover {
+    background: var(--row);
+  }
+}
+
+.emoji-input {
+  font-size: 15px;
+  min-height: 42px;
+  padding: 8px 14px;
+}
+
+.emoji-groups {
+  max-height: 232px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.emoji-group-name {
+  margin: 8px 6px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.emoji-group-name:first-of-type {
+  margin-top: 2px;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+}
+
+.emoji-key {
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  font-size: 24px;
+  transition: background 0.2s;
+}
+
+.emoji-key[aria-pressed='true'] {
+  background: var(--chip);
+}
+
+.delete-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.delete-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--row);
+  cursor: pointer;
+}
+
+.delete-choice input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--acc);
+}
+
+.delete-choice span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.delete-choice strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.delete-choice small {
+  color: var(--sub);
+  font-size: 13px;
+}
+
+.bubble-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.bubble-row.mine .bubble-line {
+  flex-direction: row-reverse;
+}
+
+.bubble[role='button'] {
+  cursor: pointer;
+}
+
+.bubble.is-open {
+  box-shadow: 0 0 0 2px var(--accSoft);
+}
+
+/* Big emoji stand on their own, without a bubble around them. */
+.bubble.sticker {
+  background: none !important;
+  box-shadow: none;
+  border: 0;
+  padding: 2px 2px 0;
+  color: var(--sub);
+}
+
+.bubble.sticker.is-open {
+  box-shadow: none;
+  outline: 2px solid var(--accSoft);
+  outline-offset: 2px;
+  border-radius: 18px;
+}
+
+.sticker-row {
+  display: block;
+  font-size: 40px;
+  letter-spacing: 2px;
+}
+
+.sticker-row.one {
+  font-size: 60px;
+}
+
+.bubble.sticker .bubble-time {
+  display: block;
+  color: var(--sub);
+  text-align: right;
+}
+
+.bubble-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 90px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border-left: 3px solid currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.quote-name {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.quote-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+
+.reaction-chips {
+  display: flex;
+  gap: 4px;
+  margin: -6px 0 2px 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.reaction-chips.mine {
+  justify-content: flex-end;
+  margin: -6px 10px 2px 0;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 28px;
+  padding: 3px 7px;
+  border-radius: 12px;
+  background: var(--glassSolid);
+  border: 1px solid var(--glassB);
+  box-shadow: 0 2px 6px var(--glassSh);
+  position: relative;
+}
+
+.reaction-emoji {
+  font-size: 16px;
+}
+
+.reaction-chip::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.reaction-chip.mine {
+  /* The blue tint on a solid base, so the message behind doesn't show through. */
+  background: linear-gradient(var(--chip), var(--chip)), var(--glassSolid);
+}
+
+.reaction-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.bubble-react-hint {
+  display: none;
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--sub);
+  flex: none;
+}
+
+.bubble-react-hint .icon {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) {
+  .bubble-row:hover .bubble-react-hint,
+  .bubble-react-hint:focus-visible {
+    display: grid;
+  }
+
+  .bubble-react-hint:hover {
+    color: var(--accT);
+    background: var(--row);
+  }
+}
+
+.composer-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-top: 1px solid var(--track);
+  flex: none;
+}
+
+.composer-note > .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accT);
+  flex: none;
+}
+
+.composer-note-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: 10px;
+  border-left: 3px solid var(--accSoft);
+  font-size: 13.5px;
+}
+
+.composer-note .quote-name {
+  color: var(--accT);
+}
+
+.composer-note .quote-text {
+  -webkit-line-clamp: 1;
+}
+
+.composer-picker {
+  flex: none;
+  padding: 8px 10px;
+  border-top: 1px solid var(--track);
+}
+
+.composer-emoji {
+  flex: none;
+  align-self: flex-end;
 }

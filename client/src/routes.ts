@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace'
+export type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace' | 'notifications'
 
-export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles'
+export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles' | 'activity'
 export type WorkspaceChild = WorkspaceSection | 'page' | 'table'
 
 export const SETTINGS_SECTIONS = {
@@ -22,7 +22,7 @@ export type Route =
   | { view: 'friends'; username?: string }
   | { view: 'workspace'; id: number; section: WorkspaceSection }
   | { view: 'workspace'; id: number; section: 'page'; pageId: number }
-  | { view: 'workspace'; id: number; section: 'table'; tableId: number }
+  | { view: 'workspace'; id: number; section: 'table'; tableId: number; rowId?: number }
   | { view: 'profile'; section?: SettingsSection }
 
 const PLAIN: Partial<Record<string, Route>> = {
@@ -31,6 +31,7 @@ const PLAIN: Partial<Record<string, Route>> = {
   progress: { view: 'progress' },
   timer: { view: 'timer' },
   admin: { view: 'admin' },
+  notifications: { view: 'notifications' },
 }
 
 const safeDecode = (part: string) => {
@@ -48,7 +49,7 @@ export function parseRoute(pathname: string, search = ''): Route {
   if (asked === 'friends' || asked === 'chats' || asked === 'workspaces') return { view: asked }
 
   const parts = pathname.split('/').filter(Boolean).map(safeDecode)
-  const [first, second, third, fourth] = parts
+  const [first, second, third, fourth, fifth, sixth] = parts
   if (first === 'friends') return parts.length <= 2 ? { view: 'friends', username: second } : { view: 'home' }
   if (first === 'workspaces') {
     if (!second) return { view: 'workspaces' }
@@ -56,10 +57,15 @@ export function parseRoute(pathname: string, search = ''): Route {
     if (!Number.isInteger(id) || id <= 0) return { view: 'workspaces' }
     if (!third) return { view: 'workspace', id, section: 'home' }
     if (third === 'members' && !fourth) return { view: 'workspace', id, section: 'members' }
+    if (third === 'activity' && !fourth) return { view: 'workspace', id, section: 'activity' }
     if (third === 'settings' && !fourth) return { view: 'workspace', id, section: 'settings' }
     if (third === 'settings' && fourth === 'roles') return { view: 'workspace', id, section: 'roles' }
     if (third === 'pages' && fourth && Number.isInteger(Number(fourth)) && Number(fourth) > 0) return { view: 'workspace', id, section: 'page', pageId: Number(fourth) }
-    if (third === 'tables' && fourth && Number.isInteger(Number(fourth)) && Number(fourth) > 0) return { view: 'workspace', id, section: 'table', tableId: Number(fourth) }
+    if (third === 'tables' && fourth && Number.isInteger(Number(fourth)) && Number(fourth) > 0) {
+      const tableId = Number(fourth)
+      if (fifth === 'rows' && sixth && Number.isInteger(Number(sixth)) && Number(sixth) > 0) return { view: 'workspace', id, section: 'table', tableId, rowId: Number(sixth) }
+      return { view: 'workspace', id, section: 'table', tableId }
+    }
     return { view: 'workspace', id, section: 'home' }
   }
   if (first === 'settings') {
@@ -80,7 +86,7 @@ export function pathFor(route: Route): string {
       const base = `/workspaces/${route.id}`
       if (route.section === 'home') return base
       if (route.section === 'page') return `${base}/pages/${route.pageId}`
-      if (route.section === 'table') return `${base}/tables/${route.tableId}`
+      if (route.section === 'table') return `${base}/tables/${route.tableId}${route.rowId ? `/rows/${route.rowId}` : ''}`
       return route.section === 'roles' ? `${base}/settings/roles` : `${base}/${route.section}`
     }
     case 'profile':
@@ -102,6 +108,7 @@ export function parentOf(route: Route): Route {
       return { view: 'friends' }
     case 'workspace':
       if (route.section === 'home') return { view: 'workspaces' }
+      if (route.section === 'table' && route.rowId) return { view: 'workspace', id: route.id, section: 'table', tableId: route.tableId }
       return { view: 'workspace', id: route.id, section: route.section === 'roles' ? 'settings' : 'home' }
     case 'profile':
       return route.section ? { view: 'profile' } : { view: 'more' }
@@ -109,6 +116,7 @@ export function parentOf(route: Route): Route {
     case 'timer':
     case 'admin':
     case 'workspaces':
+    case 'notifications':
       return { view: 'more' }
     default:
       return { view: 'home' }

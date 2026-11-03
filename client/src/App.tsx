@@ -37,7 +37,7 @@ import {
 } from './time'
 
 // Phone: screens reached through More, which get a back button.
-const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace']
+const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace', 'notifications']
 
 // Screens most visits never open load on demand, so the first paint stays small.
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
@@ -45,6 +45,7 @@ const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
 const Timer = lazy(() => import('./pages/Timer').then((m) => ({ default: m.Timer })))
 const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.Friends })))
+const Notifications = lazy(() => import('./pages/Notifications').then((m) => ({ default: m.Notifications })))
 const Workspaces = lazy(() => import('./pages/Workspaces').then((m) => ({ default: m.Workspaces })))
 const WorkspacePage = lazy(() => import('./pages/Workspaces').then((m) => ({ default: m.WorkspacePage })))
 const Chats = lazy(() => import('./pages/Chats').then((m) => ({ default: m.Chats })))
@@ -62,6 +63,7 @@ function preloadScreens() {
     import('./pages/Friends')
     import('./pages/Chats')
     import('./pages/Workspaces')
+    import('./pages/Notifications')
     import('./pages/Timer')
     import('./components/Tour')
   }
@@ -277,6 +279,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const workspaceId = route.view === 'workspace' ? route.id : null
   const go = useCallback((next: Exclude<View, 'workspace'>) => navigate({ view: next } as Route), [navigate])
   const [friendName, setFriendName] = useState<string | null>(null)
+  const [unreadNotices, setUnreadNotices] = useState(0)
   const [sideItems, setSideItems] = useState<{ workspaceId: number; items: WorkspaceItem[] } | null>(null)
   const showSideItems = useCallback((workspaceId: number, items: WorkspaceItem[]) => setSideItems({ workspaceId, items }), [])
   // Staff only: anyone else who opens /admin lands on Today, with the address to match.
@@ -701,6 +704,12 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [])
   useEffect(loadWorkspaces, [loadWorkspaces])
   useLiveRefresh(loadWorkspaces, 30_000)
+  const closeLinkedRow = useCallback(
+    (tableId: number) => {
+      if (workspaceId) navigate({ view: 'workspace', id: workspaceId, section: 'table', tableId }, { replace: true })
+    },
+    [navigate, workspaceId],
+  )
   const openWorkspace = useCallback((id: number) => navigate({ view: 'workspace', id, section: 'home' }), [navigate])
   const leftWorkspace = useCallback(() => {
     navigate({ view: 'workspaces' }, { replace: true })
@@ -722,6 +731,22 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
   }, [navigate])
 
+  const loadNotices = useCallback(() => {
+    workspaces
+      .notifications()
+      .then((n) => setUnreadNotices(n.unread))
+      .catch(() => undefined)
+  }, [])
+  useEffect(loadNotices, [loadNotices])
+  useLiveRefresh(loadNotices, 30_000)
+  const openUrl = useCallback(
+    (url: string) => {
+      const target = new URL(url, window.location.origin)
+      navigate(parseRoute(target.pathname, target.search))
+    },
+    [navigate],
+  )
+
   const remindersOn = user.reminders_enabled
   const inMore = MORE_VIEWS.includes(view)
   const inviteBadge = workspaceList?.invitations.length ?? 0
@@ -736,14 +761,17 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     chats: ['Messages', 'Chats'],
     more: ['Everything else', 'More'],
     workspaces: ['Teams', 'Workspaces'],
+    notifications: ['For you', 'Notifications'],
     workspace:
       route.view !== 'workspace' || route.section === 'home' || route.section === 'page' || route.section === 'table'
         ? ['Workspaces', workspaceName]
         : route.section === 'members'
           ? [workspaceName, 'Members']
-          : route.section === 'settings'
-            ? [workspaceName, 'Settings']
-            : [`${workspaceName} / Settings`, 'What each role can do'],
+          : route.section === 'activity'
+            ? [workspaceName, 'Activity']
+            : route.section === 'settings'
+              ? [workspaceName, 'Settings']
+              : [`${workspaceName} / Settings`, 'What each role can do'],
   }
 
   const bell = (className: string) => (
@@ -773,6 +801,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         socialBadge={socialBadge}
         workspaces={workspaceList?.workspaces ?? []}
         inviteBadge={inviteBadge}
+        noticeBadge={unreadNotices}
         onGo={(next) => {
           if (next.startsWith('page:')) {
             const [, id, pageId] = next.split(':')
@@ -799,6 +828,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           </div>
           <div className={`header-actions${isChildPage(route) ? ' on-child' : ''}`}>
             <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => go('timer')} />
+            <button className="round-btn" aria-label="Workspaces" aria-pressed={view === 'workspaces' || view === 'workspace'} onClick={() => go('workspaces')}>
+              <Icon name="team" />
+            </button>
             {bell(`round-btn${remindersOn ? ' on' : ''}`)}
             <button className="primary-btn desktop-only" data-tour="new-task" onClick={() => openCreate(day)}>
               <Icon name="plus" />
@@ -875,7 +907,11 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </Reveal>
           ) : view === 'more' ? (
             <Reveal key="more">
-              <More user={user} inviteBadge={inviteBadge} onGo={go} />
+              <More user={user} inviteBadge={inviteBadge} noticeBadge={unreadNotices} onGo={go} />
+            </Reveal>
+          ) : view === 'notifications' ? (
+            <Reveal key="notifications">
+              <Notifications now={now} notify={notify} onOpen={openUrl} onUnread={setUnreadNotices} />
             </Reveal>
           ) : view === 'workspaces' ? (
             <Reveal key="workspaces">
@@ -891,6 +927,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                 section={route.section}
                 pageId={route.section === 'page' ? route.pageId : undefined}
                 tableId={route.section === 'table' ? route.tableId : undefined}
+                rowId={route.section === 'table' ? route.rowId : undefined}
+                onRowClosed={closeLinkedRow}
+                onOpenUrl={openUrl}
                 notify={notify}
                 showToast={showToast}
                 onOpenSection={(section, options) => navigate({ view: 'workspace', id: route.id, section }, options)}
@@ -1010,10 +1049,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           <span className="nav-label">Friends</span>
           {socialBadge > 0 && <span className="nav-badge" aria-hidden="true">{socialBadge}</span>}
         </button>
-        <button className="nav-btn" data-tour="progress profile workspaces" aria-label={inviteBadge ? `More, ${inviteBadge} new` : 'More'} aria-current={inMore ? 'page' : undefined} onClick={() => go('more')}>
+        <button className="nav-btn" data-tour="progress profile workspaces timer" aria-label={inviteBadge + unreadNotices ? `More, ${inviteBadge + unreadNotices} new` : 'More'} aria-current={inMore ? 'page' : undefined} onClick={() => go('more')}>
           <Icon name="menu" />
           <span className="nav-label">More</span>
-          {inviteBadge > 0 && <span className="nav-badge" aria-hidden="true">{inviteBadge}</span>}
+          {inviteBadge + unreadNotices > 0 && <span className="nav-badge" aria-hidden="true">{inviteBadge + unreadNotices}</span>}
         </button>
       </nav>
 

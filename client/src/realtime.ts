@@ -83,7 +83,7 @@ async function connect(me: string) {
   const mine = live.channels.get(`user:${me}`)
   await mine.subscribe((message) => {
     window.dispatchEvent(new CustomEvent<LiveEvent>(LIVE_EVENT, { detail: { name: message.name ?? '', data: message.data } }))
-    if (message.name === 'tasks' || message.name === 'social' || message.name === 'workspaces') window.dispatchEvent(new Event(PUSH_EVENT))
+    if (message.name === 'tasks' || message.name === 'social' || message.name === 'workspaces' || message.name === 'notifications') window.dispatchEvent(new Event(PUSH_EVENT))
   })
   await live.channels.get(`online:${me}`).presence.enter().catch(() => undefined)
 }

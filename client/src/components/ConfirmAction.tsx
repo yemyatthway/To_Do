@@ -8,7 +8,8 @@ interface ConfirmActionProps {
   children: ReactNode
   confirmLabel: string
   danger?: boolean
-  icon?: IconName
+  /** Null for small forms, which don't need a big icon on top. */
+  icon?: IconName | null
   /** For the most serious actions: this exact text has to be typed first. */
   typeToConfirm?: string
   /** For dialogs with a form in them: hold the button until it's filled in. */
@@ -62,9 +63,11 @@ export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'h
   return createPortal(
     <div className="scrim center" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <form ref={cardRef} className="welcome-card glass confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-action-h" onSubmit={submit}>
-        <span className={`confirm-icon${danger ? ' danger' : ''}`} aria-hidden="true">
-          <Icon name={icon} />
-        </span>
+        {icon && (
+          <span className={`confirm-icon${danger ? ' danger' : ''}`} aria-hidden="true">
+            <Icon name={icon} />
+          </span>
+        )}
         <h2 id="confirm-action-h">{title}</h2>
         <div className="confirm-body">{children}</div>
         {typeToConfirm && (

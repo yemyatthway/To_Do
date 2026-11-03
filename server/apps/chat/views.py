@@ -11,6 +11,7 @@ from .models import Conversation
 class SendSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=services.MAX_LENGTH, allow_blank=True, trim_whitespace=False)
     client_id = serializers.UUIDField(required=False, allow_null=True)
+    reply_to = serializers.IntegerField(required=False, allow_null=True)
 
 
 def conversation_data(conversation, me):
@@ -73,7 +74,7 @@ class MessagesApi(APIView):
         serializer = SendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        message = services.send(request.user, conversation, data["text"], client_id=data.get("client_id"))
+        message = services.send(request.user, conversation, data["text"], client_id=data.get("client_id"), reply_to=data.get("reply_to"))
         return Response(services.message_data(message, request.user), status=status.HTTP_201_CREATED)
 
 
@@ -103,6 +104,23 @@ class MessageApi(APIView):
         else:
             services.delete_message(request.user, conversation, message_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ReactApi(APIView):
+    """POST {emoji}: your reaction to this message (replaces any you gave). DELETE: take it back."""
+
+    throttle_scope = "chat"
+
+    def post(self, request, conversation_id, message_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        emoji = request.data.get("emoji")
+        if not isinstance(emoji, str):
+            emoji = ""
+        return Response({"reactions": services.react(request.user, conversation, message_id, emoji)})
+
+    def delete(self, request, conversation_id, message_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        return Response({"reactions": services.react(request.user, conversation, message_id, None)})
 
 
 class ClearApi(APIView):

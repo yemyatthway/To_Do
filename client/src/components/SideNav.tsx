@@ -17,15 +17,22 @@ interface SideNavProps {
   socialBadge: number
   workspaces: { id: number; name: string }[]
   inviteBadge: number
+  noticeBadge: number
   /** The workspace that's open, whose pages and tables show under its name. */
   openWorkspace: { workspaceId: number; items: WorkspaceItem[] } | null
   onGo: (view: string) => void
 }
 
 /** Desktop navigation: a full sidebar on wide windows, icons only when there's less room. */
-export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inviteBadge, openWorkspace, onGo }: SideNavProps) {
+export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inviteBadge, noticeBadge, openWorkspace, onGo }: SideNavProps) {
   const groups: { label: string; items: Item[] }[] = [
-    { label: '', items: [{ id: 'home', label: 'Today', icon: 'clock' }] },
+    {
+      label: '',
+      items: [
+        { id: 'home', label: 'Today', icon: 'clock' },
+        { id: 'notifications', label: 'Notifications', icon: 'inbox', badge: noticeBadge },
+      ],
+    },
     {
       label: 'People',
       items: [
@@ -40,14 +47,14 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
           { id: `workspace:${w.id}`, label: w.name, icon: 'team' },
           ...(openWorkspace?.workspaceId === w.id ? openWorkspace.items.map((i): Item => ({ id: `${i.kind}:${w.id}:${i.id}`, label: i.title, icon: i.kind, sub: true })) : []),
         ]),
-        { id: 'workspaces', label: workspaces.length ? 'All workspaces' : 'Workspaces', icon: 'inbox' as const, badge: inviteBadge, tour: 'workspaces' },
+        { id: 'workspaces', label: workspaces.length ? 'All workspaces' : 'Workspaces', icon: 'list' as const, badge: inviteBadge, tour: 'workspaces' },
       ],
     },
     {
       label: 'You',
       items: [
         { id: 'progress', label: 'Progress', icon: 'chart', tour: 'progress' },
-        { id: 'timer', label: 'Timer', icon: 'timer' },
+        { id: 'timer', label: 'Timer', icon: 'timer', tour: 'timer' },
         { id: 'profile', label: 'Profile', icon: 'user', tour: 'profile' },
         ...(isStaff ? [{ id: 'admin', label: 'Admin', icon: 'shield' as const }] : []),
       ],

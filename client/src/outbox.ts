@@ -1,4 +1,4 @@
-import type { ChatMessage, Task, TaskInput } from './api'
+import type { ChatMessage, ChatReply, Task, TaskInput } from './api'
 
 /**
  * Update first, sync after. A change shows on screen at once and waits here (on the device, so it
@@ -16,14 +16,14 @@ export type Op = { key: string; failed?: string } & (
   | { kind: 'task.create'; tempId: number; input: TaskInput; createdAt: string }
   | { kind: 'task.update'; taskId: number; patch: TaskPatch; base: Record<string, unknown>; announce?: string }
   | { kind: 'task.delete'; taskId: number }
-  | { kind: 'chat.send'; tempId: number; conversation: number; text: string; createdAt: string }
+  | { kind: 'chat.send'; tempId: number; conversation: number; text: string; createdAt: string; reply?: ChatReply | null }
 )
 
 export interface Transport {
   createTask: (input: TaskInput, clientId: string) => Promise<Task>
   updateTask: (id: number, patch: TaskPatch, base: Record<string, unknown>) => Promise<Task>
   deleteTask: (id: number) => Promise<void>
-  sendMessage: (conversation: number, text: string, clientId: string) => Promise<ChatMessage>
+  sendMessage: (conversation: number, text: string, clientId: string, replyTo?: number) => Promise<ChatMessage>
 }
 
 export interface OutboxEvents {
@@ -194,9 +194,9 @@ export class Outbox {
     this.kick()
   }
 
-  sendMessage(conversation: number, text: string) {
+  sendMessage(conversation: number, text: string, reply?: ChatReply | null) {
     const key = newKey()
-    this.mutate((ops) => [...ops, { kind: 'chat.send', key, tempId: newTempId(), conversation, text, createdAt: new Date().toISOString() }])
+    this.mutate((ops) => [...ops, { kind: 'chat.send', key, tempId: newTempId(), conversation, text, reply, createdAt: new Date().toISOString() }])
     this.kick()
     return key
   }
@@ -292,7 +292,7 @@ export class Outbox {
         this.events.onTaskDeleted?.(op.taskId)
         return
       case 'chat.send': {
-        const message = await this.transport.sendMessage(op.conversation, op.text, op.key)
+        const message = await this.transport.sendMessage(op.conversation, op.text, op.key, op.reply?.id)
         this.remove(op)
         this.messageListeners.forEach((listener) => listener(message, op))
       }
@@ -415,6 +415,8 @@ export function pendingMessages(snapshot: OutboxSnapshot, conversation: number, 
             text: op.text,
             deleted: false,
             edited: false,
+            reply: op.reply ?? null,
+            reactions: [],
             created_at: op.createdAt,
             pending: !op.failed,
             waiting: !op.failed && snapshot.blocked,

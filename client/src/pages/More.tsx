@@ -5,12 +5,13 @@ import { initials } from '../user'
 interface MoreProps {
   user: User
   inviteBadge: number
-  onGo: (view: 'progress' | 'timer' | 'profile' | 'admin' | 'workspaces') => void
+  noticeBadge: number
+  onGo: (view: 'progress' | 'timer' | 'profile' | 'admin' | 'workspaces' | 'notifications') => void
 }
 
 /** Phone: the screens that don't fit in the bottom bar. */
-export function More({ user, inviteBadge, onGo }: MoreProps) {
-  const row = (view: 'progress' | 'timer' | 'admin' | 'workspaces', label: string, icon: IconName, badge = 0) => (
+export function More({ user, inviteBadge, noticeBadge, onGo }: MoreProps) {
+  const row = (view: 'progress' | 'timer' | 'admin' | 'workspaces' | 'notifications', label: string, icon: IconName, badge = 0) => (
     <li>
       <button type="button" className="more-row" onClick={() => onGo(view)}>
         <Icon name={icon} />
@@ -34,6 +35,7 @@ export function More({ user, inviteBadge, onGo }: MoreProps) {
           <Icon name="chevron" className="more-go" />
         </button>
       </li>
+      {row('notifications', 'Notifications', 'inbox', noticeBadge)}
       {row('workspaces', 'Workspaces', 'team', inviteBadge)}
       {row('progress', 'Progress', 'chart')}
       {row('timer', 'Timer', 'timer')}

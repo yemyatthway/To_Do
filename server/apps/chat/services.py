@@ -1,3 +1,4 @@
+import re
 import threading
 from datetime import timedelta
 
@@ -11,11 +12,18 @@ from apps.social.models import Friendship
 from apps.social.services import _notify
 from apps.users.models import User
 
-from .models import Conversation, HiddenMessage, Message
+from .models import Conversation, HiddenMessage, Message, MessageReaction
 
 MAX_LENGTH = 2000
 PAGE = 50
 EDIT_HOURS = 24  # your own messages can be edited for a day
+# One emoji as a keyboard types it, with any skin tone, joined people, flag or keycap. Nothing else.
+_PICTURE = (
+    r"[\u00a9\u00ae\u203c\u2049\u2122\u2139\u2194-\u21aa\u231a-\u23ff\u24c2\u25aa-\u25fe\u2600-\u27bf"
+    r"\u2934\u2935\u2b05-\u2b55\u3030\u303d\u3297\u3299\U0001f000-\U0001f1e5\U0001f200-\U0001faff]"
+    r"[\ufe0f\U0001f3fb-\U0001f3ff]?[\U000e0020-\U000e007f]*"
+)
+ONE_EMOJI = re.compile(rf"[\U0001f1e6-\U0001f1ff]{{2}}|[0-9#*]\ufe0f?\u20e3|{_PICTURE}(?:\u200d{_PICTURE})*")
 
 
 def _pair(a, b):
@@ -56,7 +64,7 @@ def visible(me, conversation):
     return messages
 
 
-def send(me, conversation, text, client_id=None):
+def send(me, conversation, text, client_id=None, reply_to=None):
     """Sending the same client_id again returns the saved message, with no second post or push."""
     if client_id and (existing := conversation.messages.filter(sender=me, client_id=client_id).first()):
         return existing
@@ -64,11 +72,13 @@ def send(me, conversation, text, client_id=None):
     other = conversation.other(me)
     if not other.is_active or not Friendship.are_friends(me, other):
         raise PermissionDenied("You're no longer friends, so you can't send messages here.")
+    # Something it answers that's gone (or was never in this chat) just makes it a normal message.
+    original = conversation.messages.filter(pk=reply_to).first() if type(reply_to) is int else None
 
     now = timezone.now()
     try:
         with transaction.atomic():
-            message = Message(conversation=conversation, sender=me, client_id=client_id)
+            message = Message(conversation=conversation, sender=me, client_id=client_id, reply_to=original)
             message.text = text
             message.save()
             conversation.last_message_at = message.created_at
@@ -106,7 +116,7 @@ def _push_in_background(*args):
 
 
 def history(me, conversation, before=None):
-    messages = visible(me, conversation).select_related("sender")
+    messages = visible(me, conversation).select_related("sender", "reply_to").prefetch_related("reactions")
     if before:
         messages = messages.filter(pk__lt=before)
     page = list(messages.order_by("-created_at", "-id")[:PAGE])
@@ -167,6 +177,38 @@ def delete_message(me, conversation, message_id):
     return message
 
 
+def react(me, conversation, message_id, emoji):
+    """Your reaction to a message, or none with emoji=None. Tell the other person straight away."""
+    if emoji is not None and (len(emoji) > 32 or not ONE_EMOJI.fullmatch(emoji)):
+        raise ValidationError({"emoji": ["Choose one emoji."]})
+    message = visible(me, conversation).filter(pk=message_id, deleted_at__isnull=True).first()
+    if message is None:
+        raise NotFound("That message doesn't exist.")
+    other = conversation.other(me)
+    if emoji is None:
+        MessageReaction.objects.filter(message=message, user=me).delete()
+    else:
+        if not other.is_active or not Friendship.are_friends(me, other):
+            raise PermissionDenied("You're no longer friends, so you can't react here.")
+        MessageReaction.objects.update_or_create(message=message, user=me, defaults={"emoji": emoji})
+    reactions = reactions_of(message)
+    ably.to_chat(conversation.pk, "reacted", {"id": message.pk, "reactions": reactions})
+    if emoji is not None and message.sender_id == other.pk and str(other.pk) not in ably.present(f"chat:{conversation.pk}"):
+        _notify(other, me.full_name or me.email, f"Reacted {emoji} to your message", url=f"/?view=chats&chat={conversation.pk}", event="chat")
+    return reactions
+
+
+def reactions_of(message):
+    return [{"user": r.user_id, "emoji": r.emoji} for r in message.reactions.all()]
+
+
+def reply_data(message):
+    original = message.reply_to
+    if original is None:
+        return None
+    return {"id": original.pk, "sender": original.sender_id, "text": original.text[:200], "deleted": original.deleted_at is not None}
+
+
 def unread_count(me, conversation):
     read_at = conversation.read_at(me)
     messages = visible(me, conversation).exclude(sender=me).filter(deleted_at__isnull=True)
@@ -189,5 +231,7 @@ def message_data(message, viewer):
         "text": message.text,
         "deleted": message.deleted_at is not None,
         "edited": message.edited_at is not None and message.deleted_at is None,
+        "reply": reply_data(message),
+        "reactions": [] if message.deleted_at else reactions_of(message),
         "created_at": message.created_at.isoformat(),
     }

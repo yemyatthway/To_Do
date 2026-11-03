@@ -151,3 +151,75 @@ class TableRow(models.Model):
         base_manager_name = "all_objects"
         ordering = ["no"]
         constraints = [models.UniqueConstraint(fields=["table", "no"], name="one_row_per_number")]
+
+
+class LiveCommentManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
+class Comment(models.Model):
+    """A comment on a page or a table row. Always exactly one of the two."""
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="comments")
+    page = models.ForeignKey(Page, null=True, blank=True, on_delete=models.CASCADE, related_name="comments")
+    row = models.ForeignKey(TableRow, null=True, blank=True, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    objects = LiveCommentManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(page__isnull=False, row__isnull=True) | Q(page__isnull=True, row__isnull=False)),
+                name="comment_on_one_thing",
+            ),
+        ]
+
+
+class ActivityEvent(models.Model):
+    """One line of a workspace's history. Names are kept as they were, so history stays readable
+    after something is renamed or erased."""
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="activity")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    verb = models.CharField(max_length=30)
+    # "page", "table", "row" or "" for the workspace itself.
+    target_kind = models.CharField(max_length=10, blank=True)
+    target_id = models.PositiveIntegerField(null=True, blank=True)
+    title = models.CharField(max_length=200, blank=True)
+    detail = models.JSONField(default=dict)
+    created_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["workspace", "target_kind", "target_id"])]
+
+
+class Notification(models.Model):
+    """Something in a workspace that's for you: a mention, a row assigned to you, a comment."""
+
+    class Kind(models.TextChoices):
+        MENTION = "mention", "Mention"
+        ASSIGNED = "assigned", "Assigned"
+        COMMENT = "comment", "Comment"
+
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="workspace_notifications")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="notifications")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    title = models.CharField(max_length=240)
+    body = models.CharField(max_length=280, blank=True)
+    url = models.CharField(max_length=200)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["recipient", "read_at"])]

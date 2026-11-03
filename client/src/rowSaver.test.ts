@@ -19,7 +19,7 @@ function fakeStore(): Storage {
   }
 }
 
-const row = (id = 1, values: TableRowData['values'] = {}): TableRowData => ({ id, no: id, values, highlighted: false, on_my_tasks: false })
+const row = (id = 1, values: TableRowData['values'] = {}): TableRowData => ({ id, no: id, values, highlighted: false, on_my_tasks: false, comment_count: 0 })
 const failure = (status: number, data?: unknown) => Object.assign(new Error('nope'), { status, data })
 
 describe('RowSaver', () => {

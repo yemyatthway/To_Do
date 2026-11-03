@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, workspaces as api, type Member, type Role, type TeamPage, type TeamTable, type WorkspaceDetail, type WorkspaceList } from '../api'
 import { ConfirmAction } from '../components/ConfirmAction'
+import { ActivityList } from '../components/Comments'
 import { CardsSkeleton, Loading, SkeletonRows } from '../components/Loading'
 import { PageEditor } from '../components/PageEditor'
 import { TableView } from '../components/TableView'
@@ -142,7 +143,7 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
 
       {creating && (
         <ConfirmAction
-          icon="team"
+          icon={null}
           title="New workspace"
           confirmLabel="Create"
           confirmDisabled={!name.trim()}
@@ -160,7 +161,7 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
         >
           <label className="field-group" style={leftField}>
             <span className="label">Name</span>
-            <input data-autofocus className="field" maxLength={80} value={name} placeholder="Dev Team" onChange={(e) => setName(e.target.value)} />
+            <input data-autofocus className="field" maxLength={80} autoComplete="off" value={name} placeholder="Dev Team" onChange={(e) => setName(e.target.value)} />
           </label>
         </ConfirmAction>
       )}
@@ -198,11 +199,15 @@ interface DetailProps {
   section: WorkspaceSection | 'page' | 'table'
   pageId?: number
   tableId?: number
+  rowId?: number
   notify: (title: string, detail?: string) => void
   showToast: (toast: Omit<ToastData, 'id'>) => void
   onOpenSection: (section: WorkspaceSection, options?: { replace?: boolean }) => void
   onOpenPage: (pageId: number) => void
   onOpenTable: (tableId: number) => void
+  /** Close a row that was opened from a link, back to its table. */
+  onRowClosed: (tableId: number) => void
+  onOpenUrl: (url: string) => void
   /** The list of pages and tables, for the sidebar. */
   onItems: (workspaceId: number, items: WorkspaceItem[]) => void
   onTasksChanged: () => void
@@ -212,7 +217,7 @@ interface DetailProps {
 }
 
 /** One workspace and its child pages: home, members, settings and roles. */
-export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify, showToast, onOpenSection, onOpenPage, onOpenTable, onItems, onTasksChanged, onChanged, onGone }: DetailProps) {
+export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, notify, showToast, onOpenSection, onOpenPage, onOpenTable, onRowClosed, onOpenUrl, onItems, onTasksChanged, onChanged, onGone }: DetailProps) {
   const [data, setData] = useState<WorkspaceDetail | null>(null)
   const [items, setItems] = useState<WorkspaceItem[] | null>(null)
   const [itemQuery, setItemQuery] = useState('')
@@ -260,6 +265,10 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
   }, [])
   const pageSaved = useCallback((page: TeamPage) => itemSaved('page', page), [itemSaved])
   const tableSaved = useCallback((table: TeamTable) => itemSaved('table', table), [itemSaved])
+
+  const closeLinkedRow = useCallback(() => {
+    if (tableId) onRowClosed(tableId)
+  }, [tableId, onRowClosed])
 
   const tableGone = useCallback(() => {
     notify('That table was deleted')
@@ -374,6 +383,14 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
         </div>
       )}
 
+      {section === 'activity' && (
+        <section className="card glass panel" aria-label="Activity">
+          <div className="panel-scroll">
+            <ActivityList workspaceId={id} now={now} onOpen={onOpenUrl} />
+          </div>
+        </section>
+      )}
+
       {section === 'home' && (
         <section className="card glass panel" aria-label={data.name}>
           <div className="panel-top">
@@ -415,6 +432,11 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
             </ul>
             <h3 className="section-label">Manage</h3>
             <div className="panel-rows">
+            <button className="more-row" onClick={() => onOpenSection('activity')}>
+              <Icon name="list" />
+              <span className="person-name">Activity</span>
+              <Icon name="chevron" className="more-go" />
+            </button>
             <button className="more-row" onClick={() => onOpenSection('members')}>
               <Icon name="users" />
               <span className="person-name">Members</span>
@@ -435,7 +457,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
       )}
 
       {section === 'page' && pageId && (
-        <PageEditor key={pageId} workspaceId={id} pageId={pageId} userId={myId} canEdit={data.can.edit} onSaved={pageSaved} onDeleted={pageDeleted} onGone={pageGone} />
+        <PageEditor key={pageId} workspaceId={id} pageId={pageId} userId={myId} canEdit={data.can.edit} canComment={data.can.comment} members={data.members} now={now} onSaved={pageSaved} onDeleted={pageDeleted} onGone={pageGone} />
       )}
 
       {section === 'table' && tableId && (
@@ -445,6 +467,10 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
           tableId={tableId}
           userId={myId}
           canEdit={data.can.edit}
+          canComment={data.can.comment}
+          now={now}
+          rowId={rowId}
+          onRowClosed={closeLinkedRow}
           members={data.members}
           notify={notify}
           showToast={showToast}
@@ -605,7 +631,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
 
       {dialog?.kind === 'new-item' && (
         <ConfirmAction
-          icon={newKind}
+          icon={null}
           title={`New in ${data.name}`}
           confirmLabel="Create"
           confirmDisabled={!text.trim()}
@@ -637,14 +663,14 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
             </button>
           </div>
           <label className="field-group" style={leftField}>
-            <span className="label">Name it anything</span>
-            <input data-autofocus className="field" maxLength={120} value={text} placeholder={newKind === 'table' ? 'Sprint 12 testing' : 'Release plan'} onChange={(e) => setText(e.target.value)} />
+            <span className="label">Title</span>
+            <input data-autofocus className="field" maxLength={120} autoComplete="off" value={text} placeholder={newKind === 'table' ? 'Sprint 12 testing' : 'Release plan'} onChange={(e) => setText(e.target.value)} />
           </label>
         </ConfirmAction>
       )}
       {dialog?.kind === 'invite' && (
         <ConfirmAction
-          icon="send"
+          icon={null}
           title="Invite someone"
           confirmLabel="Send invitation"
           confirmDisabled={!text.trim()}
@@ -677,7 +703,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
       )}
       {dialog?.kind === 'rename' && (
         <ConfirmAction
-          icon="team"
+          icon={null}
           title="Rename workspace"
           confirmLabel="Save"
           confirmDisabled={!text.trim()}
@@ -694,7 +720,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify,
         >
           <label className="field-group" style={leftField}>
             <span className="label">Name</span>
-            <input data-autofocus className="field" maxLength={80} value={text} onChange={(e) => setText(e.target.value)} />
+            <input data-autofocus className="field" maxLength={80} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} />
           </label>
         </ConfirmAction>
       )}

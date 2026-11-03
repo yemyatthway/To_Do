@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { Category, Priority, Task, TaskInput } from '../api'
-import { Icon } from '../icons'
+import { Icon, type IconName } from '../icons'
 import type { ShownTask } from '../outbox'
 import { Calendar } from './Calendar'
 import { TimePicker } from './TimePicker'
@@ -24,6 +24,25 @@ const PRIORITIES: { value: Priority; label: string; color: string }[] = [
   { value: 'high', label: 'High', color: '#b8431f' },
 ]
 const DEFAULT_LEAD = 10
+
+type RowName = 'date' | 'time' | 'remind' | 'category' | 'priority' | 'notes'
+
+const timeLabel = (value: string) => {
+  const [hours, minutes] = value.split(':').map(Number)
+  return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/** One line of the form: what it is and what it's set to. Tapping shows the choices. */
+function TaskRowButton({ icon, label, value, open, onToggle }: { icon: IconName; label: string; value: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="more-row task-form-row" aria-expanded={open} onClick={onToggle}>
+      <Icon name={icon} />
+      <span className="person-name">{label}</span>
+      <span className="row-value">{value}</span>
+      <Icon name="chevron" className={`more-go${open ? ' turned' : ''}`} />
+    </button>
+  )
+}
 
 export interface SheetDefaults {
   date: Date
@@ -56,8 +75,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   // How long before the task the reminder comes (minutes); kept when the switch goes off and on.
   const [lead, setLead] = useState<number>(task?.remind_before_minutes ?? DEFAULT_LEAD)
   const [done, setDone] = useState(task?.done ?? false)
-  const canRemind = Boolean(time) && remindersOn
-  // Turning the time off and on again brings back the last time, so a mistaken tap costs nothing.
+    // Turning the time off and on again brings back the last time, so a mistaken tap costs nothing.
   const lastTime = useRef(time || defaults.time || '09:00')
 
   function toggleTime() {
@@ -80,12 +98,13 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   // Slide up on open; slide back down before anything closes the sheet.
   useGsap(scrimRef, () => {
     const desktop = window.matchMedia('(min-width: 960px)').matches
-    gsap.fromTo(scrimRef.current, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.25, ease: 'power1.out' })
+    // Opacity, not autoAlpha: a hidden field can't take the cursor when the sheet opens.
+    gsap.fromTo(scrimRef.current, { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power1.out' })
     gsap.fromTo(
       sheetRef.current,
-      desktop ? { autoAlpha: 0, y: 28, scale: 0.97 } : { yPercent: 100 },
+      desktop ? { opacity: 0, y: 28, scale: 0.97 } : { yPercent: 100 },
       desktop
-        ? { autoAlpha: 1, y: 0, scale: 1, duration: 0.45, ease: 'power3.out' }
+        ? { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: 'power3.out' }
         : { yPercent: 0, duration: 0.55, ease: 'expo.out' },
     )
   }, [])
@@ -114,6 +133,9 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   }, [])
 
   const [showCalendar, setShowCalendar] = useState(false)
+  // One row open at a time, so the form never turns into a wall of buttons.
+  const [openRow, setOpenRow] = useState<RowName | null>(null)
+  const toggleRow = (row: RowName) => setOpenRow((current) => (current === row ? null : row))
   const originalDate = useRef(date)
 
   function pickDate(value: string, fromCalendar = false) {
@@ -189,152 +211,184 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
         </div>
         </div>
 
-        <div className="sheet-body">
-        <label className="field-group">
-          <span className="label">Title</span>
-          <input
-            ref={titleRef}
-            className="field"
-            value={title}
-            maxLength={200}
-            placeholder="Call the dentist"
-            aria-invalid={error === 'Enter a title.'}
-            onChange={(e) => {
-              setTitle(e.target.value)
-              setError('')
-            }}
-          />
-        </label>
+        <div className="sheet-body task-form">
+        <input
+          ref={titleRef}
+          className="task-title-input"
+          aria-label="Title"
+          value={title}
+          maxLength={200}
+          autoComplete="off"
+          placeholder="What do you need to do?"
+          aria-invalid={error === 'Enter a title.'}
+          onChange={(e) => {
+            setTitle(e.target.value)
+            setError('')
+          }}
+        />
 
-        <label className="field-group">
-          <span className="label">Notes</span>
-          <textarea className="field" rows={2} value={notes} placeholder="Ask about Thursday appointment" onChange={(e) => setNotes(e.target.value)} />
-        </label>
-
-        <div className="field-group">
-          <span className="label">When</span>
-          <div className="chips">
-            <button type="button" className="chip" aria-pressed={date === today} onClick={() => pickDate(today)}>
-              Today
-            </button>
-            <button type="button" className="chip" aria-pressed={date === tomorrow} onClick={() => pickDate(tomorrow)}>
-              Tomorrow
-            </button>
-            <button
-              type="button"
-              className="chip date-chip"
-              aria-pressed={date !== today && date !== tomorrow}
-              aria-expanded={showCalendar}
-              onClick={() => setShowCalendar(!showCalendar)}
-            >
-              <Icon name="calendar" />
-              {date !== today && date !== tomorrow ? dateLabel(date) : 'Pick a date'}
-            </button>
-          </div>
-          {showCalendar && (
-            <div className="sheet-calendar">
-              <Calendar value={parseDate(date)} minDate={parseDate(today)} onChange={(d) => pickDate(toDateInput(d), true)} />
+        <div className="panel-rows task-rows">
+          <TaskRowButton icon="calendar" label="Date" value={date === today ? 'Today' : date === tomorrow ? 'Tomorrow' : dateLabel(date)} open={openRow === 'date'} onToggle={() => toggleRow('date')} />
+          {openRow === 'date' && (
+            <div className="task-row-body">
+              <div className="chips">
+                <button
+                  type="button"
+                  className="chip"
+                  aria-pressed={date === today}
+                  onClick={() => {
+                    pickDate(today)
+                    setOpenRow(null)
+                  }}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  aria-pressed={date === tomorrow}
+                  onClick={() => {
+                    pickDate(tomorrow)
+                    setOpenRow(null)
+                  }}
+                >
+                  Tomorrow
+                </button>
+                <button type="button" className="chip" aria-pressed={showCalendar} aria-expanded={showCalendar} onClick={() => setShowCalendar(!showCalendar)}>
+                  Other date
+                </button>
+              </div>
+              {showCalendar && (
+                <div className="sheet-calendar">
+                  <Calendar
+                    value={parseDate(date)}
+                    minDate={parseDate(today)}
+                    onChange={(d) => {
+                      pickDate(toDateInput(d), true)
+                      setOpenRow(null)
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
-          <div className="toggle-row time-toggle">
-            <span>
-              <Icon name="clock" />
-              Set a time
-            </span>
-            <button type="button" className="switch" role="switch" aria-checked={Boolean(time)} aria-label="Set a time" onClick={toggleTime} />
-          </div>
-          {time ? (
+
+          <TaskRowButton icon="clock" label="Time" value={time ? timeLabel(time) : 'Anytime'} open={openRow === 'time'} onToggle={() => toggleRow('time')} />
+          {openRow === 'time' && (
+            <div className="task-row-body">
+              <div className="toggle-row">
+                <span>Set a time</span>
+                <button type="button" className="switch" role="switch" aria-checked={Boolean(time)} aria-label="Set a time" onClick={toggleTime} />
+              </div>
+              {time ? <TimePicker value={time} onChange={setTime} /> : <span className="hint">The task goes under Anytime.</span>}
+            </div>
+          )}
+
+          {time && (
             <>
-              <TimePicker value={time} onChange={setTime} />
-              {!task && defaults.fromClock && time === defaults.time && (
-                <span className="hint">Time picked from the clock. Change it here if you like.</span>
+              <TaskRowButton icon="bell" label="Reminder" value={!remindersOn ? 'Off in settings' : remind ? formatLead(lead) : 'None'} open={openRow === 'remind'} onToggle={() => toggleRow('remind')} />
+              {openRow === 'remind' && (
+                <div className="task-row-body">
+                  {remindersOn ? (
+                    <div className="chips lead-chips" role="radiogroup" aria-label="When to remind me">
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={!remind}
+                        aria-pressed={!remind}
+                        className="chip"
+                        onClick={() => {
+                          setRemind(false)
+                          setOpenRow(null)
+                        }}
+                      >
+                        None
+                      </button>
+                      {REMINDER_LEADS.map((minutes) => (
+                        <button
+                          key={minutes}
+                          type="button"
+                          role="radio"
+                          aria-checked={remind && lead === minutes}
+                          aria-pressed={remind && lead === minutes}
+                          className="chip"
+                          onClick={() => {
+                            setRemind(true)
+                            setLead(minutes)
+                            setOpenRow(null)
+                          }}
+                        >
+                          {minutes === 0 ? 'At the time' : formatLead(minutes).replace(' before', '')}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="hint">Reminders are off. Turn them on with the bell button or in Settings.</span>
+                  )}
+                </div>
               )}
             </>
-          ) : (
-            <span className="hint">No time: the task goes under Anytime. Turn the switch on to pick one.</span>
+          )}
+
+          <TaskRowButton
+            icon="menu"
+            label="Category"
+            value={CATEGORIES.find((c) => c.value === category)?.label ?? ''}
+            open={openRow === 'category'}
+            onToggle={() => toggleRow('category')}
+          />
+          {openRow === 'category' && (
+            <div className="task-row-body">
+              <div className="chips">
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    className="chip"
+                    aria-pressed={category === c.value}
+                    style={{ ['--chip-on' as string]: c.color }}
+                    onClick={() => {
+                      setCategory(c.value)
+                      setOpenRow(null)
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <TaskRowButton icon="flag" label="Priority" value={PRIORITIES.find((p) => p.value === priority)?.label ?? ''} open={openRow === 'priority'} onToggle={() => toggleRow('priority')} />
+          {openRow === 'priority' && (
+            <div className="task-row-body">
+              <div className="chips">
+                {PRIORITIES.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    className="chip"
+                    aria-pressed={priority === p.value}
+                    style={{ ['--chip-on' as string]: p.color }}
+                    onClick={() => {
+                      setPriority(p.value)
+                      setOpenRow(null)
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <TaskRowButton icon="edit" label="Notes" value={notes.trim() ? notes.trim() : 'Add notes'} open={openRow === 'notes'} onToggle={() => toggleRow('notes')} />
+          {openRow === 'notes' && (
+            <div className="task-row-body">
+              <textarea className="field" rows={3} autoFocus aria-label="Notes" value={notes} placeholder="Anything to remember about it" onChange={(e) => setNotes(e.target.value)} />
+            </div>
           )}
         </div>
-
-        <div className="field-group">
-          <span className="label">Category</span>
-          <div className="chips">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                className="chip"
-                aria-pressed={category === c.value}
-                style={{ ['--chip-on' as string]: c.color }}
-                onClick={() => setCategory(c.value)}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="field-group">
-          <span className="label">Priority</span>
-          <div className="chips">
-            {PRIORITIES.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                className="chip"
-                aria-pressed={priority === p.value}
-                style={{ ['--chip-on' as string]: p.color }}
-                onClick={() => setPriority(p.value)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="toggle-row">
-          <span>
-            <Icon name="bell" />
-            Remind me{canRemind && remind ? ` · ${formatLead(lead).toLowerCase()}` : ''}
-          </span>
-          <button
-            type="button"
-            className="switch"
-            role="switch"
-            aria-checked={canRemind && remind}
-            aria-label="Remind me"
-            aria-describedby={canRemind ? undefined : 'remind-hint'}
-            disabled={!canRemind}
-            onClick={() => setRemind(!remind)}
-          />
-        </div>
-        {canRemind && remind && (
-          <div className="chips lead-chips" role="radiogroup" aria-label="When to remind me">
-            {REMINDER_LEADS.map((minutes) => (
-              <button
-                key={minutes}
-                type="button"
-                role="radio"
-                aria-checked={lead === minutes}
-                aria-pressed={lead === minutes}
-                className="chip"
-                onClick={() => setLead(minutes)}
-              >
-                {minutes === 0 ? 'At the time' : formatLead(minutes).replace(' before', '')}
-              </button>
-            ))}
-          </div>
-        )}
-        {!remindersOn ? (
-          <span className="hint" id="remind-hint">
-            Reminders are off. Turn them on with the bell button or in your profile.
-          </span>
-        ) : (
-          !time && (
-            <span className="hint" id="remind-hint">
-              Pick a time to get a reminder.
-            </span>
-          )
-        )}
 
         {task?.added_by_name && (
           <p className="hint friend-note">

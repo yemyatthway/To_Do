@@ -13,7 +13,7 @@ const done: TableColumn = { id: 'd', name: 'Done', type: 'checkbox' }
 const count: TableColumn = { id: 'n', name: 'Count', type: 'number' }
 const when: TableColumn = { id: 'x', name: 'Due', type: 'date' }
 const columns = [text, screen, who, done, count, when]
-const row = (no: number, values: TableRowData['values'] = {}): TableRowData => ({ id: no, no, values, highlighted: false, on_my_tasks: false })
+const row = (no: number, values: TableRowData['values'] = {}): TableRowData => ({ id: no, no, values, highlighted: false, on_my_tasks: false, comment_count: 0 })
 
 describe('reading cells', () => {
   it('shows each type in words', () => {

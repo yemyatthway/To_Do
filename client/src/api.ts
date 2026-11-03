@@ -423,6 +423,18 @@ export const social = {
   summary: () => request<{ incoming_requests: number; new_shares: number }>('/api/social/summary/'),
 }
 
+export interface ChatReply {
+  id: number
+  sender: number
+  text: string
+  deleted: boolean
+}
+
+export interface ChatReaction {
+  user: number
+  emoji: string
+}
+
 export interface ChatMessage {
   id: number
   client_id?: string | null
@@ -433,6 +445,9 @@ export interface ChatMessage {
   deleted: boolean
   edited: boolean
   created_at: string
+  /** The message this one answers. */
+  reply?: ChatReply | null
+  reactions?: ChatReaction[]
 }
 
 export interface Chat {
@@ -450,7 +465,11 @@ export const chat = {
   open: (userId: number) => request<Chat>(`/api/chat/with/${userId}/`, json('POST', {})),
   messages: (id: number, before?: number) =>
     request<{ chat: Chat; messages: ChatMessage[] }>(`/api/chat/${id}/messages/${before ? `?before=${before}` : ''}`),
-  send: (id: number, text: string, clientId?: string) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text, client_id: clientId })),
+  send: (id: number, text: string, clientId?: string, replyTo?: number) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text, client_id: clientId, reply_to: replyTo })),
+  react: (id: number, messageId: number, emoji: string | null) =>
+    emoji
+      ? request<{ reactions: ChatReaction[] }>(`/api/chat/${id}/messages/${messageId}/react/`, json('POST', { emoji }))
+      : request<{ reactions: ChatReaction[] }>(`/api/chat/${id}/messages/${messageId}/react/`, { method: 'DELETE' }),
   read: (id: number) => request<{ read_at: string }>(`/api/chat/${id}/read/`, json('POST', {})),
   edit: (id: number, messageId: number, text: string) => request<ChatMessage>(`/api/chat/${id}/messages/${messageId}/`, json('PATCH', { text })),
   /** For everyone (your own messages), or just for you (any message). */
@@ -533,6 +552,7 @@ export interface TableRowData {
   highlighted: boolean
   /** Whether it's already on your own task list. */
   on_my_tasks: boolean
+  comment_count: number
 }
 
 export interface TeamTableSummary {
@@ -547,6 +567,36 @@ export interface TeamTable extends TeamTableSummary {
   description: string
   columns: TableColumn[]
   rows: TableRowData[]
+}
+
+export interface Comment {
+  id: number
+  body: string
+  created_at: string
+  /** Null once their account is erased. */
+  author: { id: number; name: string; username: string } | null
+  can_delete: boolean
+}
+
+export interface ActivityItem {
+  id: number
+  created_at: string
+  actor: string
+  /** The rest of the sentence: "commented on the page ...". */
+  text: string
+  /** Where it happened, if that still exists. */
+  url: string | null
+}
+
+export interface WorkspaceNotification {
+  id: number
+  kind: 'mention' | 'assigned' | 'comment'
+  title: string
+  body: string
+  url: string
+  read: boolean
+  created_at: string
+  actor: string
 }
 
 export interface WorkspaceList {
@@ -574,6 +624,17 @@ export const workspaces = {
     request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/`, json('PATCH', { base_version: base, title: doc.title, blocks: doc.blocks })),
   deletePage: (id: number, pageId: number) => request<void>(`/api/workspaces/${id}/pages/${pageId}/`, { method: 'DELETE' }),
   restorePage: (id: number, pageId: number) => request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/restore/`, json('POST', {})),
+  pageComments: (id: number, pageId: number) => request<Comment[]>(`/api/workspaces/${id}/pages/${pageId}/comments/`),
+  addPageComment: (id: number, pageId: number, body: string) => request<Comment>(`/api/workspaces/${id}/pages/${pageId}/comments/`, json('POST', { body })),
+  rowComments: (id: number, tableId: number, rowId: number) => request<Comment[]>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/comments/`),
+  addRowComment: (id: number, tableId: number, rowId: number, body: string) => request<Comment>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/comments/`, json('POST', { body })),
+  deleteComment: (id: number, commentId: number) => request<void>(`/api/workspaces/${id}/comments/${commentId}/`, { method: 'DELETE' }),
+  activity: (id: number, options: { before?: number; page?: number; row?: number } = {}) => {
+    const query = new URLSearchParams(Object.entries(options).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])))
+    return request<{ items: ActivityItem[]; more: boolean }>(`/api/workspaces/${id}/activity/?${query}`)
+  },
+  notifications: (before?: number) => request<{ items: WorkspaceNotification[]; unread: number; more: boolean }>(`/api/workspaces/notifications/${before ? `?before=${before}` : ''}`),
+  readNotifications: (ids?: number[]) => request<void>('/api/workspaces/notifications/read/', json('POST', ids ? { ids } : {})),
   tables: (id: number) => request<TeamTableSummary[]>(`/api/workspaces/${id}/tables/`),
   createTable: (id: number, title: string) => request<TeamTable>(`/api/workspaces/${id}/tables/`, json('POST', { title })),
   /** With `known`, answers "unchanged" if nothing moved since that version. */
@@ -606,7 +667,7 @@ export function createOutbox(userId: number) {
       createTask: (input, clientId) => api.createTask(input, clientId),
       updateTask: (id, patch, base) => api.updateTask(id, patch, base),
       deleteTask: (id) => api.deleteTask(id),
-      sendMessage: (conversation, text, clientId) => chat.send(conversation, text, clientId),
+      sendMessage: (conversation, text, clientId, replyTo) => chat.send(conversation, text, clientId, replyTo),
     },
     store,
     navigator.locks ?? null,

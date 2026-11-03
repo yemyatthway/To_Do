@@ -14,7 +14,7 @@ from apps.users.models import User
 from apps.users.services import purge_account
 
 from . import permissions as perms
-from .models import Invitation, Membership, Page, Table, TableRow, Workspace
+from .models import ActivityEvent, Comment, Invitation, Membership, Notification, Page, Table, TableRow, Workspace
 
 PASSWORD = "Sunny-Clock-2026"
 
@@ -576,3 +576,273 @@ class TableTests(APITestCase):
         with mock.patch("apps.workspaces.services.MAX_ROWS", 1):
             self.assertEqual(self.add_row().status_code, 201)
             self.assertEqual(self.add_row().status_code, 400)
+
+
+@override_settings(EMAIL_SEND_ASYNC=False, PUSH_SEND_ASYNC=False)
+class TeamworkTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.owner, self.admin, self.editor, self.commenter, self.viewer, self.outsider = (person(n) for n in ["olivia", "adam", "eve", "carl", "vera", "otto"])
+        self.client.force_authenticate(self.owner)
+        self.ws = self.client.post("/api/workspaces/", {"name": "Dev Team"}, format="json").data["id"]
+        for user, role in [(self.admin, "admin"), (self.editor, "editor"), (self.commenter, "commenter"), (self.viewer, "viewer")]:
+            Membership.objects.create(workspace_id=self.ws, user=user, role=role)
+        self.page = self.as_(self.editor).post(self.w("pages/"), {"title": "Release plan"}, format="json").data["id"]
+        table = self.client.post(self.w("tables/"), {"title": "Bugs"}, format="json").data
+        self.tid = table["id"]
+        self.desc, self.who, self.done = (c["id"] for c in table["columns"])
+        self.row = self.client.post(self.w(f"tables/{self.tid}/rows/"), {"values": {self.desc: "Fix login"}}, format="json").data["id"]
+        Notification.objects.all().delete()
+
+    def as_(self, user):
+        self.client.force_authenticate(user)
+        return self.client
+
+    def w(self, rest=""):
+        return f"/api/workspaces/{self.ws}/{rest}"
+
+    def page_comment(self, body):
+        return self.client.post(self.w(f"pages/{self.page}/comments/"), {"body": body}, format="json")
+
+    def row_comment(self, body):
+        return self.client.post(self.w(f"tables/{self.tid}/rows/{self.row}/comments/"), {"body": body}, format="json")
+
+    def inbox(self, user):
+        return self.as_(user).get("/api/workspaces/notifications/").data
+
+    def test_commenters_and_up_can_comment_and_viewers_can_read(self):
+        for user in (self.owner, self.admin, self.editor, self.commenter):
+            self.as_(user)
+            self.assertEqual(self.page_comment("Looks good").status_code, 201)
+            self.assertEqual(self.row_comment("Looks good").status_code, 201)
+        self.as_(self.viewer)
+        self.assertEqual(self.page_comment("No").status_code, 403)
+        self.assertEqual(self.row_comment("No").status_code, 403)
+        self.assertEqual(len(self.client.get(self.w(f"pages/{self.page}/comments/")).data), 4)
+        self.assertEqual(len(self.client.get(self.w(f"tables/{self.tid}/rows/{self.row}/comments/")).data), 4)
+
+    def test_people_outside_get_nothing(self):
+        self.as_(self.editor)
+        comment = self.page_comment("Secret").data["id"]
+        self.as_(self.outsider)
+        for call in (
+            self.client.get(self.w(f"pages/{self.page}/comments/")),
+            self.page_comment("Hi"),
+            self.client.get(self.w(f"tables/{self.tid}/rows/{self.row}/comments/")),
+            self.row_comment("Hi"),
+            self.client.delete(self.w(f"comments/{comment}/")),
+            self.client.get(self.w("activity/")),
+        ):
+            self.assertEqual(call.status_code, 404)
+
+    def test_ids_from_elsewhere_are_not_found(self):
+        other = self.as_(self.outsider).post("/api/workspaces/", {"name": "Mine"}, format="json").data["id"]
+        self.assertEqual(self.client.post(f"/api/workspaces/{other}/pages/{self.page}/comments/", {"body": "x"}, format="json").status_code, 404)
+        self.assertEqual(self.client.post(f"/api/workspaces/{other}/tables/{self.tid}/rows/{self.row}/comments/", {"body": "x"}, format="json").status_code, 404)
+        second = self.as_(self.editor).post(self.w("tables/"), {"title": "Other"}, format="json").data["id"]
+        self.assertEqual(self.client.get(self.w(f"tables/{second}/rows/{self.row}/comments/")).status_code, 404)
+
+    def test_empty_or_long_comments_are_refused(self):
+        self.as_(self.editor)
+        self.assertEqual(self.page_comment("   ").status_code, 400)
+        self.assertEqual(self.page_comment("x" * 2001).status_code, 400)
+        self.assertEqual(self.page_comment("  trimmed ").data["body"], "trimmed")
+
+    def test_you_can_delete_your_own_and_admins_can_delete_any(self):
+        self.as_(self.commenter)
+        mine = self.page_comment("Mine").data
+        self.assertTrue(mine["can_delete"])
+        self.as_(self.editor)
+        self.assertFalse(next(c for c in self.client.get(self.w(f"pages/{self.page}/comments/")).data if c["id"] == mine["id"])["can_delete"])
+        self.assertEqual(self.client.delete(self.w(f"comments/{mine['id']}/")).status_code, 403)
+        self.as_(self.admin)
+        self.assertEqual(self.client.delete(self.w(f"comments/{mine['id']}/")).status_code, 204)
+        self.assertEqual(self.client.get(self.w(f"pages/{self.page}/comments/")).data, [])
+        self.assertEqual(self.client.delete(self.w(f"comments/{mine['id']}/")).status_code, 404)
+
+    def test_a_mention_notifies_members_only_and_never_yourself(self):
+        names = {u: u.username for u in (self.owner, self.editor, self.viewer, self.outsider)}
+        self.as_(self.owner)
+        self.page_comment(f"@{names[self.editor]} and @{names[self.viewer].upper()} check this, cc @{names[self.outsider]} @{names[self.owner]} me@example.com")
+        self.assertEqual(self.inbox(self.editor)["unread"], 1)
+        item = self.inbox(self.viewer)["items"][0]
+        self.assertEqual(item["kind"], "mention")
+        self.assertEqual(item["title"], "Olivia mentioned you on Release plan")
+        self.assertEqual(item["url"], f"/workspaces/{self.ws}/pages/{self.page}")
+        self.assertEqual(self.inbox(self.outsider)["unread"], 0)
+        self.assertEqual(self.inbox(self.owner)["unread"], 0)
+
+    def test_commenting_tells_whoever_is_assigned_and_earlier_commenters_once(self):
+        self.as_(self.editor).patch(self.w(f"tables/{self.tid}/rows/{self.row}/"), {"values": {self.who: self.commenter.pk}}, format="json")
+        self.assertEqual(self.inbox(self.commenter)["items"][0]["kind"], "assigned")
+        Notification.objects.all().delete()
+        self.as_(self.admin)
+        self.row_comment("First")
+        self.assertEqual(self.inbox(self.commenter)["items"][0]["kind"], "comment")
+        self.assertEqual(self.inbox(self.admin)["unread"], 0)
+        Notification.objects.all().delete()
+        # Mentioning someone who'd also hear as a follower gives them just the mention.
+        self.as_(self.owner)
+        self.row_comment(f"@{self.commenter.username} what do you think?")
+        kinds = [n["kind"] for n in self.inbox(self.commenter)["items"]]
+        self.assertEqual(kinds, ["mention"])
+        self.assertEqual([n["kind"] for n in self.inbox(self.admin)["items"]], ["comment"])
+
+    def test_being_assigned_a_row_tells_you_unless_you_did_it(self):
+        url = self.w(f"tables/{self.tid}/rows/{self.row}/")
+        self.as_(self.editor).patch(url, {"values": {self.who: self.editor.pk}}, format="json")
+        self.assertEqual(self.inbox(self.editor)["unread"], 0)
+        self.as_(self.editor).patch(url, {"values": {self.who: self.viewer.pk}}, format="json")
+        item = self.inbox(self.viewer)["items"][0]
+        self.assertEqual(item["title"], "Eve assigned you row 1 of Bugs")
+        self.assertEqual(item["body"], "Fix login")
+        self.assertEqual(item["url"], f"/workspaces/{self.ws}/tables/{self.tid}/rows/{self.row}")
+        # Saving the same value again isn't a new assignment.
+        self.as_(self.editor).patch(url, {"values": {self.who: self.viewer.pk}}, format="json")
+        self.assertEqual(self.inbox(self.viewer)["unread"], 1)
+
+    def test_a_new_row_assigned_to_someone_tells_them(self):
+        self.as_(self.editor).post(self.w(f"tables/{self.tid}/rows/"), {"values": {self.who: self.viewer.pk}}, format="json")
+        self.assertEqual(self.inbox(self.viewer)["unread"], 1)
+
+    def test_marking_read(self):
+        self.as_(self.owner)
+        self.page_comment(f"@{self.viewer.username} one")
+        self.page_comment(f"@{self.viewer.username} two")
+        items = self.inbox(self.viewer)["items"]
+        self.assertEqual(self.client.post("/api/workspaces/notifications/read/", {"ids": [items[0]["id"]]}, format="json").status_code, 204)
+        self.assertEqual(self.inbox(self.viewer)["unread"], 1)
+        self.assertEqual(self.client.post("/api/workspaces/notifications/read/", {"ids": "all"}, format="json").status_code, 400)
+        self.client.post("/api/workspaces/notifications/read/", {}, format="json")
+        self.assertEqual(self.inbox(self.viewer)["unread"], 0)
+
+    def test_you_can_only_mark_your_own(self):
+        self.as_(self.owner)
+        self.page_comment(f"@{self.viewer.username} one")
+        other = Notification.objects.get(recipient=self.viewer).pk
+        self.as_(self.editor).post("/api/workspaces/notifications/read/", {"ids": [other]}, format="json")
+        self.assertEqual(self.inbox(self.viewer)["unread"], 1)
+        self.as_(self.editor).post("/api/workspaces/notifications/read/", {}, format="json")
+        self.assertEqual(self.inbox(self.viewer)["unread"], 1)
+
+    def test_notifications_from_a_deleted_workspace_disappear(self):
+        self.as_(self.owner)
+        self.page_comment(f"@{self.viewer.username} one")
+        self.client.delete(f"/api/workspaces/{self.ws}/", {"confirm_name": "Dev Team"}, format="json")
+        self.assertEqual(self.inbox(self.viewer), {"items": [], "unread": 0, "more": False})
+
+    def test_notifications_come_in_pages(self):
+        self.as_(self.owner)
+        for i in range(31):
+            Notification.objects.create(recipient=self.viewer, actor=self.owner, workspace_id=self.ws, kind="comment", title=str(i), url="/")
+        first = self.inbox(self.viewer)
+        self.assertEqual((len(first["items"]), first["more"], first["unread"]), (30, True, 31))
+        self.assertEqual(len(self.client.get("/api/workspaces/notifications/", {"before": first["items"][-1]["id"]}).data["items"]), 1)
+
+    def test_history_reads_in_words_and_links_to_the_thing(self):
+        self.as_(self.editor).patch(self.w(f"tables/{self.tid}/rows/{self.row}/"), {"values": {self.desc: "New"}}, format="json")
+        self.client.post(self.w(f"tables/{self.tid}/columns/"), {"name": "Page", "type": "select"}, format="json")
+        self.page_comment("Hi")
+        self.client.delete(self.w(f"pages/{self.page}/"))
+        items = self.as_(self.viewer).get(self.w("activity/")).data["items"]
+        self.assertEqual(items[0]["text"], "deleted the page \u201cRelease plan\u201d")
+        self.assertIsNone(items[0]["url"])
+        texts = [i["text"] for i in items]
+        self.assertIn("commented on the page \u201cRelease plan\u201d", texts)
+        self.assertIn("added the column \u201cPage\u201d to \u201cBugs\u201d", texts)
+        self.assertIn("changed Description in row 1 of \u201cBugs\u201d", texts)
+        self.assertIn("created the table \u201cBugs\u201d", texts)
+        row_item = next(i for i in items if i["text"].startswith("changed Description"))
+        self.assertEqual(row_item["url"], f"/workspaces/{self.ws}/tables/{self.tid}/rows/{self.row}")
+        self.assertEqual(row_item["actor"], "Eve")
+
+    def test_a_burst_of_saves_is_one_line_of_history(self):
+        url = self.w(f"tables/{self.tid}/rows/{self.row}/")
+        self.as_(self.editor)
+        for text in ("a", "ab", "abc"):
+            self.client.patch(url, {"values": {self.desc: text}}, format="json")
+        self.client.patch(url, {"values": {self.done: True}}, format="json")
+        edits = ActivityEvent.objects.filter(verb="row.edited")
+        self.assertEqual(edits.count(), 1)
+        self.assertEqual(edits.get().detail["columns"], ["Description", "Done"])
+        page = self.client.get(self.w(f"pages/{self.page}/")).data
+        for title in ("x", "y"):
+            page = self.client.patch(self.w(f"pages/{self.page}/"), {"base_version": page["version"], "title": title}, format="json").data
+        self.assertEqual(ActivityEvent.objects.filter(verb="page.edited").count(), 1)
+        self.assertEqual(ActivityEvent.objects.get(verb="page.edited").title, "y")
+
+    def test_someone_else_or_a_later_save_starts_a_new_line(self):
+        url = self.w(f"tables/{self.tid}/rows/{self.row}/")
+        self.as_(self.editor).patch(url, {"values": {self.desc: "a"}}, format="json")
+        self.as_(self.admin).patch(url, {"values": {self.desc: "b"}}, format="json")
+        self.assertEqual(ActivityEvent.objects.filter(verb="row.edited").count(), 2)
+        ActivityEvent.objects.update(created_at=timezone.now() - timedelta(minutes=30))
+        self.client.patch(url, {"values": {self.desc: "c"}}, format="json")
+        self.assertEqual(ActivityEvent.objects.filter(verb="row.edited").count(), 3)
+
+    def test_saving_without_changing_anything_adds_no_history(self):
+        url = self.w(f"tables/{self.tid}/rows/{self.row}/")
+        self.as_(self.editor).patch(url, {"values": {self.desc: "Fix login"}}, format="json")
+        self.assertFalse(ActivityEvent.objects.filter(verb="row.edited").exists())
+
+    def test_history_can_be_for_one_thing_and_comes_in_pages(self):
+        url = self.w(f"tables/{self.tid}/rows/{self.row}/")
+        self.as_(self.editor).patch(url, {"values": {self.desc: "x"}}, format="json")
+        one = self.client.get(self.w("activity/"), {"row": self.row}).data["items"]
+        self.assertEqual({i["text"].split(" ")[0] for i in one}, {"changed", "added"})
+        self.assertEqual(self.client.get(self.w("activity/"), {"page": self.page}).data["items"][0]["text"], "created the page \u201cRelease plan\u201d")
+        for _ in range(35):
+            ActivityEvent.objects.create(workspace_id=self.ws, actor=self.editor, verb="member.joined", created_at=timezone.now())
+        first = self.client.get(self.w("activity/")).data
+        self.assertEqual((len(first["items"]), first["more"]), (30, True))
+        self.assertGreater(len(self.client.get(self.w("activity/"), {"before": first["items"][-1]["id"]}).data["items"]), 0)
+
+    def test_member_changes_are_in_the_history(self):
+        self.as_(self.owner).patch(self.w(f"members/{self.viewer.pk}/"), {"role": "editor"}, format="json")
+        self.client.delete(self.w(f"members/{self.commenter.pk}/"))
+        self.as_(self.viewer).delete(self.w(f"members/{self.viewer.pk}/"))
+        texts = [i["text"] for i in self.as_(self.owner).get(self.w("activity/")).data["items"]]
+        self.assertEqual(texts[:3], ["left the workspace", "removed Carl from the workspace", "made Vera Editor"])
+
+    def test_rows_count_their_comments(self):
+        self.as_(self.editor)
+        self.row_comment("One")
+        comment = self.row_comment("Two").data["id"]
+        table = self.client.get(self.w(f"tables/{self.tid}/")).data
+        self.assertEqual(table["rows"][0]["comment_count"], 2)
+        version = table["version"]
+        self.client.delete(self.w(f"comments/{comment}/"))
+        fresh = self.client.get(self.w(f"tables/{self.tid}/"), {"known": version}).data
+        self.assertEqual(fresh["rows"][0]["comment_count"], 1)
+        saved = self.client.patch(self.w(f"tables/{self.tid}/rows/{self.row}/"), {"values": {self.done: True}}, format="json").data
+        self.assertEqual(saved["comment_count"], 1)
+
+    def test_a_comment_cannot_be_on_two_things(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Comment.objects.create(workspace_id=self.ws, page_id=self.page, row_id=self.row, author=self.owner, body="x")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Comment.objects.create(workspace_id=self.ws, author=self.owner, body="x")
+
+    def test_the_clean_up_keeps_recent_things(self):
+        self.as_(self.editor)
+        keep = self.page_comment("Keep").data["id"]
+        old = self.page_comment("Old").data["id"]
+        Comment.all_objects.filter(pk=old).update(deleted_at=timezone.now() - timedelta(days=400))
+        note = Notification.objects.create(recipient=self.viewer, workspace_id=self.ws, kind="comment", title="Old", url="/")
+        Notification.objects.filter(pk=note.pk).update(created_at=timezone.now() - timedelta(days=400))
+        fresh = Notification.objects.create(recipient=self.viewer, workspace_id=self.ws, kind="comment", title="New", url="/")
+        ActivityEvent.objects.create(workspace_id=self.ws, verb="member.joined", created_at=timezone.now() - timedelta(days=400))
+        prune()
+        self.assertTrue(Comment.objects.filter(pk=keep).exists())
+        self.assertFalse(Comment.all_objects.filter(pk=old).exists())
+        self.assertEqual(list(Notification.objects.filter(recipient=self.viewer)), [fresh])
+        self.assertFalse(ActivityEvent.objects.filter(created_at__lt=timezone.now() - timedelta(days=300)).exists())
+
+    def test_an_erased_account_leaves_comments_and_history_readable(self):
+        self.as_(self.commenter)
+        self.page_comment("Mine")
+        purge_account(self.commenter)
+        comment = self.as_(self.owner).get(self.w(f"pages/{self.page}/comments/")).data[0]
+        self.assertIsNone(comment["author"])
+        self.assertEqual(comment["body"], "Mine")
+        self.assertEqual(self.client.get(self.w("activity/")).data["items"][0]["actor"], "Someone")

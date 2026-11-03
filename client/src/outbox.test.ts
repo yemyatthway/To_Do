@@ -214,8 +214,18 @@ describe('Outbox', () => {
     const heard = vi.fn()
     box.onMessage(heard)
     await box.settle()
-    expect(api.sendMessage).toHaveBeenCalledWith(3, 'Hello', key)
+    expect(api.sendMessage).toHaveBeenCalledWith(3, 'Hello', key, undefined)
     expect(heard).toHaveBeenCalledOnce()
+  })
+
+  it('keeps what a message answers, even while it waits to send', async () => {
+    box.stop()
+    const reply = { id: 5, sender: 2, text: 'Can you check?', deleted: false }
+    const key = box.sendMessage(3, 'On it', reply)
+    expect(pendingMessages(box.getSnapshot(), 3, [], 1)).toMatchObject([{ text: 'On it', reply, reactions: [] }])
+    box.start()
+    await box.settle()
+    expect(api.sendMessage).toHaveBeenCalledWith(3, 'On it', key, 5)
   })
 
   it('still works when the device refuses storage', async () => {

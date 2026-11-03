@@ -177,19 +177,24 @@ def table_summary(table):
     }
 
 
-def row_data(row, columns, on_my_tasks=False):
+def row_data(row, columns, on_my_tasks=False, comment_count=0):
     known = {c["id"] for c in columns}
     return {
         "id": row.pk, "no": row.no, "values": {k: v for k, v in row.values.items() if k in known},
-        "highlighted": row.highlighted, "on_my_tasks": on_my_tasks,
+        "highlighted": row.highlighted, "on_my_tasks": on_my_tasks, "comment_count": comment_count,
     }
+
+
+def one_row(row, me):
+    return row_data(row, row.table.columns, row.pk in services.my_tasks_from(me, row.table), services.comment_counts(row.table).get(row.pk, 0))
 
 
 def table_data(table, me):
     mine = services.my_tasks_from(me, table)
+    counts = services.comment_counts(table)
     return {
         **table_summary(table), "description": table.description, "columns": table.columns,
-        "rows": [row_data(r, table.columns, r.pk in mine) for r in services.rows_of(table)],
+        "rows": [row_data(r, table.columns, r.pk in mine, counts.get(r.pk, 0)) for r in services.rows_of(table)],
     }
 
 
@@ -250,7 +255,7 @@ class RowsApi(APIView):
 
     def post(self, request, workspace_id, table_id):
         row = services.create_row(request.user, workspace_id, table_id, request.data.get("values"))
-        return Response(row_data(row, row.table.columns), status=status.HTTP_201_CREATED)
+        return Response(one_row(row, request.user), status=status.HTTP_201_CREATED)
 
 
 class RowApi(APIView):
@@ -265,10 +270,10 @@ class RowApi(APIView):
         except services.RowConflict as conflict:
             current = conflict.current
             return Response(
-                {"detail": "Someone else changed this row.", "current": row_data(current, current.table.columns, current.pk in services.my_tasks_from(request.user, current.table))},
+                {"detail": "Someone else changed this row.", "current": one_row(current, request.user)},
                 status=status.HTTP_409_CONFLICT,
             )
-        return Response(row_data(row, row.table.columns, row.pk in services.my_tasks_from(request.user, row.table)))
+        return Response(one_row(row, request.user))
 
     def delete(self, request, workspace_id, table_id, row_id):
         services.delete_row(request.user, workspace_id, table_id, row_id)
@@ -278,10 +283,147 @@ class RowApi(APIView):
 class RestoreRowApi(APIView):
     def post(self, request, workspace_id, table_id, row_id):
         row = services.restore_row(request.user, workspace_id, table_id, row_id)
-        return Response(row_data(row, row.table.columns, row.pk in services.my_tasks_from(request.user, row.table)))
+        return Response(one_row(row, request.user))
 
 
 class AddRowToTasksApi(APIView):
     def post(self, request, workspace_id, table_id, row_id):
         row, task = services.add_row_to_tasks(request.user, workspace_id, table_id, row_id)
-        return Response({"row": row_data(row, row.table.columns, True), "task_title": task.title, "due_at": task.due_at})
+        return Response({"row": one_row(row, request.user), "task_title": task.title, "due_at": task.due_at})
+
+
+def comment_data(comment, me, can_manage):
+    author = comment.author
+    return {
+        "id": comment.pk, "body": comment.body, "created_at": comment.created_at,
+        "author": {"id": author.pk, "name": author.full_name or f"@{author.username}", "username": author.username} if author else None,
+        "can_delete": can_manage or (author is not None and author.pk == me.pk),
+    }
+
+
+def _comments_response(request, workspace_id, comments):
+    can_manage = perms.can(services.membership_for(request.user, workspace_id).role, perms.MANAGE_MEMBERS)
+    return Response([comment_data(c, request.user, can_manage) for c in comments])
+
+
+class PageCommentsApi(APIView):
+    throttle_scope = "comments"
+
+    def get(self, request, workspace_id, page_id):
+        return _comments_response(request, workspace_id, services.comments_of(request.user, workspace_id, page_id=page_id))
+
+    def post(self, request, workspace_id, page_id):
+        comment = services.add_comment(request.user, workspace_id, request.data.get("body"), page_id=page_id)
+        can_manage = perms.can(services.membership_for(request.user, workspace_id).role, perms.MANAGE_MEMBERS)
+        return Response(comment_data(comment, request.user, can_manage), status=status.HTTP_201_CREATED)
+
+
+class RowCommentsApi(APIView):
+    throttle_scope = "comments"
+
+    def get(self, request, workspace_id, table_id, row_id):
+        return _comments_response(request, workspace_id, services.comments_of(request.user, workspace_id, table_id=table_id, row_id=row_id))
+
+    def post(self, request, workspace_id, table_id, row_id):
+        comment = services.add_comment(request.user, workspace_id, request.data.get("body"), table_id=table_id, row_id=row_id)
+        can_manage = perms.can(services.membership_for(request.user, workspace_id).role, perms.MANAGE_MEMBERS)
+        return Response(comment_data(comment, request.user, can_manage), status=status.HTTP_201_CREATED)
+
+
+class CommentApi(APIView):
+    def delete(self, request, workspace_id, comment_id):
+        services.delete_comment(request.user, workspace_id, comment_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _quoted(text):
+    return f"\u201c{text}\u201d" if text else ""
+
+
+def activity_text(event):
+    """One line of history, in words."""
+    title, detail = _quoted(event.title), event.detail
+    row = f"row {detail.get('no')} of {title}"
+    column = _quoted(detail.get("column", ""))
+    return {
+        "workspace.renamed": f"renamed the workspace to {title}",
+        "member.joined": "joined the workspace",
+        "member.left": "left the workspace",
+        "member.removed": f"removed {event.title} from the workspace",
+        "member.role": f"made {event.title} {str(detail.get('role', '')).capitalize()}",
+        "page.created": f"created the page {title}",
+        "page.edited": f"edited the page {title}",
+        "page.deleted": f"deleted the page {title}",
+        "page.restored": f"brought back the page {title}",
+        "table.created": f"created the table {title}",
+        "table.renamed": f"renamed a table to {title}",
+        "table.deleted": f"deleted the table {title}",
+        "table.restored": f"brought back the table {title}",
+        "column.added": f"added the column {column} to {title}",
+        "column.renamed": f"renamed {_quoted(detail.get('was', ''))} to {column} in {title}",
+        "column.removed": f"removed the column {column} from {title}",
+        "row.created": f"added {row}",
+        "row.edited": f"changed {', '.join(detail.get('columns', []))} in {row}",
+        "row.deleted": f"deleted {row}",
+        "row.restored": f"brought back {row}",
+        "comment.page": f"commented on the page {title}",
+        "comment.row": f"commented on {row}",
+    }.get(event.verb, "changed something")
+
+
+def activity_url(event):
+    base = f"/workspaces/{event.workspace_id}"
+    if event.verb.endswith(".deleted"):
+        return None
+    if event.target_kind == "page":
+        return f"{base}/pages/{event.target_id}"
+    if event.target_kind == "table":
+        return f"{base}/tables/{event.target_id}"
+    if event.target_kind == "row":
+        return f"{base}/tables/{event.detail.get('table_id')}/rows/{event.target_id}"
+    return None
+
+
+def activity_data(event):
+    actor = event.actor
+    return {
+        "id": event.pk, "created_at": event.created_at, "text": activity_text(event), "url": activity_url(event),
+        "actor": (actor.full_name or f"@{actor.username}") if actor else "Someone",
+    }
+
+
+def _int_param(request, name):
+    value = request.query_params.get(name)
+    return int(value) if value and value.isdigit() else None
+
+
+class ActivityApi(APIView):
+    """GET: the workspace's history, newest first, ?before=<id> for more, ?page= or ?row= for one thing."""
+
+    def get(self, request, workspace_id):
+        events = services.activity_of(request.user, workspace_id, _int_param(request, "before"), _int_param(request, "page"), _int_param(request, "row"))
+        return Response({"items": [activity_data(e) for e in events[: services.PAGE_SIZE]], "more": len(events) > services.PAGE_SIZE})
+
+
+def notification_data(item):
+    actor = item.actor
+    return {
+        "id": item.pk, "kind": item.kind, "title": item.title, "body": item.body, "url": item.url, "read": item.read_at is not None, "created_at": item.created_at,
+        "actor": (actor.full_name or f"@{actor.username}") if actor else "Someone",
+    }
+
+
+class NotificationsApi(APIView):
+    """GET: what's for you, newest first, with how many are unread. ?before=<id> for more."""
+
+    def get(self, request):
+        items, unread = services.notifications_of(request.user, _int_param(request, "before"))
+        return Response({"items": [notification_data(n) for n in items[: services.PAGE_SIZE]], "unread": unread, "more": len(items) > services.PAGE_SIZE})
+
+
+class ReadNotificationsApi(APIView):
+    """POST {ids: [...]}: mark those as read. With no ids: mark everything."""
+
+    def post(self, request):
+        services.mark_read(request.user, request.data.get("ids"))
+        return Response(status=status.HTTP_204_NO_CONTENT)
