@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, workspaces, type TeamPageSummary, type Task, type TaskInput, type User, type WorkspaceList } from './api'
+import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, workspaces, type Task, type TaskInput, type User, type WorkspaceList } from './api'
 import { SideNav } from './components/SideNav'
 import { AppSkeleton, CardsSkeleton, HomeSkeleton, Loading, LoadingPage } from './components/Loading'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
@@ -13,6 +13,8 @@ import { AuthScreen } from './pages/AuthScreen'
 import { isChildPage, parseRoute, SETTINGS_SECTIONS, useRoute, type Route, type View } from './routes'
 import { useLiveRefresh } from './live'
 import { clearPageDrafts, pageStorage, sendLeftoverDrafts } from './pageSaver'
+import { clearLeftoverRows, sendLeftoverRows } from './rowSaver'
+import type { WorkspaceItem } from './pages/Workspaces'
 import { overlayTasks, type TaskPatch } from './outbox'
 import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
@@ -275,8 +277,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const workspaceId = route.view === 'workspace' ? route.id : null
   const go = useCallback((next: Exclude<View, 'workspace'>) => navigate({ view: next } as Route), [navigate])
   const [friendName, setFriendName] = useState<string | null>(null)
-  const [sidePages, setSidePages] = useState<{ workspaceId: number; pages: TeamPageSummary[] } | null>(null)
-  const showSidePages = useCallback((workspaceId: number, pages: TeamPageSummary[]) => setSidePages({ workspaceId, pages }), [])
+  const [sideItems, setSideItems] = useState<{ workspaceId: number; items: WorkspaceItem[] } | null>(null)
+  const showSideItems = useCallback((workspaceId: number, items: WorkspaceItem[]) => setSideItems({ workspaceId, items }), [])
   // Staff only: anyone else who opens /admin lands on Today, with the address to match.
   useEffect(() => {
     if (asked.view === 'admin' && !user.is_staff) navigate({ view: 'home' }, { replace: true })
@@ -613,6 +615,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     await auth.deleteAccount(password)
     outbox.clear()
     clearPageDrafts(user.id, pageStorage())
+    clearLeftoverRows(user.id, pageStorage())
     clearSavedTimer()
     window.history.replaceState(null, '', '/')
     onLoggedOut('Your account was deleted. Changed your mind? Log in within 30 days to restore it.')
@@ -635,6 +638,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   // Page text left on this device by a page that closed before it could save.
   useEffect(() => {
     void sendLeftoverDrafts(user.id, pageStorage(), workspaces.savePage)
+    void sendLeftoverRows(user.id, pageStorage(), workspaces.saveRow)
   }, [user.id])
 
   // Panels that scroll on their own (task list, chats) size themselves to the screen below the
@@ -733,7 +737,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     more: ['Everything else', 'More'],
     workspaces: ['Teams', 'Workspaces'],
     workspace:
-      route.view !== 'workspace' || route.section === 'home' || route.section === 'page'
+      route.view !== 'workspace' || route.section === 'home' || route.section === 'page' || route.section === 'table'
         ? ['Workspaces', workspaceName]
         : route.section === 'members'
           ? [workspaceName, 'Members']
@@ -762,8 +766,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
 
       <div className="shell">
       <SideNav
-        view={route.view === 'workspace' ? (route.section === 'page' ? `page:${route.id}:${route.pageId}` : `workspace:${route.id}`) : view}
-        openWorkspace={route.view === 'workspace' && sidePages?.workspaceId === route.id ? sidePages : null}
+        view={route.view === 'workspace' ? (route.section === 'page' ? `page:${route.id}:${route.pageId}` : route.section === 'table' ? `table:${route.id}:${route.tableId}` : `workspace:${route.id}`) : view}
+        openWorkspace={route.view === 'workspace' && sideItems?.workspaceId === route.id ? sideItems : null}
         isStaff={user.is_staff}
         chatBadge={chatBadge}
         socialBadge={socialBadge}
@@ -773,6 +777,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           if (next.startsWith('page:')) {
             const [, id, pageId] = next.split(':')
             navigate({ view: 'workspace', id: Number(id), section: 'page', pageId: Number(pageId) })
+          } else if (next.startsWith('table:')) {
+            const [, id, tableId] = next.split(':')
+            navigate({ view: 'workspace', id: Number(id), section: 'table', tableId: Number(tableId) })
           } else if (next.startsWith('workspace:')) openWorkspace(Number(next.split(':')[1]))
           else go(next as Exclude<View, 'workspace'>)
         }}
@@ -883,11 +890,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                 now={now}
                 section={route.section}
                 pageId={route.section === 'page' ? route.pageId : undefined}
+                tableId={route.section === 'table' ? route.tableId : undefined}
                 notify={notify}
                 showToast={showToast}
                 onOpenSection={(section, options) => navigate({ view: 'workspace', id: route.id, section }, options)}
                 onOpenPage={(pageId) => navigate({ view: 'workspace', id: route.id, section: 'page', pageId })}
-                onPages={showSidePages}
+                onOpenTable={(tableId) => navigate({ view: 'workspace', id: route.id, section: 'table', tableId })}
+                onItems={showSideItems}
+                onTasksChanged={load}
                 onChanged={loadWorkspaces}
                 onGone={leftWorkspace}
               />

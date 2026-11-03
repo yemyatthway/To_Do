@@ -96,3 +96,58 @@ class Page(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class LiveTableManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
+class Table(models.Model):
+    """A table the team set up itself: its own name and columns, like a bug list or a test plan."""
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="tables")
+    title = models.CharField(max_length=120)
+    description = models.CharField(max_length=500, blank=True)
+    # [{"id": "c1a2b3c4", "name": "Assigned", "type": "text" | "number" | "select" | "person" | "date" | "checkbox"}]
+    columns = models.JSONField(default=list)
+    next_no = models.PositiveIntegerField(default=1)
+    # Goes up with any change to the table or its rows, so open screens can ask "anything new?" cheaply.
+    version = models.PositiveIntegerField(default=1)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    objects = LiveTableManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        indexes = [models.Index(fields=["workspace", "-updated_at"])]
+
+    def __str__(self):
+        return self.title
+
+
+class TableRow(models.Model):
+    table = models.ForeignKey(Table, on_delete=models.CASCADE, related_name="rows")
+    # The row's number in its table. Never reused, so "bug 12" keeps meaning the same bug.
+    no = models.PositiveIntegerField()
+    # {column id: value}
+    values = models.JSONField(default=dict)
+    highlighted = models.BooleanField(default=False)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    objects = LiveTableManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        ordering = ["no"]
+        constraints = [models.UniqueConstraint(fields=["table", "no"], name="one_row_per_number")]

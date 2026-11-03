@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, workspaces as api, type Member, type TeamPage, type TeamPageSummary, type Role, type WorkspaceDetail, type WorkspaceList } from '../api'
+import { ApiError, workspaces as api, type Member, type Role, type TeamPage, type TeamTable, type WorkspaceDetail, type WorkspaceList } from '../api'
 import { ConfirmAction } from '../components/ConfirmAction'
 import { CardsSkeleton, Loading, SkeletonRows } from '../components/Loading'
 import { PageEditor } from '../components/PageEditor'
+import { TableView } from '../components/TableView'
 import { SearchField } from '../components/SearchField'
 import type { ToastData } from '../components/Toast'
 import { Icon } from '../icons'
@@ -176,31 +177,46 @@ const ROLE_RULES: { action: string; allowed: Role[] }[] = [
 ]
 const ALL_ROLES: Role[] = ['owner', 'admin', 'editor', 'commenter', 'viewer']
 
-type Dialog = { kind: 'remove'; member: Member } | { kind: 'transfer' | 'leave' | 'delete' | 'invite' | 'rename' | 'new-page' }
+type Dialog = { kind: 'remove'; member: Member } | { kind: 'transfer' | 'leave' | 'delete' | 'invite' | 'rename' | 'new-item' }
+
+/** A page or table, as the workspace's list and the sidebar show it. */
+export interface WorkspaceItem {
+  kind: 'page' | 'table'
+  id: number
+  title: string
+  updated_at: string
+  updated_by: string | null
+}
+
+const newestFirst = (a: WorkspaceItem, b: WorkspaceItem) => b.updated_at.localeCompare(a.updated_at)
 
 interface DetailProps {
   id: number
   myId: number
   now: Date
   /** Which child page is open. */
-  section: WorkspaceSection | 'page'
+  section: WorkspaceSection | 'page' | 'table'
   pageId?: number
+  tableId?: number
   notify: (title: string, detail?: string) => void
   showToast: (toast: Omit<ToastData, 'id'>) => void
   onOpenSection: (section: WorkspaceSection, options?: { replace?: boolean }) => void
   onOpenPage: (pageId: number) => void
-  /** The list of pages, for the sidebar. */
-  onPages: (workspaceId: number, pages: TeamPageSummary[]) => void
+  onOpenTable: (tableId: number) => void
+  /** The list of pages and tables, for the sidebar. */
+  onItems: (workspaceId: number, items: WorkspaceItem[]) => void
+  onTasksChanged: () => void
   onChanged: () => void
   /** It was deleted, or you're no longer in it. */
   onGone: () => void
 }
 
 /** One workspace and its child pages: home, members, settings and roles. */
-export function WorkspacePage({ id, myId, now, section, pageId, notify, showToast, onOpenSection, onOpenPage, onPages, onChanged, onGone }: DetailProps) {
+export function WorkspacePage({ id, myId, now, section, pageId, tableId, notify, showToast, onOpenSection, onOpenPage, onOpenTable, onItems, onTasksChanged, onChanged, onGone }: DetailProps) {
   const [data, setData] = useState<WorkspaceDetail | null>(null)
-  const [pages, setPages] = useState<TeamPageSummary[] | null>(null)
-  const [pageQuery, setPageQuery] = useState('')
+  const [items, setItems] = useState<WorkspaceItem[] | null>(null)
+  const [itemQuery, setItemQuery] = useState('')
+  const [newKind, setNewKind] = useState<WorkspaceItem['kind']>('page')
   const [error, setError] = useState('')
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [query, setQuery] = useState('')
@@ -208,13 +224,18 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
   const [role, setRole] = useState<Role>('editor')
   const [newOwner, setNewOwner] = useState('')
   const pageRef = useRef<HTMLDivElement>(null)
-  useEnterOnChange(pageRef, `${section}-${pageId ?? ''}`)
+  useEnterOnChange(pageRef, `${section}-${pageId ?? tableId ?? ''}`)
 
   const load = useCallback(async () => {
     try {
-      const [detail, list] = await Promise.all([api.get(id), api.pages(id)])
+      const [detail, pages, tables] = await Promise.all([api.get(id), api.pages(id), api.tables(id)])
       setData(detail)
-      setPages(list)
+      setItems(
+        [
+          ...pages.map((p): WorkspaceItem => ({ kind: 'page', id: p.id, title: p.title, updated_at: p.updated_at, updated_by: p.updated_by })),
+          ...tables.map((t): WorkspaceItem => ({ kind: 'table', id: t.id, title: t.title, updated_at: t.updated_at, updated_by: t.updated_by })),
+        ].sort(newestFirst),
+      )
       setError('')
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) onGone()
@@ -229,14 +250,43 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
   useLiveRefresh(load, 15_000)
 
   useEffect(() => {
-    if (pages) onPages(id, pages)
-  }, [id, pages, onPages])
+    if (items) onItems(id, items)
+  }, [id, items, onItems])
 
-  // A save moves the page to the top of the list, with its new name.
-  const pageSaved = useCallback((page: TeamPage) => {
-    const { blocks: _content, ...summary } = page
-    setPages((list) => [summary, ...(list ?? []).filter((p) => p.id !== page.id)])
+  // A save moves it to the top of the list, with its new name.
+  const itemSaved = useCallback((kind: WorkspaceItem['kind'], saved: TeamPage | TeamTable) => {
+    const item: WorkspaceItem = { kind, id: saved.id, title: saved.title, updated_at: saved.updated_at, updated_by: saved.updated_by }
+    setItems((list) => [item, ...(list ?? []).filter((i) => i.kind !== kind || i.id !== saved.id)].sort(newestFirst))
   }, [])
+  const pageSaved = useCallback((page: TeamPage) => itemSaved('page', page), [itemSaved])
+  const tableSaved = useCallback((table: TeamTable) => itemSaved('table', table), [itemSaved])
+
+  const tableGone = useCallback(() => {
+    notify('That table was deleted')
+    onOpenSection('home', { replace: true })
+    void load()
+  }, [notify, onOpenSection, load])
+
+  const tableDeleted = useCallback(
+    (table: TeamTable) => {
+      setItems((list) => list?.filter((i) => i.kind !== 'table' || i.id !== table.id) ?? null)
+      onOpenSection('home', { replace: true })
+      showToast({
+        title: 'Table deleted',
+        detail: table.title,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            api.restoreTable(id, table.id).then(
+              () => void load(),
+              (err: unknown) => notify("Couldn't bring it back", errorMessage(err)),
+            )
+          },
+        },
+      })
+    },
+    [id, load, notify, onOpenSection, showToast],
+  )
 
   const pageGone = useCallback(() => {
     notify('That page was deleted')
@@ -246,7 +296,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
 
   const pageDeleted = useCallback(
     (page: TeamPage) => {
-      setPages((list) => list?.filter((p) => p.id !== page.id) ?? null)
+      setItems((list) => list?.filter((i) => i.kind !== 'page' || i.id !== page.id) ?? null)
       onOpenSection('home', { replace: true })
       showToast({
         title: 'Page deleted',
@@ -307,8 +357,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
   const q = query.trim().replace(/^@/, '').toLowerCase()
   const members = data.members.filter((m) => `${m.full_name} ${m.username}`.toLowerCase().includes(q))
   const others = data.members.filter((m) => m.id !== myId)
-  const pageFilter = pageQuery.trim().toLowerCase()
-  const shownPages = pages?.filter((p) => p.title.toLowerCase().includes(pageFilter)) ?? []
+  const itemFilter = itemQuery.trim().toLowerCase()
+  const shownItems = items?.filter((i) => i.title.toLowerCase().includes(itemFilter)) ?? []
 
   const openInvite = () => {
     setText('')
@@ -317,7 +367,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
   }
 
   return (
-    <div ref={pageRef} className="panel-page">
+    <div ref={pageRef} className={`panel-page${section === 'table' ? ' wide' : ''}`}>
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
@@ -327,13 +377,14 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
       {section === 'home' && (
         <section className="card glass panel" aria-label={data.name}>
           <div className="panel-top">
-            <SearchField label="Search this workspace" placeholder="Search this workspace" value={pageQuery} onChange={setPageQuery} />
+            <SearchField label="Search this workspace" placeholder="Search this workspace" value={itemQuery} onChange={setItemQuery} />
             {data.can.edit && (
               <button
                 className="primary-btn"
                 onClick={() => {
                   setText('')
-                  setDialog({ kind: 'new-page' })
+                  setNewKind('table')
+                  setDialog({ kind: 'new-item' })
                 }}
               >
                 <Icon name="plus" />
@@ -342,19 +393,19 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
             )}
           </div>
           <div className="panel-scroll">
-            <h3 className="section-label">Pages</h3>
-            {pages?.length === 0 && <p className="empty">{data.can.edit ? 'No pages yet. Press New and name your first one.' : 'No pages yet.'}</p>}
-            {Boolean(pages?.length) && shownPages.length === 0 && <p className="empty">No pages match.</p>}
+            <h3 className="section-label">Pages and tables</h3>
+            {items?.length === 0 && <p className="empty">{data.can.edit ? 'Nothing here yet. Press New and name your first table or page.' : 'Nothing here yet.'}</p>}
+            {Boolean(items?.length) && shownItems.length === 0 && <p className="empty">Nothing matches.</p>}
             <ul className="people">
-              {shownPages.map((p) => (
-                <li key={p.id}>
-                  <button className="more-row" onClick={() => onOpenPage(p.id)}>
-                    <Icon name="page" />
+              {shownItems.map((item) => (
+                <li key={`${item.kind}-${item.id}`}>
+                  <button className="more-row" onClick={() => (item.kind === 'table' ? onOpenTable(item.id) : onOpenPage(item.id))}>
+                    <Icon name={item.kind} />
                     <span className="person-main">
-                      <span className="person-name">{p.title}</span>
+                      <span className="person-name">{item.title}</span>
                       <span className="task-meta">
-                        Edited {timeAgo(p.updated_at, now).toLowerCase()}
-                        {p.updated_by && ` by ${p.updated_by}`}
+                        Edited {timeAgo(item.updated_at, now).toLowerCase()}
+                        {item.updated_by && ` by ${item.updated_by}`}
                       </span>
                     </span>
                     <Icon name="chevron" className="more-go" />
@@ -385,6 +436,23 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
 
       {section === 'page' && pageId && (
         <PageEditor key={pageId} workspaceId={id} pageId={pageId} userId={myId} canEdit={data.can.edit} onSaved={pageSaved} onDeleted={pageDeleted} onGone={pageGone} />
+      )}
+
+      {section === 'table' && tableId && (
+        <TableView
+          key={tableId}
+          workspaceId={id}
+          tableId={tableId}
+          userId={myId}
+          canEdit={data.can.edit}
+          members={data.members}
+          notify={notify}
+          showToast={showToast}
+          onSaved={tableSaved}
+          onDeleted={tableDeleted}
+          onGone={tableGone}
+          onTasksChanged={onTasksChanged}
+        />
       )}
 
       {section === 'members' && (
@@ -535,27 +603,42 @@ export function WorkspacePage({ id, myId, now, section, pageId, notify, showToas
         </section>
       )}
 
-      {dialog?.kind === 'new-page' && (
+      {dialog?.kind === 'new-item' && (
         <ConfirmAction
-          icon="page"
+          icon={newKind}
           title={`New in ${data.name}`}
           confirmLabel="Create"
           confirmDisabled={!text.trim()}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
             try {
-              const page = await api.createPage(id, text)
-              setDialog(null)
-              pageSaved(page)
-              onOpenPage(page.id)
+              if (newKind === 'table') {
+                const table = await api.createTable(id, text)
+                setDialog(null)
+                tableSaved(table)
+                onOpenTable(table.id)
+              } else {
+                const page = await api.createPage(id, text)
+                setDialog(null)
+                pageSaved(page)
+                onOpenPage(page.id)
+              }
             } catch (err) {
               throw new Error(fieldError(err, 'title'), { cause: err })
             }
           }}
         >
+          <div className="chips" role="group" aria-label="What to make" style={{ justifyContent: 'center' }}>
+            <button type="button" className="chip" aria-pressed={newKind === 'table'} onClick={() => setNewKind('table')}>
+              Table
+            </button>
+            <button type="button" className="chip" aria-pressed={newKind === 'page'} onClick={() => setNewKind('page')}>
+              Page
+            </button>
+          </div>
           <label className="field-group" style={leftField}>
             <span className="label">Name it anything</span>
-            <input data-autofocus className="field" maxLength={120} value={text} placeholder="Release plan" onChange={(e) => setText(e.target.value)} />
+            <input data-autofocus className="field" maxLength={120} value={text} placeholder={newKind === 'table' ? 'Sprint 12 testing' : 'Release plan'} onChange={(e) => setText(e.target.value)} />
           </label>
         </ConfirmAction>
       )}

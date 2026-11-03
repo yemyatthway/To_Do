@@ -1,5 +1,5 @@
-import type { TeamPageSummary } from '../api'
 import { Icon, type IconName } from '../icons'
+import type { WorkspaceItem } from '../pages/Workspaces'
 
 interface Item {
   id: string
@@ -17,8 +17,8 @@ interface SideNavProps {
   socialBadge: number
   workspaces: { id: number; name: string }[]
   inviteBadge: number
-  /** The workspace that's open, whose pages show under its name. */
-  openWorkspace: { workspaceId: number; pages: TeamPageSummary[] } | null
+  /** The workspace that's open, whose pages and tables show under its name. */
+  openWorkspace: { workspaceId: number; items: WorkspaceItem[] } | null
   onGo: (view: string) => void
 }
 
@@ -38,7 +38,7 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
       items: [
         ...workspaces.flatMap((w): Item[] => [
           { id: `workspace:${w.id}`, label: w.name, icon: 'team' },
-          ...(openWorkspace?.workspaceId === w.id ? openWorkspace.pages.map((p): Item => ({ id: `page:${w.id}:${p.id}`, label: p.title, icon: 'page', sub: true })) : []),
+          ...(openWorkspace?.workspaceId === w.id ? openWorkspace.items.map((i): Item => ({ id: `${i.kind}:${w.id}:${i.id}`, label: i.title, icon: i.kind, sub: true })) : []),
         ]),
         { id: 'workspaces', label: workspaces.length ? 'All workspaces' : 'Workspaces', icon: 'inbox' as const, badge: inviteBadge, tour: 'workspaces' },
       ],

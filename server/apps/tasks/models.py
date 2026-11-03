@@ -36,6 +36,8 @@ class Task(models.Model):
     # changes to the original (time, title...) are copied here; editing those here unlinks it.
     linked_from = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="linked_copies")
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # The workspace table row this task was made from ("Add to my tasks").
+    source_row = models.ForeignKey("workspaces.TableRow", null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks")
     # Chosen by the app when the task is first made, so sending it again (the reply got lost, the
     # network came back) finds the same task instead of creating a second one.
     client_id = models.UUIDField(null=True, blank=True, editable=False)

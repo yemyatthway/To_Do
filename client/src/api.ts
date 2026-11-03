@@ -517,6 +517,38 @@ export interface TeamPage extends TeamPageSummary {
   blocks: Block[]
 }
 
+export type ColumnType = 'text' | 'number' | 'select' | 'person' | 'date' | 'checkbox'
+export type CellValue = string | number | boolean | null
+
+export interface TableColumn {
+  id: string
+  name: string
+  type: ColumnType
+}
+
+export interface TableRowData {
+  id: number
+  no: number
+  values: Record<string, CellValue>
+  highlighted: boolean
+  /** Whether it's already on your own task list. */
+  on_my_tasks: boolean
+}
+
+export interface TeamTableSummary {
+  id: number
+  title: string
+  version: number
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface TeamTable extends TeamTableSummary {
+  description: string
+  columns: TableColumn[]
+  rows: TableRowData[]
+}
+
 export interface WorkspaceList {
   workspaces: WorkspaceSummary[]
   invitations: { id: number; workspace: string; role: Role; invited_by: string; expires_at: string }[]
@@ -542,6 +574,22 @@ export const workspaces = {
     request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/`, json('PATCH', { base_version: base, title: doc.title, blocks: doc.blocks })),
   deletePage: (id: number, pageId: number) => request<void>(`/api/workspaces/${id}/pages/${pageId}/`, { method: 'DELETE' }),
   restorePage: (id: number, pageId: number) => request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/restore/`, json('POST', {})),
+  tables: (id: number) => request<TeamTableSummary[]>(`/api/workspaces/${id}/tables/`),
+  createTable: (id: number, title: string) => request<TeamTable>(`/api/workspaces/${id}/tables/`, json('POST', { title })),
+  /** With `known`, answers "unchanged" if nothing moved since that version. */
+  getTable: (id: number, tableId: number, known?: number) => request<TeamTable | { unchanged: true }>(`/api/workspaces/${id}/tables/${tableId}/${known === undefined ? '' : `?known=${known}`}`),
+  updateTable: (id: number, tableId: number, change: { title?: string; description?: string }) => request<TeamTable>(`/api/workspaces/${id}/tables/${tableId}/`, json('PATCH', change)),
+  deleteTable: (id: number, tableId: number) => request<void>(`/api/workspaces/${id}/tables/${tableId}/`, { method: 'DELETE' }),
+  restoreTable: (id: number, tableId: number) => request<TeamTable>(`/api/workspaces/${id}/tables/${tableId}/restore/`, json('POST', {})),
+  addColumn: (id: number, tableId: number, name: string, type: ColumnType) => request<TeamTable>(`/api/workspaces/${id}/tables/${tableId}/columns/`, json('POST', { name, type })),
+  updateColumn: (id: number, tableId: number, columnId: string, change: { name?: string; position?: number }) => request<TeamTable>(`/api/workspaces/${id}/tables/${tableId}/columns/${columnId}/`, json('PATCH', change)),
+  deleteColumn: (id: number, tableId: number, columnId: string) => request<TeamTable>(`/api/workspaces/${id}/tables/${tableId}/columns/${columnId}/`, { method: 'DELETE' }),
+  createRow: (id: number, tableId: number) => request<TableRowData>(`/api/workspaces/${id}/tables/${tableId}/rows/`, json('POST', { values: {} })),
+  saveRow: (id: number, tableId: number, rowId: number, change: { values: Record<string, CellValue>; base: Record<string, CellValue>; highlighted?: boolean }) =>
+    request<TableRowData>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/`, json('PATCH', change)),
+  deleteRow: (id: number, tableId: number, rowId: number) => request<void>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/`, { method: 'DELETE' }),
+  restoreRow: (id: number, tableId: number, rowId: number) => request<TableRowData>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/restore/`, json('POST', {})),
+  addRowToTasks: (id: number, tableId: number, rowId: number) => request<{ row: TableRowData; task_title: string; due_at: string | null }>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/add-to-tasks/`, json('POST', {})),
 }
 
 /** This person's save queue on this device (see outbox.ts). */

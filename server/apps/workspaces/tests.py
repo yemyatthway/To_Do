@@ -8,12 +8,13 @@ from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from apps.tasks.models import Task
 from apps.users.cleanup import prune
 from apps.users.models import User
 from apps.users.services import purge_account
 
 from . import permissions as perms
-from .models import Invitation, Membership, Page, Workspace
+from .models import Invitation, Membership, Page, Table, TableRow, Workspace
 
 PASSWORD = "Sunny-Clock-2026"
 
@@ -338,3 +339,240 @@ class PageTests(APITestCase):
         fresh = Page.objects.get(pk=page["id"])
         self.assertIsNone(fresh.created_by)
         self.assertIsNone(self.as_(self.owner).get(self.url(f"{page['id']}/")).data["updated_by"])
+
+
+@override_settings(EMAIL_SEND_ASYNC=False, PUSH_SEND_ASYNC=False)
+class TableTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.owner, self.editor, self.commenter, self.viewer, self.outsider = (person(n) for n in ["olivia", "eve", "carl", "vera", "otto"])
+        self.client.force_authenticate(self.owner)
+        self.ws = self.client.post("/api/workspaces/", {"name": "Dev Team"}, format="json").data["id"]
+        for user, role in [(self.editor, "editor"), (self.commenter, "commenter"), (self.viewer, "viewer")]:
+            Membership.objects.create(workspace_id=self.ws, user=user, role=role)
+        self.table = self.as_(self.editor).post(self.url(), {"title": " M1  A/B Testing "}, format="json").data
+        self.tid = self.table["id"]
+        self.desc, self.who, self.done = (c["id"] for c in self.table["columns"])
+
+    def as_(self, user):
+        self.client.force_authenticate(user)
+        return self.client
+
+    def url(self, rest=""):
+        return f"/api/workspaces/{self.ws}/tables/{rest}"
+
+    def t(self, rest=""):
+        return self.url(f"{self.tid}/{rest}")
+
+    def add_row(self, **values):
+        return self.client.post(self.t("rows/"), {"values": values}, format="json")
+
+    def column(self, name, kind):
+        return self.client.post(self.t("columns/"), {"name": name, "type": kind}, format="json").data["columns"][-1]["id"]
+
+    def test_a_new_table_is_named_by_the_team_and_ready_to_use(self):
+        self.assertEqual(self.table["title"], "M1 A/B Testing")
+        self.assertEqual([(c["name"], c["type"]) for c in self.table["columns"]], [("Description", "text"), ("Assigned", "person"), ("Done", "checkbox")])
+        self.assertEqual(self.table["rows"], [])
+        self.assertEqual([t["title"] for t in self.client.get(self.url()).data], ["M1 A/B Testing"])
+        self.assertNotIn("rows", self.client.get(self.url()).data[0])
+
+    def test_rows_number_themselves_and_never_reuse_a_number(self):
+        first = self.add_row().data
+        second = self.add_row().data
+        self.assertEqual((first["no"], second["no"]), (1, 2))
+        self.client.delete(self.t(f"rows/{second['id']}/"))
+        self.assertEqual(self.add_row().data["no"], 3)
+        self.assertEqual([r["no"] for r in self.client.get(self.t()).data["rows"]], [1, 3])
+
+    def test_only_editors_and_above_can_change_anything(self):
+        row = self.add_row().data
+        for user in (self.commenter, self.viewer):
+            self.as_(user)
+            self.assertEqual(self.client.get(self.t()).status_code, 200)
+            self.assertEqual(self.client.post(self.url(), {"title": "No"}, format="json").status_code, 403)
+            self.assertEqual(self.client.patch(self.t(), {"title": "No"}, format="json").status_code, 403)
+            self.assertEqual(self.client.delete(self.t()).status_code, 403)
+            self.assertEqual(self.client.post(self.t("restore/")).status_code, 403)
+            self.assertEqual(self.client.post(self.t("columns/"), {"name": "No", "type": "text"}, format="json").status_code, 403)
+            self.assertEqual(self.client.patch(self.t(f"columns/{self.desc}/"), {"name": "No"}, format="json").status_code, 403)
+            self.assertEqual(self.client.delete(self.t(f"columns/{self.desc}/")).status_code, 403)
+            self.assertEqual(self.add_row().status_code, 403)
+            self.assertEqual(self.client.patch(self.t(f"rows/{row['id']}/"), {"values": {self.desc: "No"}}, format="json").status_code, 403)
+            self.assertEqual(self.client.delete(self.t(f"rows/{row['id']}/")).status_code, 403)
+            self.assertEqual(self.client.post(self.t(f"rows/{row['id']}/restore/")).status_code, 403)
+        fresh = TableRow.objects.get(pk=row["id"])
+        self.assertEqual(fresh.values, {})
+
+    def test_people_outside_cannot_tell_it_exists(self):
+        row = self.add_row().data
+        self.as_(self.outsider)
+        self.assertEqual(self.client.get(self.url()).status_code, 404)
+        self.assertEqual(self.client.get(self.t()).status_code, 404)
+        self.assertEqual(self.add_row().status_code, 404)
+        self.assertEqual(self.client.post(self.t(f"rows/{row['id']}/add-to-tasks/")).status_code, 404)
+
+    def test_ids_from_another_workspace_or_table_are_not_found(self):
+        row = self.add_row().data
+        other_table = self.client.post(self.url(), {"title": "Other"}, format="json").data["id"]
+        self.assertEqual(self.client.patch(self.url(f"{other_table}/rows/{row['id']}/"), {"values": {}}, format="json").status_code, 404)
+        self.assertEqual(self.client.delete(self.url(f"{other_table}/rows/{row['id']}/")).status_code, 404)
+        mine = self.as_(self.outsider).post("/api/workspaces/", {"name": "Mine"}, format="json").data["id"]
+        self.assertEqual(self.client.get(f"/api/workspaces/{mine}/tables/{self.tid}/").status_code, 404)
+        self.assertEqual(self.client.patch(f"/api/workspaces/{mine}/tables/{self.tid}/rows/{row['id']}/", {"values": {}}, format="json").status_code, 404)
+
+    def test_each_column_type_keeps_good_values_and_refuses_bad_ones(self):
+        columns = {kind: self.column(kind, kind) for kind in ["text", "number", "select", "person", "date", "checkbox"]}
+        row = self.add_row().data["id"]
+        good = [
+            ("text", "Hello <b>", "Hello <b>"), ("text", None, ""),
+            ("number", 3.5, 3.5), ("number", None, None),
+            ("select", "  In   progress ", "In progress"), ("select", "", None),
+            ("person", self.viewer.pk, self.viewer.pk), ("person", None, None),
+            ("date", "2030-01-02T03:04:00+06:30", "2030-01-01T20:34:00+00:00"), ("date", "", None),
+            ("checkbox", True, True), ("checkbox", None, False),
+        ]
+        for kind, sent, kept in good:
+            response = self.client.patch(self.t(f"rows/{row}/"), {"values": {columns[kind]: sent}}, format="json")
+            self.assertEqual(response.status_code, 200, (kind, sent))
+            self.assertEqual(response.data["values"][columns[kind]], kept, (kind, sent))
+        bad = [
+            ("text", 5), ("text", "x" * 5001),
+            ("number", "5"), ("number", True), ("number", 1e16),
+            ("select", 5), ("select", "x" * 61),
+            ("person", self.outsider.pk), ("person", "1"), ("person", True),
+            ("date", "tomorrow"), ("date", "2030-01-02T03:04:00"), ("date", 5), ("date", "2030-13-45T03:04:00+00:00"),
+            ("checkbox", "yes"), ("checkbox", 1),
+        ]
+        for kind, sent in bad:
+            self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), {"values": {columns[kind]: sent}}, format="json").status_code, 400, (kind, sent))
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), {"values": {"nope": 1}}, format="json").status_code, 400)
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), {"values": "text"}, format="json").status_code, 400)
+        self.assertEqual(self.add_row(nope=1).status_code, 400)
+
+    def test_an_edit_from_an_old_copy_cannot_overwrite_a_newer_cell(self):
+        row = self.add_row(**{self.desc: "First"}).data["id"]
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), {"values": {self.desc: "Second"}, "base": {self.desc: "First"}}, format="json").status_code, 200)
+        late = self.client.patch(self.t(f"rows/{row}/"), {"values": {self.desc: "Third"}, "base": {self.desc: "First"}}, format="json")
+        self.assertEqual(late.status_code, 409)
+        self.assertEqual(late.data["current"]["values"][self.desc], "Second")
+        self.assertEqual(TableRow.objects.get(pk=row).values[self.desc], "Second")
+
+    def test_two_people_changing_different_cells_both_win(self):
+        row = self.add_row(**{self.desc: "Bug"}).data["id"]
+        self.client.patch(self.t(f"rows/{row}/"), {"values": {self.done: True}, "base": {self.done: None}}, format="json")
+        response = self.as_(self.owner).patch(self.t(f"rows/{row}/"), {"values": {self.desc: "Bug 2"}, "base": {self.desc: "Bug"}}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.data["values"][self.done], response.data["values"][self.desc]), (True, "Bug 2"))
+
+    def test_sending_the_same_edit_twice_is_not_a_conflict(self):
+        row = self.add_row(**{self.desc: "First"}).data["id"]
+        edit = {"values": {self.desc: "Second"}, "base": {self.desc: "First"}}
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), edit, format="json").status_code, 200)
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), edit, format="json").status_code, 200)
+
+    def test_highlighting_a_row(self):
+        row = self.add_row().data["id"]
+        self.assertIs(self.client.patch(self.t(f"rows/{row}/"), {"highlighted": True}, format="json").data["highlighted"], True)
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), {"highlighted": "yes"}, format="json").status_code, 400)
+
+    def test_columns_can_be_added_renamed_moved_and_removed(self):
+        page = self.column("Page", "select")
+        row = self.add_row(**{page: "Login"}).data["id"]
+        renamed = self.client.patch(self.t(f"columns/{page}/"), {"name": " Screen "}, format="json").data
+        self.assertEqual(renamed["columns"][-1]["name"], "Screen")
+        moved = self.client.patch(self.t(f"columns/{page}/"), {"position": 0}, format="json").data
+        self.assertEqual([c["id"] for c in moved["columns"]], [page, self.desc, self.who, self.done])
+        self.assertEqual(self.client.patch(self.t(f"columns/{page}/"), {"position": "0"}, format="json").status_code, 400)
+        gone = self.client.delete(self.t(f"columns/{page}/")).data
+        self.assertNotIn(page, [c["id"] for c in gone["columns"]])
+        self.assertNotIn(page, next(r for r in gone["rows"] if r["id"] == row)["values"])
+        self.assertEqual(self.client.delete(self.t(f"columns/{page}/")).status_code, 404)
+        self.assertEqual(self.client.post(self.t("columns/"), {"name": "X", "type": "script"}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(self.t("columns/"), {"name": "  ", "type": "text"}, format="json").status_code, 400)
+        self.assertEqual(self.client.post(self.t("columns/"), {"name": "x" * 61, "type": "text"}, format="json").status_code, 400)
+
+    def test_open_screens_can_ask_if_anything_changed(self):
+        version = self.client.get(self.t()).data["version"]
+        self.assertEqual(self.client.get(self.t(), {"known": version}).data, {"unchanged": True})
+        row = self.add_row().data["id"]
+        self.assertIn("rows", self.client.get(self.t(), {"known": version}).data)
+        for change in (
+            lambda: self.client.patch(self.t(f"rows/{row}/"), {"values": {self.desc: "x"}}, format="json"),
+            lambda: self.client.delete(self.t(f"rows/{row}/")),
+            lambda: self.client.post(self.t(f"rows/{row}/restore/")),
+            lambda: self.client.post(self.t("columns/"), {"name": "Y", "type": "text"}, format="json"),
+            lambda: self.client.patch(self.t(), {"description": "New"}, format="json"),
+        ):
+            version = self.client.get(self.t()).data["version"]
+            change()
+            self.assertIn("rows", self.client.get(self.t(), {"known": version}).data)
+
+    def test_deleting_and_restoring_rows_and_tables(self):
+        row = self.add_row(**{self.desc: "Bug"}).data["id"]
+        self.assertEqual(self.client.delete(self.t(f"rows/{row}/")).status_code, 204)
+        self.assertEqual(self.client.get(self.t()).data["rows"], [])
+        self.assertEqual(self.client.patch(self.t(f"rows/{row}/"), {"values": {}}, format="json").status_code, 404)
+        self.assertEqual(self.client.post(self.t(f"rows/{row}/restore/")).data["values"][self.desc], "Bug")
+        self.assertEqual(self.client.post(self.t(f"rows/{row}/restore/")).status_code, 404)
+        self.assertEqual(self.client.delete(self.t()).status_code, 204)
+        self.assertEqual(self.client.get(self.t()).status_code, 404)
+        self.assertEqual(self.client.get(self.url()).data, [])
+        self.assertEqual(len(self.client.post(self.t("restore/")).data["rows"]), 1)
+
+    def test_the_clean_up_erases_old_deleted_tables_and_rows_only(self):
+        keep, old = self.add_row().data["id"], self.add_row().data["id"]
+        TableRow.all_objects.filter(pk=old).update(deleted_at=timezone.now() - timedelta(days=400))
+        gone_table = self.client.post(self.url(), {"title": "Old"}, format="json").data["id"]
+        Table.all_objects.filter(pk=gone_table).update(deleted_at=timezone.now() - timedelta(days=400))
+        prune()
+        self.assertTrue(TableRow.objects.filter(pk=keep).exists())
+        self.assertFalse(TableRow.all_objects.filter(pk=old).exists())
+        self.assertFalse(Table.all_objects.filter(pk=gone_table).exists())
+        self.assertTrue(Table.objects.filter(pk=self.tid).exists())
+
+    def test_a_row_goes_on_your_own_task_list_once(self):
+        when = self.column("Due", "date")
+        due = (timezone.now() + timedelta(days=1)).isoformat()
+        row = self.add_row(**{self.desc: "  Fix   the\nlogin ", when: due}).data["id"]
+        # Even a viewer can put team work on their own list.
+        first = self.as_(self.viewer).post(self.t(f"rows/{row}/add-to-tasks/"))
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.data["task_title"], "Fix the login")
+        self.assertTrue(first.data["row"]["on_my_tasks"])
+        task = Task.objects.get(owner=self.viewer)
+        self.assertEqual((task.source_row_id, task.category, task.remind_before_minutes), (row, "work", 10))
+        self.assertEqual(task.notes, "From M1 A/B Testing in Dev Team, row 1")
+        self.assertIsNotNone(task.due_at)
+        self.assertEqual(self.client.post(self.t(f"rows/{row}/add-to-tasks/")).status_code, 200)
+        self.assertEqual(Task.objects.filter(owner=self.viewer).count(), 1)
+        self.assertTrue(self.client.get(self.t()).data["rows"][0]["on_my_tasks"])
+        # It's personal: nobody else's row or list changes.
+        self.assertFalse(self.as_(self.editor).get(self.t()).data["rows"][0]["on_my_tasks"])
+        self.assertFalse(Task.objects.filter(owner=self.editor).exists())
+
+    def test_a_row_without_text_or_future_date_still_makes_a_sensible_task(self):
+        when = self.column("Due", "date")
+        row = self.add_row(**{when: (timezone.now() - timedelta(days=1)).isoformat()}).data["id"]
+        self.client.post(self.t(f"rows/{row}/add-to-tasks/"))
+        task = Task.objects.get(owner=self.editor)
+        self.assertEqual((task.title, task.due_at, task.remind_before_minutes), ("M1 A/B Testing 1", None, None))
+
+    def test_deleting_the_task_lets_you_add_the_row_again(self):
+        row = self.add_row().data["id"]
+        self.client.post(self.t(f"rows/{row}/add-to-tasks/"))
+        Task.objects.filter(owner=self.editor).update(deleted_at=timezone.now())
+        self.assertFalse(self.client.get(self.t()).data["rows"][0]["on_my_tasks"])
+        self.client.post(self.t(f"rows/{row}/add-to-tasks/"))
+        self.assertEqual(Task.objects.filter(owner=self.editor).count(), 1)
+
+    def test_the_task_survives_when_the_row_is_erased(self):
+        row = self.add_row().data["id"]
+        self.client.post(self.t(f"rows/{row}/add-to-tasks/"))
+        TableRow.all_objects.filter(pk=row).delete()
+        self.assertIsNone(Task.objects.get(owner=self.editor).source_row)
+
+    def test_a_row_limit_protects_the_table(self):
+        with mock.patch("apps.workspaces.services.MAX_ROWS", 1):
+            self.assertEqual(self.add_row().status_code, 201)
+            self.assertEqual(self.add_row().status_code, 400)

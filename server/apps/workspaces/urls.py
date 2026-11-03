@@ -14,4 +14,13 @@ urlpatterns = [
     path("<int:workspace_id>/pages/", views.PagesApi.as_view()),
     path("<int:workspace_id>/pages/<int:page_id>/", views.PageApi.as_view()),
     path("<int:workspace_id>/pages/<int:page_id>/restore/", views.RestorePageApi.as_view()),
+    path("<int:workspace_id>/tables/", views.TablesApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/", views.TableApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/restore/", views.RestoreTableApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/columns/", views.ColumnsApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/columns/<str:column_id>/", views.ColumnApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/rows/", views.RowsApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/rows/<int:row_id>/", views.RowApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/rows/<int:row_id>/restore/", views.RestoreRowApi.as_view()),
+    path("<int:workspace_id>/tables/<int:table_id>/rows/<int:row_id>/add-to-tasks/", views.AddRowToTasksApi.as_view()),
 ]

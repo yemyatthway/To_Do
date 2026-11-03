@@ -12,6 +12,7 @@ const pages: [string, Route][] = [
   ['/workspaces/5/settings', { view: 'workspace', id: 5, section: 'settings' }],
   ['/workspaces/5/settings/roles', { view: 'workspace', id: 5, section: 'roles' }],
   ['/workspaces/5/pages/9', { view: 'workspace', id: 5, section: 'page', pageId: 9 }],
+  ['/workspaces/5/tables/9', { view: 'workspace', id: 5, section: 'table', tableId: 9 }],
   ['/settings', { view: 'profile' }],
   ['/settings/password', { view: 'profile', section: 'password' }],
   ['/more', { view: 'more' }],
@@ -42,6 +43,7 @@ describe('page addresses', () => {
     expect(parseRoute('/workspaces/5/nope')).toEqual({ view: 'workspace', id: 5, section: 'home' })
     expect(parseRoute('/workspaces/5/pages/abc')).toEqual({ view: 'workspace', id: 5, section: 'home' })
     expect(parseRoute('/workspaces/5/pages')).toEqual({ view: 'workspace', id: 5, section: 'home' })
+    expect(parseRoute('/workspaces/5/tables/abc')).toEqual({ view: 'workspace', id: 5, section: 'home' })
     expect(parseRoute('/settings/nope')).toEqual({ view: 'profile' })
     expect(parseRoute('/settings/constructor')).toEqual({ view: 'profile' })
     expect(parseRoute('/constructor')).toEqual({ view: 'home' })
@@ -69,6 +71,7 @@ describe('child pages', () => {
     expect(parentOf({ view: 'workspace', id: 1, section: 'members' })).toEqual({ view: 'workspace', id: 1, section: 'home' })
     expect(parentOf({ view: 'workspace', id: 1, section: 'home' })).toEqual({ view: 'workspaces' })
     expect(parentOf({ view: 'workspace', id: 1, section: 'page', pageId: 2 })).toEqual({ view: 'workspace', id: 1, section: 'home' })
+    expect(parentOf({ view: 'workspace', id: 1, section: 'table', tableId: 2 })).toEqual({ view: 'workspace', id: 1, section: 'home' })
     expect(parentOf({ view: 'profile', section: 'help' })).toEqual({ view: 'profile' })
     expect(parentOf({ view: 'profile' })).toEqual({ view: 'more' })
   })

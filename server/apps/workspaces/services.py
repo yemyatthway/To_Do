@@ -1,19 +1,25 @@
+import math
+import secrets
 from datetime import timedelta
+from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import F
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.live import ably
 from apps.social.services import _notify
+from apps.tasks.models import Task
 from apps.users import mail, usernames
 from apps.users.models import User
 
 from . import permissions as perms
-from .models import Invitation, Membership, Page, Workspace
+from .models import Invitation, Membership, Page, Table, TableRow, Workspace
 
 MAX_WORKSPACES = 20
 MAX_MEMBERS = 50
@@ -23,6 +29,12 @@ MAX_BLOCKS = 2000
 MAX_BLOCK_TEXT = 10_000
 MAX_PAGE_CHARS = 200_000
 BLOCK_TYPES = {"p", "h", "todo"}
+MAX_TABLES = 200
+MAX_COLUMNS = 30
+MAX_ROWS = 2000
+MAX_CELL_TEXT = 5000
+COLUMN_TYPES = {"text", "number", "select", "person", "date", "checkbox"}
+STARTER_COLUMNS = [("Description", "text"), ("Assigned", "person"), ("Done", "checkbox")]
 
 
 def _members(workspace):
@@ -370,3 +382,315 @@ def restore_page(me, workspace_id, page_id):
     page.save(update_fields=["deleted_at"])
     _tell_members(membership.workspace)
     return page
+
+
+def _new_column(name, column_type):
+    return {"id": f"c{secrets.token_hex(4)}", "name": name, "type": column_type}
+
+
+def _clean_column_name(name):
+    name = " ".join(str(name or "").split())
+    if not name:
+        raise ValidationError({"name": ["Give the column a name."]})
+    if len(name) > 60:
+        raise ValidationError({"name": ["Keep the name under 60 characters."]})
+    return name
+
+
+def _clean_description(description):
+    description = " ".join(str(description or "").split())
+    if len(description) > 500:
+        raise ValidationError({"description": ["Keep the description under 500 characters."]})
+    return description
+
+
+def _cell_error(message):
+    return ValidationError({"values": [message]})
+
+
+def _clean_cell(column, value, workspace):
+    """What a cell may hold depends on its column. Refuse anything else: this reaches everyone's screen."""
+    kind = column["type"]
+    if kind == "text":
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise _cell_error(f"{column['name']} must be text.")
+        if len(value) > MAX_CELL_TEXT:
+            raise _cell_error(f"Keep {column['name']} under {MAX_CELL_TEXT:,} characters.")
+        return value
+    if kind == "number":
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or abs(value) > 1e15:
+            raise _cell_error(f"{column['name']} must be a number.")
+        return value
+    if kind == "select":
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise _cell_error(f"{column['name']} must be text.")
+        value = " ".join(value.split())
+        if len(value) > 60:
+            raise _cell_error(f"Keep {column['name']} under 60 characters.")
+        return value or None
+    if kind == "person":
+        if value is None:
+            return None
+        if type(value) is not int or not workspace.memberships.filter(user_id=value).exists():
+            raise _cell_error("Choose someone in this workspace.")
+        return value
+    if kind == "date":
+        if value is None or value == "":
+            return None
+        try:
+            parsed = parse_datetime(value) if isinstance(value, str) else None
+        except ValueError:  # the right shape but an impossible date, like month 13
+            parsed = None
+        if parsed is None or parsed.tzinfo is None:
+            raise _cell_error(f"{column['name']} must be a date and time.")
+        return parsed.astimezone(dt_timezone.utc).isoformat()
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise _cell_error(f"{column['name']} must be yes or no.")
+    return value
+
+
+def _clean_cells(table, values):
+    if not isinstance(values, dict):
+        raise _cell_error("That row isn't valid.")
+    columns = {c["id"]: c for c in table.columns}
+    cleaned = {}
+    for column_id, value in values.items():
+        if column_id not in columns:
+            raise _cell_error("That column no longer exists. Refresh and try again.")
+        cleaned[column_id] = _clean_cell(columns[column_id], value, table.workspace)
+    return cleaned
+
+
+def _table_for(me, workspace_id, table_id, action=perms.READ, lock=False):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, action)
+    tables = membership.workspace.tables.select_related("workspace", "updated_by")
+    if lock:
+        tables = tables.select_for_update(of=("self",))
+    table = tables.filter(pk=table_id).first()
+    if table is None:
+        raise NotFound("That table doesn't exist.")
+    return table
+
+
+def _touch(table, me):
+    Table.objects.filter(pk=table.pk).update(version=F("version") + 1, updated_by=me, updated_at=timezone.now())
+    table.refresh_from_db(fields=["version", "updated_by", "updated_at"])
+
+
+def tables_of(me, workspace_id):
+    membership = membership_for(me, workspace_id)
+    return membership.workspace.tables.select_related("updated_by").order_by("-updated_at", "-id")
+
+
+def table_for(me, workspace_id, table_id):
+    return _table_for(me, workspace_id, table_id)
+
+
+def rows_of(table):
+    return list(table.rows.all())
+
+
+def create_table(me, workspace_id, title):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, perms.EDIT)
+    workspace = membership.workspace
+    if workspace.tables.count() >= MAX_TABLES:
+        raise ValidationError({"title": [f"A workspace can have up to {MAX_TABLES} tables."]})
+    table = Table.objects.create(
+        workspace=workspace, title=_clean_title(title), columns=[_new_column(*c) for c in STARTER_COLUMNS], created_by=me, updated_by=me,
+    )
+    _tell_members(workspace)
+    return table
+
+
+def update_table(me, workspace_id, table_id, title=None, description=None):
+    with transaction.atomic():
+        table = _table_for(me, workspace_id, table_id, perms.EDIT, lock=True)
+        renamed = title is not None and _clean_title(title) != table.title
+        if title is not None:
+            table.title = _clean_title(title)
+        if description is not None:
+            table.description = _clean_description(description)
+        table.version += 1
+        table.updated_by = me
+        table.save()
+    if renamed:
+        _tell_members(table.workspace)
+    return table
+
+
+def delete_table(me, workspace_id, table_id):
+    table = _table_for(me, workspace_id, table_id, perms.EDIT)
+    table.deleted_at = timezone.now()
+    table.save(update_fields=["deleted_at"])
+    _tell_members(table.workspace)
+
+
+def restore_table(me, workspace_id, table_id):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, perms.EDIT)
+    table = Table.all_objects.filter(workspace=membership.workspace, pk=table_id, deleted_at__isnull=False).first()
+    if table is None:
+        raise NotFound("That table can't be restored.")
+    table.deleted_at = None
+    table.save(update_fields=["deleted_at"])
+    _tell_members(membership.workspace)
+    return table
+
+
+def add_column(me, workspace_id, table_id, name, column_type):
+    if column_type not in COLUMN_TYPES:
+        raise ValidationError({"type": ["Choose a column type."]})
+    name = _clean_column_name(name)
+    with transaction.atomic():
+        table = _table_for(me, workspace_id, table_id, perms.EDIT, lock=True)
+        if len(table.columns) >= MAX_COLUMNS:
+            raise ValidationError({"name": [f"A table can have up to {MAX_COLUMNS} columns."]})
+        table.columns = [*table.columns, _new_column(name, column_type)]
+        table.version += 1
+        table.updated_by = me
+        table.save()
+    return table
+
+
+def _column_index(table, column_id):
+    for index, column in enumerate(table.columns):
+        if column["id"] == column_id:
+            return index
+    raise NotFound("That column doesn't exist.")
+
+
+def update_column(me, workspace_id, table_id, column_id, name=None, position=None):
+    with transaction.atomic():
+        table = _table_for(me, workspace_id, table_id, perms.EDIT, lock=True)
+        index = _column_index(table, column_id)
+        columns = [dict(c) for c in table.columns]
+        if name is not None:
+            columns[index]["name"] = _clean_column_name(name)
+        if position is not None:
+            if type(position) is not int:
+                raise ValidationError({"position": ["That position isn't valid."]})
+            column = columns.pop(index)
+            columns.insert(max(0, min(position, len(columns))), column)
+        table.columns = columns
+        table.version += 1
+        table.updated_by = me
+        table.save()
+    return table
+
+
+def delete_column(me, workspace_id, table_id, column_id):
+    with transaction.atomic():
+        table = _table_for(me, workspace_id, table_id, perms.EDIT, lock=True)
+        _column_index(table, column_id)
+        table.columns = [c for c in table.columns if c["id"] != column_id]
+        table.version += 1
+        table.updated_by = me
+        table.save()
+    return table
+
+
+def create_row(me, workspace_id, table_id, values=None):
+    with transaction.atomic():
+        table = _table_for(me, workspace_id, table_id, perms.EDIT, lock=True)
+        if table.rows.count() >= MAX_ROWS:
+            raise ValidationError({"values": [f"A table can have up to {MAX_ROWS:,} rows. Start a new table."]})
+        row = TableRow.objects.create(table=table, no=table.next_no, values=_clean_cells(table, values or {}), created_by=me, updated_by=me)
+        table.next_no += 1
+        table.version += 1
+        table.updated_by = me
+        table.save()
+    _tell_members(table.workspace)
+    return row
+
+
+class RowConflict(Exception):
+    """A cell changed since this edit's copy of it."""
+
+    def __init__(self, current):
+        self.current = current
+
+
+def _row_for(me, workspace_id, table_id, row_id, action, lock=False):
+    table = _table_for(me, workspace_id, table_id, action)
+    rows = table.rows.select_related("updated_by")
+    if lock:
+        rows = rows.select_for_update(of=("self",))
+    row = rows.filter(pk=row_id).first()
+    if row is None:
+        raise NotFound("That row doesn't exist.")
+    return table, row
+
+
+def update_row(me, workspace_id, table_id, row_id, values=None, base=None, highlighted=None):
+    if highlighted is not None and not isinstance(highlighted, bool):
+        raise ValidationError({"highlighted": ["That isn't valid."]})
+    with transaction.atomic():
+        table, row = _row_for(me, workspace_id, table_id, row_id, perms.EDIT, lock=True)
+        cleaned = _clean_cells(table, values or {})
+        # `base` is what the app last saw. Someone changed one of those cells since: ask, don't overwrite.
+        if isinstance(base, dict):
+            for column_id in cleaned:
+                if column_id in base and row.values.get(column_id) != base[column_id]:
+                    if row.values.get(column_id) != cleaned[column_id]:
+                        raise RowConflict(row)
+        row.values = {**row.values, **cleaned}
+        if highlighted is not None:
+            row.highlighted = highlighted
+        row.updated_by = me
+        row.save()
+        _touch(table, me)
+    return row
+
+
+def delete_row(me, workspace_id, table_id, row_id):
+    table, row = _row_for(me, workspace_id, table_id, row_id, perms.EDIT)
+    row.deleted_at = timezone.now()
+    row.save(update_fields=["deleted_at"])
+    _touch(table, me)
+    _tell_members(table.workspace)
+
+
+def restore_row(me, workspace_id, table_id, row_id):
+    table = _table_for(me, workspace_id, table_id, perms.EDIT)
+    row = TableRow.all_objects.filter(table=table, pk=row_id, deleted_at__isnull=False).first()
+    if row is None:
+        raise NotFound("That row can't be restored.")
+    row.deleted_at = None
+    row.save(update_fields=["deleted_at"])
+    _touch(table, me)
+    _tell_members(table.workspace)
+    return row
+
+
+def my_tasks_from(me, table):
+    """Which rows of this table are already on my task list."""
+    return set(Task.objects.filter(owner=me, source_row__table=table).values_list("source_row_id", flat=True))
+
+
+def add_row_to_tasks(me, workspace_id, table_id, row_id):
+    """Anyone who can read the table can put a row on their own list. Pressed twice, it stays one task."""
+    with transaction.atomic():
+        table, row = _row_for(me, workspace_id, table_id, row_id, perms.READ, lock=True)
+        existing = Task.objects.filter(owner=me, source_row=row).first()
+        if existing:
+            return row, existing
+        text = next((row.values.get(c["id"]) for c in table.columns if c["type"] == "text" and row.values.get(c["id"], "").strip()), None)
+        title = " ".join(text.split())[:200] if text else f"{table.title} {row.no}"[:200]
+        dates = [row.values.get(c["id"]) for c in table.columns if c["type"] == "date" and row.values.get(c["id"])]
+        due_at = next((parsed for parsed in (parse_datetime(d) for d in dates) if parsed and parsed > timezone.now()), None)
+        task = Task.objects.create(
+            owner=me, title=title, notes=f"From {table.title} in {table.workspace.name}, row {row.no}", due_at=due_at,
+            category=Task.Category.WORK, remind_before_minutes=10 if due_at else None, source_row=row,
+        )
+    ably.to_users([me.pk], "tasks")
+    return row, task

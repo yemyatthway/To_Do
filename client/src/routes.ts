@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 export type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace'
 
 export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles'
-export type WorkspaceChild = WorkspaceSection | 'page'
+export type WorkspaceChild = WorkspaceSection | 'page' | 'table'
 
 export const SETTINGS_SECTIONS = {
   personal: 'Personal info',
@@ -22,6 +22,7 @@ export type Route =
   | { view: 'friends'; username?: string }
   | { view: 'workspace'; id: number; section: WorkspaceSection }
   | { view: 'workspace'; id: number; section: 'page'; pageId: number }
+  | { view: 'workspace'; id: number; section: 'table'; tableId: number }
   | { view: 'profile'; section?: SettingsSection }
 
 const PLAIN: Partial<Record<string, Route>> = {
@@ -58,6 +59,7 @@ export function parseRoute(pathname: string, search = ''): Route {
     if (third === 'settings' && !fourth) return { view: 'workspace', id, section: 'settings' }
     if (third === 'settings' && fourth === 'roles') return { view: 'workspace', id, section: 'roles' }
     if (third === 'pages' && fourth && Number.isInteger(Number(fourth)) && Number(fourth) > 0) return { view: 'workspace', id, section: 'page', pageId: Number(fourth) }
+    if (third === 'tables' && fourth && Number.isInteger(Number(fourth)) && Number(fourth) > 0) return { view: 'workspace', id, section: 'table', tableId: Number(fourth) }
     return { view: 'workspace', id, section: 'home' }
   }
   if (first === 'settings') {
@@ -78,6 +80,7 @@ export function pathFor(route: Route): string {
       const base = `/workspaces/${route.id}`
       if (route.section === 'home') return base
       if (route.section === 'page') return `${base}/pages/${route.pageId}`
+      if (route.section === 'table') return `${base}/tables/${route.tableId}`
       return route.section === 'roles' ? `${base}/settings/roles` : `${base}/${route.section}`
     }
     case 'profile':

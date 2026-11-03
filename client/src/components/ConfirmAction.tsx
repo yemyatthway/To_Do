@@ -13,13 +13,14 @@ interface ConfirmActionProps {
   typeToConfirm?: string
   /** For dialogs with a form in them: hold the button until it's filled in. */
   confirmDisabled?: boolean
+  cancelLabel?: string
   onCancel: () => void
   /** Throws to show the problem in the dialog. */
   onConfirm: () => Promise<void>
 }
 
 /** "Are you sure?" before anything hard to undo. */
-export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'help', typeToConfirm, confirmDisabled, onCancel, onConfirm }: ConfirmActionProps) {
+export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'help', typeToConfirm, confirmDisabled, cancelLabel = 'Cancel', onCancel, onConfirm }: ConfirmActionProps) {
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -79,7 +80,7 @@ export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'h
         )}
         <div className="confirm-actions">
           <button ref={cancelRef} type="button" className="text-btn" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </button>
           <button type="submit" className={danger ? 'danger-btn' : 'primary-btn'} disabled={!ready || busy}>
             {busy ? 'One moment…' : confirmLabel}
