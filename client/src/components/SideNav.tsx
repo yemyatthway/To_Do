@@ -13,11 +13,13 @@ interface SideNavProps {
   isStaff: boolean
   chatBadge: number
   socialBadge: number
+  workspaces: { id: number; name: string }[]
+  inviteBadge: number
   onGo: (view: string) => void
 }
 
 /** Desktop navigation: a full sidebar on wide windows, icons only when there's less room. */
-export function SideNav({ view, isStaff, chatBadge, socialBadge, onGo }: SideNavProps) {
+export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inviteBadge, onGo }: SideNavProps) {
   const groups: { label: string; items: Item[] }[] = [
     { label: '', items: [{ id: 'home', label: 'Today', icon: 'clock' }] },
     {
@@ -25,6 +27,13 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, onGo }: SideNav
       items: [
         { id: 'chats', label: 'Chats', icon: 'chat', badge: chatBadge, tour: 'chats' },
         { id: 'friends', label: 'Friends', icon: 'users', badge: socialBadge, tour: 'friends' },
+      ],
+    },
+    {
+      label: 'Workspaces',
+      items: [
+        ...workspaces.map((w) => ({ id: `workspace:${w.id}`, label: w.name, icon: 'team' as const })),
+        { id: 'workspaces', label: workspaces.length ? 'All workspaces' : 'Workspaces', icon: 'inbox' as const, badge: inviteBadge, tour: 'workspaces' },
       ],
     },
     {

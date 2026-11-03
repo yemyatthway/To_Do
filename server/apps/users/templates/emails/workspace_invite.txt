@@ -1,0 +1,10 @@
+{% autoescape off %}{{ who }} invited you to join {{ workspace }} on To-Do as {{ role }}.
+
+Open To-Do to accept or decline: {{ app_url }}
+
+If you don't have an account yet, sign up with this email address and the invitation will be waiting. It expires in {{ days }} days.
+
+Not expecting this? You can ignore this email.
+
+— To-Do
+{% endautoescape %}

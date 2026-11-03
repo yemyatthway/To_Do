@@ -466,6 +466,55 @@ export const live = {
   token: () => request<LivePass>('/api/live/token/'),
 }
 
+export type Role = 'owner' | 'admin' | 'editor' | 'commenter' | 'viewer'
+
+export interface WorkspaceSummary {
+  id: number
+  name: string
+  role: Role
+  member_count: number
+  created_at: string
+}
+
+export interface Member {
+  id: number
+  full_name: string
+  username: string
+  /** Partly hidden. */
+  email: string
+  role: Role
+  joined_at: string
+}
+
+export interface WorkspaceDetail extends WorkspaceSummary {
+  /** What your role allows; the server enforces it either way. */
+  can: Record<'read' | 'comment' | 'edit' | 'manage_members' | 'rename' | 'delete_workspace' | 'transfer', boolean>
+  assignable_roles: Role[]
+  members: Member[]
+  /** Only for people who can manage members. */
+  invitations: { id: number; label: string; role: Role; created_at: string; expires_at: string }[]
+}
+
+export interface WorkspaceList {
+  workspaces: WorkspaceSummary[]
+  invitations: { id: number; workspace: string; role: Role; invited_by: string; expires_at: string }[]
+}
+
+export const workspaces = {
+  list: () => request<WorkspaceList>('/api/workspaces/'),
+  create: (name: string) => request<WorkspaceDetail>('/api/workspaces/', json('POST', { name })),
+  get: (id: number) => request<WorkspaceDetail>(`/api/workspaces/${id}/`),
+  rename: (id: number, name: string) => request<WorkspaceDetail>(`/api/workspaces/${id}/`, json('PATCH', { name })),
+  remove: (id: number, confirmName: string) => request<void>(`/api/workspaces/${id}/`, json('DELETE', { confirm_name: confirmName })),
+  invite: (id: number, invitee: string, role: Role) => request<WorkspaceDetail>(`/api/workspaces/${id}/invitations/`, json('POST', { invitee, role })),
+  cancelInvitation: (id: number, invitationId: number) => request<void>(`/api/workspaces/${id}/invitations/${invitationId}/`, { method: 'DELETE' }),
+  accept: (invitationId: number) => request<WorkspaceDetail>(`/api/workspaces/invitations/${invitationId}/accept/`, json('POST', {})),
+  decline: (invitationId: number) => request<void>(`/api/workspaces/invitations/${invitationId}/decline/`, json('POST', {})),
+  setRole: (id: number, userId: number, role: Role) => request<WorkspaceDetail>(`/api/workspaces/${id}/members/${userId}/`, json('PATCH', { role })),
+  removeMember: (id: number, userId: number) => request<void>(`/api/workspaces/${id}/members/${userId}/`, { method: 'DELETE' }),
+  transfer: (id: number, userId: number) => request<WorkspaceDetail>(`/api/workspaces/${id}/transfer/`, json('POST', { user_id: userId })),
+}
+
 /** This person's save queue on this device (see outbox.ts). */
 export function createOutbox(userId: number) {
   let store: Storage | null = null

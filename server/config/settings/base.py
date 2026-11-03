@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "apps.social",
     "apps.chat",
     "apps.live",
+    "apps.workspaces",
 ]
 
 AUTH_USER_MODEL = "users.User"
@@ -57,6 +58,7 @@ REST_FRAMEWORK = {
         "email_check": "60/min",
         "username_check": "60/min",
         "chat": "120/min",
+        "workspace_invite": "30/hour",
     },
 }
 

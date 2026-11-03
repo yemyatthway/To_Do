@@ -9,6 +9,7 @@ SAMPLES = {
     "verify": lambda: ("code", mail.code_context("verify", "482913")),
     "login": lambda: ("code", mail.code_context("login", "482913", "Safari on macOS")),
     "welcome": lambda: ("welcome", mail.welcome_context(User(full_name="Mia Thompson"))),
+    "workspace_invite": lambda: ("workspace_invite", {"subject": "Mia invited you to Dev Team on To-Do", "who": "Mia Thompson", "workspace": "Dev Team", "role": "Editor", "days": 14, "app_url": "http://localhost:5173/?view=workspaces", "preheader": "Join Dev Team on To-Do."}),
 }
 
 

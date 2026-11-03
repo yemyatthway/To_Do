@@ -10,11 +10,14 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
 from apps.social.models import Share
 from apps.tasks.models import Task
+from apps.workspaces.models import Invitation, Workspace
 
 from .models import AuthEvent, EmailCode, TrustedDevice, User
 from .services import purge_account
 
 AUTH_LOG_DAYS = 180
+FINISHED_INVITE_DAYS = 30
+WORKSPACE_RESTORE_DAYS = 30
 FINISHED_SHARE_DAYS = 30
 
 
@@ -33,6 +36,9 @@ def prune(now=None):
         # Expired refresh tokens (and their blacklist rows) can never be used again.
         "tokens": OutstandingToken.objects.filter(expires_at__lt=now).delete()[0],
         "auth_events": AuthEvent.objects.filter(created_at__lt=now - timedelta(days=AUTH_LOG_DAYS)).delete()[0],
+        "workspaces": Workspace.all_objects.filter(deleted_at__lt=now - timedelta(days=WORKSPACE_RESTORE_DAYS)).delete()[0],
+        # Invitations that were answered, cancelled or ran out.
+        "invitations": Invitation.objects.filter(expires_at__lt=now - timedelta(days=FINISHED_INVITE_DAYS)).delete()[0],
         # Shares already added or dismissed (their task copies go with them).
         "shares": Share.objects.filter(
             status__in=[Share.Status.ADDED, Share.Status.DISMISSED], created_at__lt=now - timedelta(days=FINISHED_SHARE_DAYS)

@@ -4,16 +4,18 @@ import { initials } from '../user'
 
 interface MoreProps {
   user: User
-  onGo: (view: 'progress' | 'timer' | 'profile' | 'admin') => void
+  inviteBadge: number
+  onGo: (view: 'progress' | 'timer' | 'profile' | 'admin' | 'workspaces') => void
 }
 
 /** Phone: the screens that don't fit in the bottom bar. */
-export function More({ user, onGo }: MoreProps) {
-  const row = (view: 'progress' | 'timer' | 'admin', label: string, icon: IconName) => (
+export function More({ user, inviteBadge, onGo }: MoreProps) {
+  const row = (view: 'progress' | 'timer' | 'admin' | 'workspaces', label: string, icon: IconName, badge = 0) => (
     <li>
       <button type="button" className="more-row" onClick={() => onGo(view)}>
         <Icon name={icon} />
         <span className="person-name">{label}</span>
+        {badge > 0 && <span className="nav-badge">{badge}</span>}
         <Icon name="chevron" className="more-go" />
       </button>
     </li>
@@ -32,6 +34,7 @@ export function More({ user, onGo }: MoreProps) {
           <Icon name="chevron" className="more-go" />
         </button>
       </li>
+      {row('workspaces', 'Workspaces', 'team', inviteBadge)}
       {row('progress', 'Progress', 'chart')}
       {row('timer', 'Timer', 'timer')}
       {user.is_staff && row('admin', 'Admin', 'shield')}

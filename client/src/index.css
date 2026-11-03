@@ -4650,3 +4650,115 @@ select.field:focus-visible {
   color: var(--sub);
   flex: none;
 }
+
+/* ---------- Workspaces ---------- */
+
+.ws-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  max-width: 860px;
+}
+
+.ws-page h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-select {
+  width: 124px;
+  height: 40px;
+  font-size: 14px;
+  padding: 0 28px 0 12px;
+}
+
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 10px;
+  background: var(--chip);
+  color: var(--accT);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.invite-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.invite-who {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.role-table-box {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.role-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.role-table th,
+.role-table td {
+  padding: 10px 8px;
+  text-align: center;
+  border-top: 1px solid var(--track);
+  white-space: nowrap;
+}
+
+.role-table thead th {
+  border-top: 0;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.role-table th[scope='row'] {
+  text-align: left;
+  font-weight: 600;
+}
+
+.role-table .mine {
+  background: var(--chip);
+  color: var(--accT);
+}
+
+.role-table .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--ok);
+}
+
+.confirm-body {
+  color: var(--sub);
+  line-height: 1.5;
+}
+
+.confirm-body p {
+  margin: 0 0 8px;
+  color: inherit;
+}
+
+/* Long names stay readable on phones: the role and remove buttons drop to their own line. */
+.ws-page .person {
+  flex-wrap: wrap;
+}
+
+.ws-page .person-main {
+  flex: 1 1 150px;
+}
+
+.ws-page .person-actions {
+  margin-left: auto;
+}

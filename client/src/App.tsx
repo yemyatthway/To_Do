@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
+import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, workspaces, type Task, type TaskInput, type User, type WorkspaceList } from './api'
 import { SideNav } from './components/SideNav'
 import { AppSkeleton, CardsSkeleton, HomeSkeleton, Loading, LoadingPage } from './components/Loading'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
@@ -32,10 +32,10 @@ import {
   startOfWeek,
 } from './time'
 
-type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more'
+type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace'
 
 // Phone: screens reached through More, which get a back button.
-const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin']
+const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace']
 
 // Screens most visits never open load on demand, so the first paint stays small.
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
@@ -43,6 +43,8 @@ const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
 const Timer = lazy(() => import('./pages/Timer').then((m) => ({ default: m.Timer })))
 const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.Friends })))
+const Workspaces = lazy(() => import('./pages/Workspaces').then((m) => ({ default: m.Workspaces })))
+const WorkspacePage = lazy(() => import('./pages/Workspaces').then((m) => ({ default: m.WorkspacePage })))
 const Chats = lazy(() => import('./pages/Chats').then((m) => ({ default: m.Chats })))
 const RemindersGuide = lazy(() => import('./components/RemindersGuide').then((m) => ({ default: m.RemindersGuide })))
 const SendTasksDialog = lazy(() => import('./components/SendTasksDialog').then((m) => ({ default: m.SendTasksDialog })))
@@ -57,6 +59,7 @@ function preloadScreens() {
     import('./pages/Progress')
     import('./pages/Friends')
     import('./pages/Chats')
+    import('./pages/Workspaces')
     import('./pages/Timer')
     import('./components/Tour')
   }
@@ -116,6 +119,12 @@ const TOUR_STEPS: TourStep[] = [
     target: 'chats',
     title: 'Chats',
     body: "Message your friends. You see when they're online, typing, and when they've seen your message.",
+    gesture: 'tap',
+  },
+  {
+    target: 'workspaces',
+    title: 'Workspaces',
+    body: 'Make a shared space for a team and invite people with a role that decides what they can do. Your own tasks stay private.',
     gesture: 'tap',
   },
   {
@@ -262,7 +271,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   // Tapping a notification opens /?view=friends or /?view=chats&chat=<id>.
   const [view, setView] = useState<View>(() => {
     const asked = new URLSearchParams(window.location.search).get('view')
-    return asked === 'friends' || asked === 'chats' ? asked : 'home'
+    return asked === 'friends' || asked === 'chats' || asked === 'workspaces' ? asked : 'home'
   })
   const [chatStart, setChatStart] = useState<{ chatId?: number; friendId?: number; at: number } | undefined>(() => {
     const id = Number(new URLSearchParams(window.location.search).get('chat'))
@@ -271,6 +280,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const [chatBadge, setChatBadge] = useState(0)
   // Where the phone's back button goes.
   const [backTo, setBackTo] = useState<View>('more')
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null)
+  const [workspaceList, setWorkspaceList] = useState<WorkspaceList | null>(null)
+  const [workspaceError, setWorkspaceError] = useState('')
   const clearChatStart = useCallback(() => setChatStart(undefined), [])
   const [sendDialog, setSendDialog] = useState<{ friendId?: number; taskIds?: number[] } | null>(null)
   const [socialBadge, setSocialBadge] = useState(0)
@@ -665,6 +677,28 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     loadChatBadge()
   }, [loadChatBadge])
   useLiveRefresh(loadChatBadge, 30_000)
+
+  const loadWorkspaces = useCallback(() => {
+    workspaces.list().then(
+      (list) => {
+        setWorkspaceList(list)
+        setWorkspaceError('')
+      },
+      (err) => setWorkspaceError(errorMessage(err)),
+    )
+  }, [])
+  useEffect(loadWorkspaces, [loadWorkspaces])
+  useLiveRefresh(loadWorkspaces, 30_000)
+  const openWorkspace = useCallback((id: number) => {
+    setWorkspaceId(id)
+    setBackTo('workspaces')
+    setView('workspace')
+  }, [])
+  const leftWorkspace = useCallback(() => {
+    setWorkspaceId(null)
+    setView('workspaces')
+    loadWorkspaces()
+  }, [loadWorkspaces])
   useEffect(() => onLive((e) => e.name === 'chat' && loadChatBadge()), [loadChatBadge])
 
   // A chat notification tapped while the app is already open.
@@ -673,6 +707,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       if (event.data?.type !== 'open') return
       const url = new URL(String(event.data.url), window.location.origin)
       const id = Number(url.searchParams.get('chat'))
+      if (url.searchParams.get('view') === 'workspaces') setView('workspaces')
       if (url.searchParams.get('view') === 'chats') {
         setView('chats')
         if (id) setChatStart({ chatId: id, at: Date.now() })
@@ -684,6 +719,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
 
   const remindersOn = user.reminders_enabled
   const inMore = MORE_VIEWS.includes(view)
+  const inviteBadge = workspaceList?.invitations.length ?? 0
   function openNested(next: View) {
     setBackTo(view === next ? 'more' : view)
     setView(next)
@@ -697,6 +733,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     friends: ['People', 'Friends'],
     chats: ['Messages', 'Chats'],
     more: ['Everything else', 'More'],
+    workspaces: ['Teams', 'Workspaces'],
+    workspace: ['Workspace', workspaceList?.workspaces.find((w) => w.id === workspaceId)?.name ?? 'Workspace'],
   }
 
   const bell = (className: string) => (
@@ -718,7 +756,18 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       <Backdrop />
 
       <div className="shell">
-      <SideNav view={view} isStaff={user.is_staff} chatBadge={chatBadge} socialBadge={socialBadge} onGo={(next) => setView(next as View)} />
+      <SideNav
+        view={view === 'workspace' ? `workspace:${workspaceId}` : view}
+        isStaff={user.is_staff}
+        chatBadge={chatBadge}
+        socialBadge={socialBadge}
+        workspaces={workspaceList?.workspaces ?? []}
+        inviteBadge={inviteBadge}
+        onGo={(next) => {
+          if (next.startsWith('workspace:')) openWorkspace(Number(next.split(':')[1]))
+          else setView(next as View)
+        }}
+      />
       <div className="app">
         <header className="header">
           <div className="header-start">
@@ -810,7 +859,15 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </Reveal>
           ) : view === 'more' ? (
             <Reveal key="more">
-              <More user={user} onGo={openNested} />
+              <More user={user} inviteBadge={inviteBadge} onGo={openNested} />
+            </Reveal>
+          ) : view === 'workspaces' ? (
+            <Reveal key="workspaces">
+              <Workspaces data={workspaceList} error={workspaceError} notify={notify} onOpen={openWorkspace} onChanged={loadWorkspaces} onRetry={loadWorkspaces} />
+            </Reveal>
+          ) : view === 'workspace' && workspaceId ? (
+            <Reveal key={`workspace-${workspaceId}`}>
+              <WorkspacePage key={workspaceId} id={workspaceId} myId={user.id} notify={notify} onChanged={loadWorkspaces} onGone={leftWorkspace} />
             </Reveal>
           ) : view === 'friends' ? (
             <Reveal key="friends">
@@ -914,9 +971,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           <span className="nav-label">Friends</span>
           {socialBadge > 0 && <span className="nav-badge" aria-hidden="true">{socialBadge}</span>}
         </button>
-        <button className="nav-btn" data-tour="progress profile" aria-current={inMore ? 'page' : undefined} onClick={() => setView('more')}>
+        <button className="nav-btn" data-tour="progress profile workspaces" aria-label={inviteBadge ? `More, ${inviteBadge} new` : 'More'} aria-current={inMore ? 'page' : undefined} onClick={() => setView('more')}>
           <Icon name="menu" />
           <span className="nav-label">More</span>
+          {inviteBadge > 0 && <span className="nav-badge" aria-hidden="true">{inviteBadge}</span>}
         </button>
       </nav>
 

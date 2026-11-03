@@ -16,6 +16,7 @@ urlpatterns = [
     path("api/social/", include("apps.social.urls")),
     path("api/chat/", include("apps.chat.urls")),
     path("api/live/", include("apps.live.urls")),
+    path("api/workspaces/", include("apps.workspaces.urls")),
     path("api/cron/prune/", PruneView.as_view()),
 ]
 
