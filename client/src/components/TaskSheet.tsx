@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { Category, Priority, Task, TaskInput } from '../api'
 import { Icon } from '../icons'
+import type { ShownTask } from '../outbox'
 import { Calendar } from './Calendar'
 import { TimePicker } from './TimePicker'
 import { gsap, useGsap } from '../motion'
@@ -33,7 +34,7 @@ export interface SheetDefaults {
 }
 
 interface TaskSheetProps {
-  task: Task | null
+  task: (Task & Pick<ShownTask, 'syncError'>) | null
   defaults: SheetDefaults
   remindersOn: boolean
   onClose: () => void
@@ -67,7 +68,8 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
       setTime(lastTime.current)
     }
   }
-  const [error, setError] = useState('')
+  // Reopening a change the server refused: say why.
+  const [error, setError] = useState(task?.syncError ?? '')
   const [saving, setSaving] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
   const scrimRef = useRef<HTMLDivElement>(null)

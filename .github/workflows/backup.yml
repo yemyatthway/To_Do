@@ -1,0 +1,52 @@
+# Daily encrypted backup of the app's database. The repo is public, so the file is encrypted before
+# it's stored; without BACKUP_PASSPHRASE it's unreadable. If a run fails, GitHub emails the owner.
+# How to restore: README → Backups.
+name: Database backup
+
+on:
+  schedule:
+    - cron: "30 20 * * *" # every day at 20:30 UTC
+  workflow_dispatch: # also "Run workflow" on the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Check the secrets are set
+        run: |
+          [ -n "$DATABASE_URL" ] || { echo "Add the BACKUP_DATABASE_URL secret"; exit 1; }
+          [ "${#BACKUP_PASSPHRASE}" -ge 20 ] || { echo "BACKUP_PASSPHRASE must be set, 20+ characters"; exit 1; }
+
+      - name: Install the Postgres tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsS -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+
+      - name: Back up, check it's readable, encrypt
+        run: |
+          umask 077
+          pg_dump "$DATABASE_URL" --schema=public --format=custom --no-owner --no-privileges --file=backup.dump
+          # A backup that can't be read is worthless: fail now, not on the day it's needed.
+          pg_restore --list backup.dump | grep -q "TABLE DATA public users" || { echo "Backup has no users table"; exit 1; }
+          openssl enc -aes-256-cbc -md sha256 -pbkdf2 -iter 200000 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_PASSPHRASE
+          rm backup.dump
+          ls -l backup.dump.enc
+
+      - name: Keep it for 30 days
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_number }}
+          path: backup.dump.enc
+          retention-days: 30
+          if-no-files-found: error

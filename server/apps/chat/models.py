@@ -58,10 +58,15 @@ class Message(models.Model):
     # "Delete for everyone": the text is wiped, the row stays so the conversation keeps its shape.
     deleted_at = models.DateTimeField(null=True, blank=True)
     edited_at = models.DateTimeField(null=True, blank=True)
+    # Chosen by the app, so sending a message again can't post it twice.
+    client_id = models.UUIDField(null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["created_at", "id"]
         indexes = [models.Index(fields=["conversation", "created_at"])]
+        constraints = [
+            models.UniqueConstraint(fields=["sender", "client_id"], condition=Q(client_id__isnull=False), name="one_message_per_client_id"),
+        ]
 
     @property
     def text(self):

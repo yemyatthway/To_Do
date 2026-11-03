@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { api, auth, chat, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
 import { Toast, type ToastData } from './components/Toast'
 import type { TourStep } from './components/Tour'
@@ -9,6 +9,7 @@ import { clearSavedTimer, useTimer, type TimerState } from './timer/useTimer'
 import { enter, useGsap } from './motion'
 import { AuthScreen } from './pages/AuthScreen'
 import { useLiveRefresh } from './live'
+import { overlayTasks, type TaskPatch } from './outbox'
 import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
 import { VerifyEmail } from './pages/VerifyEmail'
@@ -240,6 +241,17 @@ export default function App() {
   )
 }
 
+/** Only what the sheet actually changed, so an edit can't overwrite other fields. */
+function changedFields(task: Task, input: TaskInput) {
+  const patch: Record<string, unknown> = {}
+  for (const field of Object.keys(input) as (keyof TaskInput)[]) {
+    const same =
+      field === 'due_at' ? (task.due_at ? new Date(task.due_at).getTime() : null) === (input.due_at ? new Date(input.due_at).getTime() : null) : task[field] === input[field]
+    if (!same) patch[field] = input[field]
+  }
+  return patch as TaskPatch
+}
+
 function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChange: (u: User) => void; onLoggedOut: (message: string) => void }) {
   const theme = useTheme()
   const now = useNow(30_000)
@@ -258,7 +270,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const [sendDialog, setSendDialog] = useState<{ friendId?: number; taskIds?: number[] } | null>(null)
   const [socialBadge, setSocialBadge] = useState(0)
   const [day, setDay] = useState(() => startOfDay(new Date()))
-  const [tasks, setTasks] = useState<Task[]>([])
+  // What the server last said; `tasks` adds everything still waiting to be saved on top.
+  const [serverTasks, setTasks] = useState<Task[]>([])
+  const [outbox] = useState(() => createOutbox(user.id))
+  const sync = useSyncExternalStore(outbox.subscribe, outbox.getSnapshot)
+  // Deleted, but the Undo window is still open.
+  const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set())
+  const tasks = useMemo(() => overlayTasks(serverTasks, sync).filter((t) => !hidden.has(t.id)), [serverTasks, sync, hidden])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   // `opened` makes every opening a fresh sheet, even if the last one is still sliding away.
@@ -287,10 +305,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         action: task
           ? {
               label: 'Mark done',
-              onClick: () => {
-                setTasks((list) => list.map((t) => (t.id === task.id ? { ...t, done: true } : t)))
-                api.updateTask(task.id, { done: true }).catch(() => undefined)
-              },
+              onClick: () => outbox.updateTask(task, { done: true }),
             }
           : undefined,
       })
@@ -300,7 +315,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           .catch(() => undefined)
       }
     },
-    [showToast],
+    [showToast, outbox],
   )
   const timer = useTimer(onTimerFinish)
   useEffect(() => {
@@ -319,7 +334,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       const [list, overdue] = await Promise.all([api.listTasks(start, end), api.overdueTasks(today)])
       const seen = new Set(list.map((t) => t.id))
       const all = [...list, ...overdue.filter((t) => !seen.has(t.id))]
-      setTasks(all.filter((t) => !pendingDeletes.current.has(t.id)))
+      setTasks(all)
       setLoadError('')
     } catch (err) {
       setLoadError(errorMessage(err))
@@ -329,6 +344,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [day])
 
   useEffect(() => {
+    // load only sets state after the requests finish (the linter can't see through the await).
+    // oxlint-disable-next-line react/set-state-in-effect
     load()
     window.addEventListener('focus', load)
     return () => window.removeEventListener('focus', load)
@@ -353,20 +370,84 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [user.reminders_enabled])
   const [hideDeviceBanner, setHideDeviceBanner] = useState(false)
 
+  const unhide = (id: number) =>
+    setHidden((set) => {
+      const next = new Set(set)
+      next.delete(id)
+      return next
+    })
+
+  // Leaving the app: the delete is safe in the queue, and this tries to get it out right now too.
   const flushDeletes = useCallback(() => {
     for (const [id, timer] of pendingDeletes.current) {
       clearTimeout(timer)
-      api.deleteTask(id, true).catch(() => undefined)
+      outbox.deleteTask(id)
+      const real = outbox.resolve(id)
+      if (real > 0) api.deleteTask(real, true).catch(() => undefined)
     }
     pendingDeletes.current.clear()
-  }, [])
+    setHidden(new Set())
+  }, [outbox])
+
+  // Answers from the save queue. Assigned every render, so they always see the latest state.
+  useEffect(() => {
+    outbox.events = {
+      onTaskSaved: (previousId, task, op) => {
+        setTasks((list) => (list.some((t) => t.id === previousId || t.id === task.id) ? list.map((t) => (t.id === previousId || t.id === task.id ? task : t)) : [...list, task]))
+        setFreshId((id) => (id === previousId ? task.id : id))
+        if (timer.state.taskId === previousId && previousId < 0) timer.setTask(task.id, timer.state.label)
+        if (op.kind === 'task.update' && op.announce) notify(op.announce, task.title)
+      },
+      onTaskDeleted: (id) => setTasks((list) => list.filter((t) => t.id !== id)),
+      onTaskGone: (id) => {
+        setTasks((list) => list.filter((t) => t.id !== id))
+        notify('That task was deleted somewhere else')
+      },
+      onConflict: (op, current) => {
+        setTasks((list) => list.map((t) => (t.id === current.id ? current : t)))
+        showToast({
+          title: 'Changed somewhere else',
+          detail: `"${current.title}" was updated on another device or by a friend, so your edit wasn't applied.`,
+          action: { label: 'Keep mine', onClick: () => outbox.updateTask(current, op.patch, { announce: 'Changes saved' }) },
+        })
+      },
+      onFailed: (op, message) => {
+        if (op.kind === 'chat.send') return // the chat shows it on the message itself
+        if (op.kind === 'task.delete') {
+          notify("Couldn't delete the task", message)
+          return
+        }
+        const title = op.kind === 'task.create' ? op.input.title : (tasksRef.current.find((t) => t.id === op.taskId)?.title ?? 'your task')
+        showToast({ title: `Couldn't save "${title}"`, detail: `${message} Tap the task to fix it.`, action: { label: 'Discard', onClick: () => outbox.discard(op.key) } })
+      },
+      onDrained: () => void load(),
+      onExternalChange: () => void load(),
+    }
+  })
+
+  useEffect(() => {
+    outbox.start()
+    const onVisible = () => {
+      if (!document.hidden) outbox.kick()
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === outbox.storageKey) outbox.reload()
+    }
+    window.addEventListener('online', outbox.kick)
+    window.addEventListener('storage', onStorage)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      outbox.stop()
+      window.removeEventListener('online', outbox.kick)
+      window.removeEventListener('storage', onStorage)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [outbox])
 
   useEffect(() => {
     window.addEventListener('pagehide', flushDeletes)
     return () => window.removeEventListener('pagehide', flushDeletes)
   }, [flushDeletes])
-
-  const replace = (task: Task) => setTasks((list) => list.map((t) => (t.id === task.id ? task : t)))
 
   function openCreate(date: Date, time?: string) {
     const isToday = sameDay(date, new Date())
@@ -381,69 +462,50 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   async function save(input: TaskInput) {
     const editing = sheet?.task
     if (editing) {
-      const updated = await api.updateTask(editing.id, input)
-      replace(updated)
-      notify('Changes saved', updated.title)
+      const patch = changedFields(editing, input)
+      // Saving a refused change again without edits just tries again.
+      if (Object.keys(patch).length) outbox.updateTask(editing, patch, { announce: 'Changes saved' })
+      else outbox.retryTask(editing.id)
       return
     }
-    const created = await api.createTask(input)
-    setTasks((list) => [...list, created])
+    const created = { ...input, id: outbox.createTask(input) } as Task
     setFreshId(created.id)
-    setTimeout(() => setFreshId((id) => (id === created.id ? null : id)), 8000)
+    setTimeout(() => setFreshId((id) => (id === created.id || id === outbox.resolve(created.id) ? null : id)), 8000)
     showToast({
       title: 'Task added',
       detail: `${created.title} · ${describeDue(created)}`,
       action: {
         label: 'Undo',
-        onClick: () => {
-          setTasks((list) => list.filter((t) => t.id !== created.id))
-          api.deleteTask(created.id).catch((err) => notify("Couldn't undo", errorMessage(err)))
-        },
+        onClick: () => outbox.deleteTask(created.id),
       },
     })
   }
 
-  async function toggle(task: Task) {
-    replace({ ...task, done: !task.done })
-    try {
-      replace(await api.updateTask(task.id, { done: !task.done }))
-    } catch (err) {
-      replace(task)
-      notify("Couldn't update the task", errorMessage(err))
-    }
+  function toggle(task: Task) {
+    outbox.updateTask(task, { done: !task.done })
   }
 
   /** Overdue → today, at the same time if that's still ahead, otherwise at the next full hour. */
-  async function moveToToday(list: Task[]) {
+  function moveToToday(list: Task[]) {
     const now = new Date()
     const nextHour = new Date(now)
     nextHour.setHours(now.getHours() + 1, 0, 0, 0)
-    const moved = list.map((task) => {
+    for (const task of list) {
       const was = dueDate(task)!
       const sameTime = new Date(now)
       sameTime.setHours(was.getHours(), was.getMinutes(), 0, 0)
-      return { ...task, due_at: (sameTime > now ? sameTime : nextHour).toISOString() }
-    })
-    moved.forEach(replace)
-    const results = await Promise.allSettled(moved.map((t) => api.updateTask(t.id, { due_at: t.due_at })))
-    results.forEach((result, i) => {
-      if (result.status === 'fulfilled') replace(result.value)
-      else replace(list[i])
-    })
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed) notify("Couldn't move some tasks", `${failed} of ${list.length} stayed where they were.`)
-    else showToast({ title: list.length === 1 ? 'Moved to today' : `${list.length} tasks moved to today`, detail: list.length === 1 ? list[0].title : undefined })
+      outbox.updateTask(task, { due_at: (sameTime > now ? sameTime : nextHour).toISOString() })
+    }
+    showToast({ title: list.length === 1 ? 'Moved to today' : `${list.length} tasks moved to today`, detail: list.length === 1 ? list[0].title : undefined })
   }
 
   function remove(task: Task) {
     setSheet(null)
-    setTasks((list) => list.filter((t) => t.id !== task.id))
+    setHidden((set) => new Set(set).add(task.id))
     const timer = window.setTimeout(() => {
       pendingDeletes.current.delete(task.id)
-      api.deleteTask(task.id).catch((err) => {
-        setTasks((list) => [...list, task])
-        notify("Couldn't delete the task", errorMessage(err))
-      })
+      outbox.deleteTask(task.id)
+      unhide(task.id)
     }, UNDO_MS)
     pendingDeletes.current.set(task.id, timer)
     showToast({
@@ -454,7 +516,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         onClick: () => {
           clearTimeout(timer)
           pendingDeletes.current.delete(task.id)
-          setTasks((list) => [...list, task])
+          unhide(task.id)
         },
       },
     })
@@ -501,8 +563,19 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     }
   }
 
-  async function logout() {
+  async function logout(anyway = false) {
     flushDeletes()
+    // Don't drop work without saying so: give it one last try, then ask.
+    const unsaved = await outbox.settle()
+    if (unsaved && !anyway) {
+      showToast({
+        title: `${unsaved} ${unsaved === 1 ? "change hasn't" : "changes haven't"} saved yet`,
+        detail: 'Stay logged in and they save by themselves when the connection is back.',
+        action: { label: 'Log out anyway', onClick: () => void logout(true) },
+      })
+      return
+    }
+    outbox.clear()
     // Stop this browser getting the previous person's reminders.
     await unsubscribeThisDevice()
     await auth.logout()
@@ -515,6 +588,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     // Remove this browser's push subscription while we're still signed in to do it.
     await unsubscribeThisDevice()
     await auth.deleteAccount(password)
+    outbox.clear()
     clearSavedTimer()
     onLoggedOut('Your account was deleted. Changed your mind? Log in within 30 days to restore it.')
   }
@@ -719,6 +793,16 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           </div>
         )}
 
+        {sync.blocked && sync.ops.length > 0 && (
+          <div className="device-banner" role="status">
+            <Icon name="clock" />
+            <span>
+              <strong>Can't reach the server.</strong> {sync.ops.length} {sync.ops.length === 1 ? 'change is' : 'changes are'} safe on this device and will save
+              automatically.
+            </span>
+          </div>
+        )}
+
         {loadError && (
           <div className="error-banner" role="alert">
             <span>{loadError}</span>
@@ -761,7 +845,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </Reveal>
           ) : view === 'chats' ? (
             <Reveal key="chats">
-              <Chats myId={user.id} now={now} notify={notify} start={chatStart} onUnread={setChatBadge} onStarted={clearChatStart} />
+              <Chats myId={user.id} now={now} notify={notify} start={chatStart} onUnread={setChatBadge} onStarted={clearChatStart} outbox={outbox} />
             </Reveal>
           ) : view === 'admin' && user.is_staff ? (
             <Reveal key="admin">
@@ -780,7 +864,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onThemeChange={theme.choose}
               onReplayTutorial={startTour}
               onOpenAdmin={user.is_staff ? () => setView('admin') : undefined}
-              onLogout={logout}
+              onLogout={() => void logout()}
               onDeleteAccount={deleteAccount}
               onTasksRestored={load}
               notify={notify}
@@ -862,8 +946,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           onSave={save}
           onDelete={remove}
           onSend={(task) => {
+            const id = outbox.resolve(task.id)
+            if (id < 0) {
+              notify('Still saving this task', 'You can send it to a friend once it has saved.')
+              return
+            }
             setSheet(null)
-            setSendDialog({ taskIds: [task.id] })
+            setSendDialog({ taskIds: [id] })
           }}
         />
       )}
@@ -871,7 +960,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       {sendDialog && (
         <Suspense fallback={null}>
           <SendTasksDialog
-            tasks={tasks}
+            tasks={tasks.filter((t) => t.id > 0)}
             initialFriendId={sendDialog.friendId}
             initialTaskIds={sendDialog.taskIds}
             onClose={() => setSendDialog(null)}

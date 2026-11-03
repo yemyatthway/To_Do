@@ -1,13 +1,16 @@
 import { useRef, useState, type ReactNode } from 'react'
 import type { Task } from '../api'
+import type { ShownTask } from '../outbox'
 import { Icon } from '../icons'
 import { dueDate, formatShortDay, formatTime, relativeLabel, sameDay } from '../time'
 
 const REVEAL = 92
 const CATEGORY_LABEL = { work: 'Work', personal: 'Personal', health: 'Health' } as const
 
+const SYNC_LABEL = { saving: 'Saving…', waiting: 'Waiting for network', failed: 'Not saved · tap to fix' } as const
+
 interface TaskRowProps {
-  task: Task
+  task: Task & Pick<ShownTask, 'sync'>
   now: Date
   fresh: boolean
   onToggle: () => void
@@ -101,7 +104,10 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }
         </button>
         <button className="task-main" onClick={onOpen} aria-label={`Edit ${task.title}, ${meta}`}>
           <span className="task-title">{task.title}</span>
-          <span className="task-meta">{meta}</span>
+          <span className="task-meta">
+            {meta}
+            {task.sync && <span className={`task-sync ${task.sync}`}> · {SYNC_LABEL[task.sync]}</span>}
+          </span>
         </button>
         {fresh && <span className="badge badge-new">New</span>}
         {!fresh && relative && (

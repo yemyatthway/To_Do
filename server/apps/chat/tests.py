@@ -108,6 +108,16 @@ class ChatTests(APITestCase):
         self.client.force_authenticate(user)
         return [m["text"] for m in self.client.get(f"/api/chat/{chat['id']}/messages/").data["messages"]]
 
+    def test_sending_a_message_twice_posts_and_notifies_once(self, send_push):
+        chat = self.open()
+        body = {"text": "Only once", "client_id": "6f1c2a7e-5b3d-4c8e-9a10-1234567890ab"}
+        first = self.client.post(f"/api/chat/{chat['id']}/messages/", body, format="json")
+        again = self.client.post(f"/api/chat/{chat['id']}/messages/", body, format="json")
+        self.assertEqual(first.data["id"], again.data["id"])
+        self.assertEqual(first.data["client_id"], body["client_id"])
+        self.assertEqual(Message.objects.count(), 1)
+        self.assertEqual(send_push.call_count, 1)
+
     def test_edit_your_own_message_within_a_day(self, send_push):
         chat = self.open()
         mine = self.send(chat, "See you at 7")

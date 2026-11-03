@@ -34,3 +34,20 @@ EMAIL_ALLOW_RESERVED_DOMAINS = False
 
 # Warnings and errors (failed emails, failed pushes) show up in Render's log view.
 LOGGING["root"] = {"handlers": ["console"], "level": "WARNING"}  # noqa: F405
+
+# Error alerts (Sentry), only when SENTRY_DSN is set. Reports say what broke and where, never
+# whose data was involved: see config/monitoring.py.
+if sentry_dsn := env("SENTRY_DSN", default=""):
+    import sentry_sdk
+
+    from config.monitoring import scrub_event
+
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        send_default_pii=False,
+        include_local_variables=False,  # a crash mustn't send passwords or chat text held in variables
+        max_request_body_size="never",
+        max_breadcrumbs=0,
+        traces_sample_rate=0,
+        before_send=scrub_event,
+    )

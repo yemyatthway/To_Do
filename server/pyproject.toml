@@ -14,5 +14,6 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "pywebpush>=2.5.0",
     "requests>=2.32",
+    "sentry-sdk[django]>=2.73.0",
     "whitenoise>=6.12.0",
 ]

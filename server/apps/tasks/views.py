@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -25,6 +26,12 @@ def _parse_bound(request, name):
 
 
 OVERDUE_LIMIT = 100
+
+
+def _same(field, a, b):
+    if field == "due_at" and a and b:
+        return parse_datetime(str(a)) == parse_datetime(str(b))
+    return a == b
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -53,24 +60,65 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         ably.to_users([self.request.user.pk], "tasks")
 
+    def _existing(self, client_id):
+        # Includes deleted tasks: a late resend must not bring one back as a new task.
+        return Task.all_objects.filter(owner=self.request.user, client_id=client_id).first() if client_id else None
+
+    def create(self, request, *args, **kwargs):
+        """Sending the same client_id again returns the task already saved (200), so a retry is safe."""
+        field = TaskSerializer().fields["client_id"]
+        try:
+            client_id = field.to_internal_value(request.data["client_id"]) if request.data.get("client_id") else None
+        except ValidationError:
+            client_id = None  # the serializer reports it
+        if existing := self._existing(client_id):
+            return Response(self.get_serializer(existing).data)
+        try:
+            with transaction.atomic():
+                return super().create(request, *args, **kwargs)
+        except IntegrityError:  # the same create arrived twice at once
+            if existing := self._existing(client_id):
+                return Response(self.get_serializer(existing).data)
+            raise
+
+    def partial_update(self, request, *args, **kwargs):
+        """`base` is what the app last saw for the fields it's changing. If someone changed one of
+        them since (another device, a friend's shared plan), answer 409 instead of overwriting."""
+        task = self.get_object()
+        base = request.data.get("base")
+        if isinstance(base, dict):
+            current = self.get_serializer(task).data
+            for field, seen in base.items():
+                if field not in current or field not in request.data:
+                    continue
+                if not _same(field, current[field], seen) and not _same(field, current[field], request.data[field]):
+                    return Response(
+                        {"detail": "This task was changed somewhere else.", "task": current},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+        return super().partial_update(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
-        self._changed()
+        transaction.on_commit(self._changed)
 
     def perform_update(self, serializer):
         from apps.social.linked import SYNCED_FIELDS, sync_copies
 
         before = {field: getattr(serializer.instance, field) for field in SYNCED_FIELDS}
-        task = serializer.save()
-        sync_copies(task, before)  # a shared plan: everyone else's copy changes too
+        # Your task and your friends' copies change together, or not at all.
+        with transaction.atomic():
+            task = serializer.save()
+            sync_copies(task, before)  # a shared plan: everyone else's copy changes too
         self._changed()
 
     def perform_destroy(self, task):
         from apps.social.linked import cancel_copies
 
-        task.deleted_at = timezone.now()
-        task.save(update_fields=["deleted_at"])
-        cancel_copies(task)
+        with transaction.atomic():
+            task.deleted_at = timezone.now()
+            task.save(update_fields=["deleted_at"])
+            cancel_copies(task)
         self._changed()
 
     def _trash(self):

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { chat, social, type Chat, type ChatMessage, type Person } from '../api'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
+import { pendingMessages, type Outbox, type ShownMessage } from '../outbox'
 import { isLive, joinChat, onLive, watchOnline, watchTyping } from '../realtime'
 import { addDays, formatLongDate, formatShortDay, formatTime, sameDay } from '../time'
 import { handle, initials } from '../user'
@@ -23,9 +24,10 @@ interface ChatsProps {
   onUnread: (count: number) => void
   /** The chat in `start` is open: forget it, so the Chats tab shows the list next time. */
   onStarted: () => void
+  outbox: Outbox
 }
 
-export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsProps) {
+export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }: ChatsProps) {
   const [chats, setChats] = useState<Chat[] | null>(null)
   const [friends, setFriends] = useState<Person[]>([])
   const [error, setError] = useState('')
@@ -222,6 +224,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted }: ChatsPr
             now={now}
             online={online.has(active.friend.id)}
             notify={notify}
+            outbox={outbox}
             onBack={() => setOpenId(null)}
             onChanged={refresh}
           />
@@ -267,8 +270,8 @@ function dayLabel(d: Date, now: Date) {
   return formatLongDate(d)
 }
 
-/** A message on screen: real ones from the server, plus my own while they're on the way. */
-type Shown = ChatMessage & { pending?: boolean; failed?: boolean }
+/** A message on screen: real ones from the server, plus my own still in the save queue. */
+type Shown = ShownMessage
 
 interface ThreadProps {
   chat: Chat
@@ -276,11 +279,12 @@ interface ThreadProps {
   now: Date
   online: boolean
   notify: (title: string, detail?: string) => void
+  outbox: Outbox
   onBack: () => void
   onChanged: () => void
 }
 
-function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: ThreadProps) {
+function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChanged }: ThreadProps) {
   const friend = info.friend
   const [messages, setMessages] = useState<Shown[] | null>(null)
   const [more, setMore] = useState(false)
@@ -298,7 +302,6 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
   const stick = useRef(true) // keep the newest message in view unless they scrolled up
   const live = useRef<ReturnType<typeof joinChat> | null>(null)
   const typingTimer = useRef(0)
-  const tempId = useRef(-1)
   const firstLoad = useRef(true)
 
   const own = useCallback((m: ChatMessage): Shown => ({ ...m, mine: m.sender === myId }), [myId])
@@ -318,9 +321,8 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
         if (!list || replace) return latest
         const ids = new Set(latest.map((m) => m.id))
         const oldest = latest[0]?.id ?? Infinity
-        const older = list.filter((m) => m.id > 0 && m.id < oldest && !ids.has(m.id))
-        const sending = list.filter((m) => m.id < 0)
-        return [...older, ...latest, ...sending]
+        const older = list.filter((m) => m.id < oldest && !ids.has(m.id))
+        return [...older, ...latest]
       })
       setError('')
     } catch (err) {
@@ -341,12 +343,7 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
       onEvent: (name, data) => {
         if (name === 'message') {
           const m = own(data as ChatMessage)
-          setMessages((list) => {
-            if (!list || list.some((x) => x.id === m.id)) return list
-            // My own message can arrive here before the send finishes: it replaces the faded copy.
-            const waiting = m.mine ? list.findIndex((x) => x.pending && x.text === m.text) : -1
-            return waiting >= 0 ? list.map((x, i) => (i === waiting ? m : x)) : [...list, m]
-          })
+          setMessages((list) => (list && !list.some((x) => x.id === m.id) ? [...list, m] : list))
           if (m.sender === friend.id) {
             setTyping(false)
             clearTimeout(typingTimer.current)
@@ -397,11 +394,25 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
       .catch(() => undefined)
   }, [visible, lastFromFriend, info.id, onChanged])
 
+  // Messages still on their way, from the queue on this device (they survive closing the app).
+  const sync = useSyncExternalStore(outbox.subscribe, outbox.getSnapshot)
+  const shown = useMemo(() => (messages ? [...messages, ...pendingMessages(sync, info.id, messages, myId)] : null), [messages, sync, info.id, myId])
+  useEffect(
+    () =>
+      outbox.onMessage((message) => {
+        if (message.conversation !== info.id) return
+        const m = own(message)
+        setMessages((list) => (list && !list.some((x) => x.id === m.id) ? [...list, m] : list))
+        onChanged()
+      }),
+    [outbox, info.id, own, onChanged],
+  )
+
   // Scroll to the newest message when one arrives (if they were already at the bottom).
   useLayoutEffect(() => {
     const el = scroller.current
     if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [messages, typing])
+  }, [shown, typing])
 
   async function loadOlder() {
     const oldest = messages?.find((m) => m.id > 0)
@@ -421,27 +432,11 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
     }
   }
 
-  async function send(text: string, retryId?: number) {
+  function send(text: string) {
     const body = text.trim()
     if (!body) return
-    const id = retryId ?? tempId.current--
-    // Runs on send, not during render (the linter can't tell).
-    // oxlint-disable-next-line react/purity
-    const temp: Shown = { id, conversation: info.id, sender: myId, mine: true, text: body, deleted: false, edited: false, created_at: new Date().toISOString(), pending: true }
     stick.current = true
-    setMessages((list) => (retryId ? list?.map((m) => (m.id === id ? temp : m)) : [...(list ?? []), temp]) ?? null)
-    try {
-      const saved = own(await chat.send(info.id, body))
-      // The live event may have added it already.
-      setMessages((list) => {
-        const rest = (list ?? []).filter((m) => m.id !== id)
-        return rest.some((m) => m.id === saved.id) ? rest : [...rest, saved]
-      })
-      onChanged()
-    } catch (err) {
-      setMessages((list) => list?.map((m) => (m.id === id ? { ...m, pending: false, failed: true } : m)) ?? null)
-      notify("Couldn't send", errorMessage(err))
-    }
+    outbox.sendMessage(info.id, body)
   }
 
   function submit() {
@@ -482,8 +477,8 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
   /** For everyone (your own message: it shows as deleted on both sides), or just for you (gone from your side). */
   async function remove(m: Shown, forMe: boolean) {
     setSelected(null)
-    if (m.failed) {
-      setMessages((list) => list?.filter((x) => x.id !== m.id) ?? null)
+    if (m.key) {
+      outbox.discard(m.key)
       return
     }
     const before = messages
@@ -578,13 +573,13 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
         )}
         {messages === null ? (
           <p className="empty">Loading…</p>
-        ) : messages.length === 0 ? (
+        ) : shown?.length === 0 ? (
           <p className="empty">Say hi to {nameOf(friend)}.</p>
         ) : (
           <ol className="bubbles" aria-live="polite">
-            {messages.map((m, i) => {
+            {shown?.map((m, i) => {
               const at = new Date(m.created_at)
-              const prev = messages[i - 1]
+              const prev = shown[i - 1]
               const newDay = !prev || !sameDay(new Date(prev.created_at), at)
               const grouped = !newDay && prev.sender === m.sender
               return (
@@ -618,7 +613,7 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
                       <div className="bubble-actions" onClick={(e) => e.stopPropagation()}>
                         {m.failed ? (
                           <>
-                            <button className="text-btn" onClick={() => send(m.text, m.id)}>
+                            <button className="text-btn" onClick={() => m.key && outbox.retry(m.key)}>
                               <Icon name="undo" /> Try again
                             </button>
                             <button className="text-btn danger" onClick={() => remove(m, true)}>
@@ -646,6 +641,7 @@ function Thread({ chat: info, myId, now, online, notify, onBack, onChanged }: Th
                     )}
                   </div>
                   {m.failed && selected !== m.id && <div className="bubble-note mine">Not sent. Tap to try again.</div>}
+                  {m.waiting && <div className="bubble-note mine">Waiting for network</div>}
                   {lastMine?.id === m.id && <div className="bubble-note mine">{seen ? 'Seen' : 'Sent'}</div>}
                 </li>
               )

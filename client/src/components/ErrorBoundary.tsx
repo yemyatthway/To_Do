@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { reportError } from '../monitoring'
 
 /**
  * Last line of defence: if a screen crashes while rendering, show a way out instead of a blank
@@ -13,6 +14,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Screen crashed', error, info.componentStack)
+    reportError(error)
   }
 
   render() {

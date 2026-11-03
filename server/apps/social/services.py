@@ -89,13 +89,16 @@ def remove_friendship(*, me, friendship_id):
     friendship = Friendship.objects.filter(Q(requester=me) | Q(addressee=me), pk=friendship_id).select_related("requester", "addressee").first()
     if friendship is None:
         raise NotFound("That friendship doesn't exist.")
-    friendship.delete()
     from apps.live import ably
 
-    ably.to_users([friendship.requester_id, friendship.addressee_id], "social")
     from .linked import unlink_between  # linked imports this module
 
-    unlink_between(friendship.requester, friendship.addressee)
+    requester_id, addressee_id = friendship.requester_id, friendship.addressee_id
+    # The friendship and the links between their tasks go together, or not at all.
+    with transaction.atomic():
+        friendship.delete()
+        unlink_between(friendship.requester, friendship.addressee)
+    ably.to_users([requester_id, addressee_id], "social")
 
 
 def share_tasks(*, me, recipient_id, task_ids, message=""):

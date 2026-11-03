@@ -1554,6 +1554,28 @@ textarea.field {
   text-overflow: ellipsis;
 }
 
+/* A row still on its way to the server. Under a second there's nothing to say, so it stays invisible. */
+.task-sync.saving {
+  opacity: 0;
+  animation: task-sync-show 0.2s 1s forwards;
+}
+
+.task-sync.waiting {
+  color: var(--accT);
+  font-weight: 600;
+}
+
+.task-sync.failed {
+  color: var(--dIcon);
+  font-weight: 600;
+}
+
+@keyframes task-sync-show {
+  to {
+    opacity: 1;
+  }
+}
+
 .profile-handle {
   color: var(--accT);
   font-weight: 600;

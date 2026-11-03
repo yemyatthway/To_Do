@@ -2,7 +2,7 @@ import threading
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import close_old_connections, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
@@ -56,20 +56,28 @@ def visible(me, conversation):
     return messages
 
 
-def send(me, conversation, text):
+def send(me, conversation, text, client_id=None):
+    """Sending the same client_id again returns the saved message, with no second post or push."""
+    if client_id and (existing := conversation.messages.filter(sender=me, client_id=client_id).first()):
+        return existing
     text = _clean(text)
     other = conversation.other(me)
     if not other.is_active or not Friendship.are_friends(me, other):
         raise PermissionDenied("You're no longer friends, so you can't send messages here.")
 
     now = timezone.now()
-    with transaction.atomic():
-        message = Message(conversation=conversation, sender=me)
-        message.text = text
-        message.save()
-        conversation.last_message_at = message.created_at
-        field = conversation.set_read(me, now)  # your own message counts as read by you
-        conversation.save(update_fields=["last_message_at", field])
+    try:
+        with transaction.atomic():
+            message = Message(conversation=conversation, sender=me, client_id=client_id)
+            message.text = text
+            message.save()
+            conversation.last_message_at = message.created_at
+            field = conversation.set_read(me, now)  # your own message counts as read by you
+            conversation.save(update_fields=["last_message_at", field])
+    except IntegrityError:  # the same send arrived twice at once
+        if client_id and (existing := conversation.messages.filter(sender=me, client_id=client_id).first()):
+            return existing
+        raise
 
     payload = message_data(message, viewer=None)
     ably.to_chat(conversation.pk, "message", payload)
@@ -174,6 +182,7 @@ def total_unread(me):
 def message_data(message, viewer):
     return {
         "id": message.pk,
+        "client_id": str(message.client_id) if message.client_id else None,
         "conversation": message.conversation_id,
         "sender": message.sender_id,
         "mine": viewer is not None and message.sender_id == viewer.pk,

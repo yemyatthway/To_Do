@@ -4,10 +4,12 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { listenForPushes } from './live'
+import { startMonitoring } from './monitoring'
 import { registerServiceWorker } from './push'
 
 registerServiceWorker()
 listenForPushes()
+startMonitoring()
 
 // Android browsers often skip the glass blur on floating bars; CSS gives them a solid one instead.
 if (/Android/i.test(navigator.userAgent)) document.documentElement.dataset.platform = 'android'

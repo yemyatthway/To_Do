@@ -1,3 +1,5 @@
+import { Outbox } from './outbox'
+
 export type Category = 'work' | 'personal' | 'health'
 export type Priority = 'low' | 'medium' | 'high'
 
@@ -21,6 +23,8 @@ export interface Task {
   linked?: boolean
   /** Your task: first names of friends you added it for. */
   shared_with?: string[]
+  /** Chosen by the app when it was made, so a resend can't create a second copy. */
+  client_id?: string | null
 }
 
 export type TaskInput = Pick<Task, 'title' | 'notes' | 'due_at' | 'category' | 'priority' | 'remind_before_minutes' | 'done'>
@@ -156,13 +160,19 @@ export interface TrustedDevice {
 export class ApiError extends Error {
   status: number
   fields: Record<string, string[]>
+  /** The whole reply, e.g. the newer task when an edit conflicts (409). */
+  data?: unknown
 
-  constructor(message: string, status: number, fields: Record<string, string[]> = {}) {
+  constructor(message: string, status: number, fields: Record<string, string[]> = {}, data?: unknown) {
     super(message)
     this.status = status
     this.fields = fields
+    this.data = data
   }
 }
+
+/** A request that hasn't answered by then has failed, instead of "Saving…" forever. */
+const REQUEST_TIMEOUT_MS = 25_000
 
 // Empty in development (Vite proxies /api to Django); the backend URL in production.
 export const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -179,18 +189,24 @@ async function rawFetch(path: string, init: RequestInit = {}, withAuth = true) {
   const headers = new Headers(init.headers)
   if (init.body !== undefined) headers.set('Content-Type', 'application/json')
   if (withAuth && accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  const timeout = new AbortController()
+  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS)
   try {
-    return await fetch(API_BASE + path, { ...init, headers, credentials: 'include' })
+    return await fetch(API_BASE + path, { ...init, headers, credentials: 'include', signal: timeout.signal })
   } catch {
     throw new ApiError("Couldn't reach the server. Check your connection and try again.", 0)
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 async function toError(response: Response) {
   let message = `Something went wrong (${response.status}).`
   let fields: Record<string, string[]> = {}
+  let data: unknown
   try {
     const body = await response.json()
+    data = body
     if (typeof body.detail === 'string') {
       message = body.detail
     } else {
@@ -204,7 +220,7 @@ async function toError(response: Response) {
   if (response.status >= 502 && response.status <= 504) message = "Couldn't reach the server. Check your connection and try again."
   // DRF's own throttle text is vague; our code limits explain themselves.
   if (response.status === 429 && (!message || message.startsWith('Request was throttled'))) message = 'Too many attempts. Wait a minute and try again.'
-  return new ApiError(message, response.status, fields)
+  return new ApiError(message, response.status, fields, data)
 }
 
 let refreshing: Promise<boolean> | null = null
@@ -301,8 +317,10 @@ export const api = {
   },
   /** Unfinished tasks due before `before` (start of today), newest first. */
   overdueTasks: (before: Date) => request<Task[]>(`/api/tasks/?${new URLSearchParams({ overdue_before: before.toISOString() })}`),
-  createTask: (input: TaskInput) => request<Task>('/api/tasks/', json('POST', input)),
-  updateTask: (id: number, input: Partial<TaskInput>) => request<Task>(`/api/tasks/${id}/`, json('PATCH', input)),
+  /** `clientId` makes sending it again safe: the server returns the task it already saved. */
+  createTask: (input: TaskInput, clientId?: string) => request<Task>('/api/tasks/', json('POST', { ...input, client_id: clientId })),
+  /** `base` is what these fields were when the edit began; if they've changed since, the server answers 409. */
+  updateTask: (id: number, input: Partial<TaskInput>, base?: Record<string, unknown>) => request<Task>(`/api/tasks/${id}/`, json('PATCH', { ...input, base })),
   /** Moves it to "Recently deleted"; restorable for 7 days. */
   deleteTask: (id: number, keepalive = false) => request<void>(`/api/tasks/${id}/`, { method: 'DELETE', keepalive }),
   trash: () => request<Task[]>('/api/tasks/trash/'),
@@ -407,6 +425,7 @@ export const social = {
 
 export interface ChatMessage {
   id: number
+  client_id?: string | null
   conversation: number
   sender: number
   mine: boolean
@@ -431,7 +450,7 @@ export const chat = {
   open: (userId: number) => request<Chat>(`/api/chat/with/${userId}/`, json('POST', {})),
   messages: (id: number, before?: number) =>
     request<{ chat: Chat; messages: ChatMessage[] }>(`/api/chat/${id}/messages/${before ? `?before=${before}` : ''}`),
-  send: (id: number, text: string) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text })),
+  send: (id: number, text: string, clientId?: string) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text, client_id: clientId })),
   read: (id: number) => request<{ read_at: string }>(`/api/chat/${id}/read/`, json('POST', {})),
   edit: (id: number, messageId: number, text: string) => request<ChatMessage>(`/api/chat/${id}/messages/${messageId}/`, json('PATCH', { text })),
   /** For everyone (your own messages), or just for you (any message). */
@@ -445,4 +464,25 @@ export type LivePass = { enabled: false } | { enabled: true; client_id: string; 
 
 export const live = {
   token: () => request<LivePass>('/api/live/token/'),
+}
+
+/** This person's save queue on this device (see outbox.ts). */
+export function createOutbox(userId: number) {
+  let store: Storage | null = null
+  try {
+    store = window.localStorage
+  } catch {
+    // Blocked: changes wait in memory until the app closes.
+  }
+  return new Outbox(
+    `todo:outbox:${userId}`,
+    {
+      createTask: (input, clientId) => api.createTask(input, clientId),
+      updateTask: (id, patch, base) => api.updateTask(id, patch, base),
+      deleteTask: (id) => api.deleteTask(id),
+      sendMessage: (conversation, text, clientId) => chat.send(conversation, text, clientId),
+    },
+    store,
+    navigator.locks ?? null,
+  )
 }

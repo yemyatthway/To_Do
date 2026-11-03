@@ -36,6 +36,9 @@ class Task(models.Model):
     # changes to the original (time, title...) are copied here; editing those here unlinks it.
     linked_from = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="linked_copies")
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    # Chosen by the app when the task is first made, so sending it again (the reply got lost, the
+    # network came back) finds the same task instead of creating a second one.
+    client_id = models.UUIDField(null=True, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -48,6 +51,9 @@ class Task(models.Model):
         ordering = [models.F("due_at").asc(nulls_last=True), "created_at"]
         # The main query: one person's tasks in a date range.
         indexes = [models.Index(fields=["owner", "due_at"])]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "client_id"], condition=models.Q(client_id__isnull=False), name="one_task_per_client_id"),
+        ]
 
     def __str__(self):
         return self.title

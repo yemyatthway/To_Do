@@ -10,6 +10,7 @@ from .models import Conversation
 
 class SendSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=services.MAX_LENGTH, allow_blank=True, trim_whitespace=False)
+    client_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 def conversation_data(conversation, me):
@@ -71,7 +72,8 @@ class MessagesApi(APIView):
         conversation = services.conversation_for(request.user, conversation_id)
         serializer = SendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = services.send(request.user, conversation, serializer.validated_data["text"])
+        data = serializer.validated_data
+        message = services.send(request.user, conversation, data["text"], client_id=data.get("client_id"))
         return Response(services.message_data(message, request.user), status=status.HTTP_201_CREATED)
 
 

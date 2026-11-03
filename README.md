@@ -153,3 +153,32 @@ Why these: Render's free plan blocks outgoing email on ports 25/465/587, so emai
 9. **iPhone**: push only works after "Add to Home Screen".
 
 Production settings live in `server/config/settings/production.py` (HTTPS only, HSTS, secure cookies, no CORS because the app and `/api` share the Vercel domain).
+
+## Backups
+
+`.github/workflows/backup.yml` backs up the database every day. The file is encrypted and kept for 30 days as a run artifact (Actions tab → **Database backup** → a run). The repo is public, so it must stay encrypted.
+
+Repository secrets (Settings → Secrets and variables → Actions):
+
+- `BACKUP_DATABASE_URL`: the same Supabase session-pooler address as `DATABASE_URL` on Render
+- `BACKUP_PASSPHRASE`: a long random passphrase, kept in your password manager. **Without it no backup can ever be opened.**
+
+A failed run emails the repo owner. GitHub pauses scheduled runs after 60 days with no commits, and emails before it does; re-enable it on the Actions tab.
+
+To restore, download the artifact, unzip it, then:
+
+```bash
+openssl enc -d -aes-256-cbc -md sha256 -pbkdf2 -iter 200000 -in backup.dump.enc -out backup.dump
+pg_restore --clean --if-exists --no-owner --dbname "$DATABASE_URL" backup.dump
+```
+
+`--clean` replaces what's in that database, so try a backup on a spare database first. Chat messages also need the same `CHAT_ENCRYPTION_KEYS`, which isn't in the backup: keep it in your password manager too.
+
+## Error alerts
+
+Set `SENTRY_DSN` on Render and `VITE_SENTRY_DSN` on Vercel (Sentry's free plan is enough) to get emailed when something breaks. Without them nothing is sent. Reports exclude message text, passwords, tokens, search terms and user identity (`server/config/monitoring.py`, `client/src/monitoring.ts`).
+
+## Saving changes
+
+Tasks and chat messages go through a queue on the device (`client/src/outbox.ts`): the change shows at once and "saved" means the server confirmed it. New items carry a `client_id` so a resend can't duplicate them, and task edits carry `base`, so an edit from an old copy gets a 409 instead of overwriting newer work. Run its tests with `npm test` in `client/`.
+

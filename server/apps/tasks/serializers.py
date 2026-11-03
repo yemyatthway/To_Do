@@ -12,6 +12,7 @@ class TaskSerializer(serializers.ModelSerializer):
     added_by_name = serializers.SerializerMethodField()
     linked = serializers.SerializerMethodField()
     shared_with = serializers.SerializerMethodField()
+    client_id = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model = Task
@@ -31,6 +32,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "added_by_name",
             "linked",
             "shared_with",
+            "client_id",
         ]
         read_only_fields = ["completed_at", "created_at", "updated_at", "deleted_at"]
 
@@ -69,6 +71,7 @@ class TaskSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
+        validated_data.pop("client_id", None)  # set once, when the task is made
         # A new time or reminder setting means the reminder should fire again.
         if any(
             key in validated_data and validated_data[key] != getattr(instance, key)
