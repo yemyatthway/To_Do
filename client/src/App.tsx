@@ -10,6 +10,7 @@ import { Icon } from './icons'
 import { clearSavedTimer, useTimer, type TimerState } from './timer/useTimer'
 import { enter, useGsap } from './motion'
 import { AuthScreen } from './pages/AuthScreen'
+import { isChildPage, parseRoute, SETTINGS_SECTIONS, useRoute, type Route, type View } from './routes'
 import { useLiveRefresh } from './live'
 import { overlayTasks, type TaskPatch } from './outbox'
 import { onLive, startAdminLive, startLive, stopLive } from './realtime'
@@ -31,8 +32,6 @@ import {
   startOfDay,
   startOfWeek,
 } from './time'
-
-type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace'
 
 // Phone: screens reached through More, which get a back button.
 const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace']
@@ -268,19 +267,22 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const theme = useTheme()
   const now = useNow(30_000)
 
-  // Tapping a notification opens /?view=friends or /?view=chats&chat=<id>.
-  const [view, setView] = useState<View>(() => {
-    const asked = new URLSearchParams(window.location.search).get('view')
-    return asked === 'friends' || asked === 'chats' || asked === 'workspaces' ? asked : 'home'
-  })
+  // The page comes from the address, so refresh, Back and shared links all work.
+  const { route: asked, navigate, goBack } = useRoute()
+  const route: Route = asked.view === 'admin' && !user.is_staff ? { view: 'home' } : asked
+  const view = route.view
+  const workspaceId = route.view === 'workspace' ? route.id : null
+  const go = useCallback((next: Exclude<View, 'workspace'>) => navigate({ view: next } as Route), [navigate])
+  const [friendName, setFriendName] = useState<string | null>(null)
+  // Staff only: anyone else who opens /admin lands on Today, with the address to match.
+  useEffect(() => {
+    if (asked.view === 'admin' && !user.is_staff) navigate({ view: 'home' }, { replace: true })
+  }, [asked.view, user.is_staff, navigate])
   const [chatStart, setChatStart] = useState<{ chatId?: number; friendId?: number; at: number } | undefined>(() => {
     const id = Number(new URLSearchParams(window.location.search).get('chat'))
     return id ? { chatId: id, at: Date.now() } : undefined
   })
   const [chatBadge, setChatBadge] = useState(0)
-  // Where the phone's back button goes.
-  const [backTo, setBackTo] = useState<View>('more')
-  const [workspaceId, setWorkspaceId] = useState<number | null>(null)
   const [workspaceList, setWorkspaceList] = useState<WorkspaceList | null>(null)
   const [workspaceError, setWorkspaceError] = useState('')
   const clearChatStart = useCallback(() => setChatStart(undefined), [])
@@ -597,6 +599,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     await unsubscribeThisDevice()
     await auth.logout()
     clearSavedTimer()
+    window.history.replaceState(null, '', '/')
     onLoggedOut("You've logged out.")
   }
 
@@ -607,13 +610,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     await auth.deleteAccount(password)
     outbox.clear()
     clearSavedTimer()
+    window.history.replaceState(null, '', '/')
     onLoggedOut('Your account was deleted. Changed your mind? Log in within 30 days to restore it.')
   }
 
   function startTour() {
     setSheet(null)
-    setView('home')
-    window.scrollTo({ top: 0 })
+    go('home')
     setTouring(true)
   }
 
@@ -640,10 +643,6 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       observer.disconnect()
       window.removeEventListener('resize', update)
     }
-  }, [])
-
-  useEffect(() => {
-    if (window.location.search) window.history.replaceState(null, '', window.location.pathname)
   }, [])
 
   // Friend requests + new shares, for the badge. Cheap: one tiny request on focus and once a minute.
@@ -689,16 +688,11 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [])
   useEffect(loadWorkspaces, [loadWorkspaces])
   useLiveRefresh(loadWorkspaces, 30_000)
-  const openWorkspace = useCallback((id: number) => {
-    setWorkspaceId(id)
-    setBackTo('workspaces')
-    setView('workspace')
-  }, [])
+  const openWorkspace = useCallback((id: number) => navigate({ view: 'workspace', id, section: 'home' }), [navigate])
   const leftWorkspace = useCallback(() => {
-    setWorkspaceId(null)
-    setView('workspaces')
+    navigate({ view: 'workspaces' }, { replace: true })
     loadWorkspaces()
-  }, [loadWorkspaces])
+  }, [navigate, loadWorkspaces])
   useEffect(() => onLive((e) => e.name === 'chat' && loadChatBadge()), [loadChatBadge])
 
   // A chat notification tapped while the app is already open.
@@ -707,34 +701,36 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       if (event.data?.type !== 'open') return
       const url = new URL(String(event.data.url), window.location.origin)
       const id = Number(url.searchParams.get('chat'))
-      if (url.searchParams.get('view') === 'workspaces') setView('workspaces')
-      if (url.searchParams.get('view') === 'chats') {
-        setView('chats')
-        if (id) setChatStart({ chatId: id, at: Date.now() })
-      }
+      const target = parseRoute(url.pathname, url.search)
+      if (target.view !== 'home') navigate(target)
+      if (target.view === 'chats' && id) setChatStart({ chatId: id, at: Date.now() })
     }
     navigator.serviceWorker?.addEventListener('message', onMessage)
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage)
-  }, [])
+  }, [navigate])
 
   const remindersOn = user.reminders_enabled
   const inMore = MORE_VIEWS.includes(view)
   const inviteBadge = workspaceList?.invitations.length ?? 0
-  function openNested(next: View) {
-    setBackTo(view === next ? 'more' : view)
-    setView(next)
-  }
+  const workspaceName = workspaceList?.workspaces.find((w) => w.id === workspaceId)?.name ?? 'Workspace'
   const headings: Record<View, [string, string]> = {
     home: [formatLongDate(now), greeting(now)],
     progress: ['This week', 'Your progress'],
-    profile: ['Account', 'Your profile'],
+    profile: route.view === 'profile' && route.section ? ['Settings', SETTINGS_SECTIONS[route.section]] : ['Account', 'Settings'],
     timer: ['Focus', 'Timer'],
     admin: ['Staff only', 'Admin dashboard'],
-    friends: ['People', 'Friends'],
+    friends: route.view === 'friends' && route.username ? ['Friends', friendName ?? `@${route.username}`] : ['People', 'Friends'],
     chats: ['Messages', 'Chats'],
     more: ['Everything else', 'More'],
     workspaces: ['Teams', 'Workspaces'],
-    workspace: ['Workspace', workspaceList?.workspaces.find((w) => w.id === workspaceId)?.name ?? 'Workspace'],
+    workspace:
+      route.view !== 'workspace' || route.section === 'home'
+        ? ['Workspaces', workspaceName]
+        : route.section === 'members'
+          ? [workspaceName, 'Members']
+          : route.section === 'settings'
+            ? [workspaceName, 'Settings']
+            : [`${workspaceName} / Settings`, 'What each role can do'],
   }
 
   const bell = (className: string) => (
@@ -765,14 +761,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         inviteBadge={inviteBadge}
         onGo={(next) => {
           if (next.startsWith('workspace:')) openWorkspace(Number(next.split(':')[1]))
-          else setView(next as View)
+          else go(next as Exclude<View, 'workspace'>)
         }}
       />
       <div className="app">
         <header className="header">
           <div className="header-start">
-            {inMore && view !== 'more' && (
-              <button type="button" className="round-btn mobile-only" aria-label="Back" onClick={() => setView(backTo)}>
+            {(isChildPage(route) || (inMore && view !== 'more')) && (
+              <button type="button" className={`round-btn${isChildPage(route) ? '' : ' mobile-only'}`} aria-label="Back" onClick={goBack}>
                 <Icon name="back" />
               </button>
             )}
@@ -781,8 +777,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               <h1 className="greeting">{headings[view][1]}</h1>
             </div>
           </div>
-          <div className="header-actions">
-            <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => openNested('timer')} />
+          <div className={`header-actions${isChildPage(route) ? ' on-child' : ''}`}>
+            <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => go('timer')} />
             {bell(`round-btn${remindersOn ? ' on' : ''}`)}
             <button className="primary-btn desktop-only" data-tour="new-task" onClick={() => openCreate(day)}>
               <Icon name="plus" />
@@ -859,25 +855,38 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </Reveal>
           ) : view === 'more' ? (
             <Reveal key="more">
-              <More user={user} inviteBadge={inviteBadge} onGo={openNested} />
+              <More user={user} inviteBadge={inviteBadge} onGo={go} />
             </Reveal>
           ) : view === 'workspaces' ? (
             <Reveal key="workspaces">
               <Workspaces data={workspaceList} error={workspaceError} notify={notify} onOpen={openWorkspace} onChanged={loadWorkspaces} onRetry={loadWorkspaces} />
             </Reveal>
-          ) : view === 'workspace' && workspaceId ? (
-            <Reveal key={`workspace-${workspaceId}`}>
-              <WorkspacePage key={workspaceId} id={workspaceId} myId={user.id} notify={notify} onChanged={loadWorkspaces} onGone={leftWorkspace} />
+          ) : route.view === 'workspace' ? (
+            <Reveal key={`workspace-${route.id}`}>
+              <WorkspacePage
+                key={route.id}
+                id={route.id}
+                myId={user.id}
+                section={route.section}
+                notify={notify}
+                onOpenSection={(section) => navigate({ view: 'workspace', id: route.id, section })}
+                onChanged={loadWorkspaces}
+                onGone={leftWorkspace}
+              />
             </Reveal>
-          ) : view === 'friends' ? (
+          ) : route.view === 'friends' ? (
             <Reveal key="friends">
               <Friends
                 now={now}
+                username={route.username}
                 notify={notify}
+                onOpenFriend={(username) => navigate({ view: 'friends', username })}
+                onCloseFriend={() => navigate({ view: 'friends' }, { replace: true })}
+                onFriendName={setFriendName}
                 onSendTasks={(friend) => setSendDialog({ friendId: friend?.id })}
                 onMessage={(friend) => {
                   setChatStart({ friendId: friend.id, at: Date.now() })
-                  setView('chats')
+                  go('chats')
                 }}
                 onChanged={() => {
                   load()
@@ -893,11 +902,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             <Reveal key="admin">
               <Admin me={user} now={now} notify={notify} />
             </Reveal>
-          ) : view === 'profile' ? (
+          ) : route.view === 'profile' ? (
             <Reveal key="profile">
             <Profile
               user={user}
               now={now}
+              section={route.section}
+              onOpenSection={(section) => navigate({ view: 'profile', section })}
               remindersBusy={remindersBusy}
               themePreference={theme.preference}
               onUserChange={onUserChange}
@@ -905,7 +916,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onOpenRemindersGuide={() => setRemindersGuide(true)}
               onThemeChange={theme.choose}
               onReplayTutorial={startTour}
-              onOpenAdmin={user.is_staff ? () => openNested('admin') : undefined}
+              onOpenAdmin={user.is_staff ? () => go('admin') : undefined}
               onLogout={() => void logout()}
               onDeleteAccount={deleteAccount}
               onTasksRestored={load}
@@ -928,7 +939,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onDelete={remove}
               onCreateAt={(d, time) => openCreate(d, time)}
               onAddOnDay={(d) => openCreate(d)}
-              onShowProgress={() => openNested('progress')}
+              onShowProgress={() => go('progress')}
             />
             </Reveal>
           ) : (
@@ -942,7 +953,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       </div>
 
       <nav className="bottom-nav glass mobile-only" aria-label="Main">
-        <button className="nav-btn" aria-current={view === 'home' ? 'page' : undefined} onClick={() => setView('home')}>
+        <button className="nav-btn" aria-current={view === 'home' ? 'page' : undefined} onClick={() => go('home')}>
           <Icon name="clock" />
           <span className="nav-label">Today</span>
         </button>
@@ -951,7 +962,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           data-tour="chats"
           aria-label={chatBadge ? `Chats, ${chatBadge} unread` : 'Chats'}
           aria-current={view === 'chats' ? 'page' : undefined}
-          onClick={() => setView('chats')}
+          onClick={() => go('chats')}
         >
           <Icon name="chat" />
           <span className="nav-label">Chats</span>
@@ -965,13 +976,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           data-tour="friends"
           aria-label={socialBadge ? `Friends, ${socialBadge} new` : 'Friends'}
           aria-current={view === 'friends' ? 'page' : undefined}
-          onClick={() => setView('friends')}
+          onClick={() => go('friends')}
         >
           <Icon name="users" />
           <span className="nav-label">Friends</span>
           {socialBadge > 0 && <span className="nav-badge" aria-hidden="true">{socialBadge}</span>}
         </button>
-        <button className="nav-btn" data-tour="progress profile workspaces" aria-label={inviteBadge ? `More, ${inviteBadge} new` : 'More'} aria-current={inMore ? 'page' : undefined} onClick={() => setView('more')}>
+        <button className="nav-btn" data-tour="progress profile workspaces" aria-label={inviteBadge ? `More, ${inviteBadge} new` : 'More'} aria-current={inMore ? 'page' : undefined} onClick={() => go('more')}>
           <Icon name="menu" />
           <span className="nav-label">More</span>
           {inviteBadge > 0 && <span className="nav-badge" aria-hidden="true">{inviteBadge}</span>}

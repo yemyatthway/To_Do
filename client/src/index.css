@@ -2926,28 +2926,6 @@ body > .scrim.center {
 
 /* ---------- Friends ---------- */
 
-.friends-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-@media (min-width: 960px) {
-  .friends-page {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  }
-
-  .friends-page > section:first-of-type {
-    grid-row: span 3;
-  }
-}
-
-.friends-page h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 .section-head {
   display: flex;
@@ -3043,22 +3021,6 @@ body > .scrim.center {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-/* Each list on the Friends page scrolls inside its card once it's longer than the screen allows,
-   so you never scroll the whole page to reach Find people. */
-.friends-page .share-list,
-.friends-page .people {
-  max-height: max(240px, calc(var(--screen-room) - 120px));
-  overflow-y: auto;
-  /* Room for row shadows at the edges. */
-  margin: -4px;
-  padding: 4px;
-}
-
-.friends-page .share-list > li,
-.friends-page .people > li {
-  flex-shrink: 0;
 }
 
 .person {
@@ -4653,22 +4615,8 @@ select.field:focus-visible {
 
 /* ---------- Workspaces ---------- */
 
-.ws-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-  max-width: 860px;
-}
-
-.ws-page h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .role-select {
-  width: 124px;
+  width: 142px;
   height: 40px;
   font-size: 14px;
   padding: 0 28px 0 12px;
@@ -4751,14 +4699,179 @@ select.field:focus-visible {
 }
 
 /* Long names stay readable on phones: the role and remove buttons drop to their own line. */
-.ws-page .person {
+.member-rows .person {
   flex-wrap: wrap;
 }
 
-.ws-page .person-main {
+.member-rows .person-main {
   flex: 1 1 150px;
 }
 
-.ws-page .person-actions {
+.member-rows .person-actions {
   margin-left: auto;
+}
+
+/* ---------- One panel per page ----------
+   A page is a single glass panel: search and tabs stay put, and the rows scroll inside it.
+   Rows are flat lines rather than cards of their own; each opens a child page or a small dialog. */
+
+.panel-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.panel {
+  max-height: var(--screen-room);
+  overflow: hidden;
+}
+
+.panel-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.panel-search {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+}
+
+.panel-tabs {
+  flex: none;
+}
+
+.panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for button shadows at the edges. */
+  margin: -4px;
+  padding: 4px;
+}
+
+.panel-scroll .section-label {
+  margin: 12px 4px 4px;
+}
+
+.panel-scroll > .section-label:first-child {
+  margin-top: 0;
+}
+
+.panel-scroll .people,
+.panel-scroll .share-list,
+.panel-rows {
+  gap: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-scroll .person,
+.panel-scroll .share-card,
+.panel-scroll .more-row,
+.panel-rows .more-row {
+  flex-shrink: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--track);
+  border-radius: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.panel-scroll > ul > li:last-child > .more-row,
+.panel-scroll > ul > li.person:last-child,
+.panel-scroll .share-card:last-child,
+.panel-rows .more-row:last-child {
+  border-bottom: 0;
+}
+
+.panel-scroll .share-card.is-new {
+  box-shadow: inset 3px 0 0 var(--accSoft);
+  padding-left: 14px;
+}
+
+@media (hover: hover) {
+  .panel-scroll .more-row:hover,
+  .panel-rows .more-row:hover,
+  .person-open:hover .person-name {
+    color: var(--accT);
+  }
+}
+
+.person-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  color: inherit;
+  text-align: left;
+}
+
+.row-value {
+  margin-left: auto;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--sub);
+}
+
+.more-row .row-value + .more-go {
+  margin-left: 0;
+}
+
+.danger-row {
+  color: var(--dIcon);
+}
+
+.panel-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.panel-hero .person-name {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A child page's title needs the room on phones; the timer and bell stay on the main pages. */
+.header {
+  flex-wrap: nowrap;
+}
+
+.header-start,
+.header-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.header-title .eyebrow,
+.header-title .greeting {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 959px) {
+  .header-actions.on-child {
+    display: none;
+  }
 }

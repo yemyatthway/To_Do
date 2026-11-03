@@ -1,5 +1,5 @@
 import { gsap } from 'gsap'
-import { useLayoutEffect, type DependencyList, type RefObject } from 'react'
+import { useLayoutEffect, useRef, type DependencyList, type RefObject } from 'react'
 
 /**
  * GSAP setup. Everything animates transform/opacity only (GPU-friendly, no layout work),
@@ -35,4 +35,14 @@ export function useGsap(scope: RefObject<Element | null>, animate: () => void, d
     return () => ctx.revert()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
+}
+
+/** Plays the entrance when a page swaps to another child page. Not on first show: the screen's own entrance covers that. */
+export function useEnterOnChange(page: RefObject<HTMLElement | null>, key: string) {
+  const shown = useRef(key)
+  useGsap(page, () => {
+    if (shown.current === key) return
+    shown.current = key
+    if (page.current) enter(page.current.children)
+  }, [key])
 }

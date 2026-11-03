@@ -1,17 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveRefresh } from '../live'
 import { social, type Person, type Share } from '../api'
+import { ConfirmAction } from '../components/ConfirmAction'
 import { Loading, SkeletonRows } from '../components/Loading'
+import { SearchField } from '../components/SearchField'
 import { Icon } from '../icons'
+import { useEnterOnChange } from '../motion'
 import { formatShortDay, formatTime } from '../time'
 import { handle, initials, timeAgo } from '../user'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const nameOf = (p: Person) => p.full_name || p.email
 
+type Tab = 'all' | 'requests' | 'sent'
+
 interface FriendsProps {
   now: Date
+  /** The friend whose page is open (their child page, /friends/<username>). */
+  username?: string
   notify: (title: string, detail?: string) => void
+  onOpenFriend: (username: string) => void
+  /** Back to the list, after removing the friend whose page was open. */
+  onCloseFriend: () => void
+  /** The open friend's name, for the page heading. */
+  onFriendName: (name: string | null) => void
   /** Open the send dialog, optionally with a friend already picked. */
   onSendTasks: (friend?: Person) => void
   /** Open the chat with this friend. */
@@ -20,11 +32,19 @@ interface FriendsProps {
   onChanged: () => void
 }
 
-export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: FriendsProps) {
+export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, onFriendName, onSendTasks, onMessage, onChanged }: FriendsProps) {
   const [inbox, setInbox] = useState<Share[] | null>(null)
   const [lists, setLists] = useState<{ friends: Person[]; incoming: Person[]; outgoing: Person[] } | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('all')
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Person[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [removing, setRemoving] = useState<Person | null>(null)
+  const request = useRef(0)
+  const pageRef = useRef<HTMLDivElement>(null)
+  useEnterOnChange(pageRef, username ?? '')
 
   const refresh = useCallback(async () => {
     try {
@@ -46,6 +66,40 @@ export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: Frie
   // Requests, accepts and shares from friends appear without reloading.
   useLiveRefresh(refresh, 10_000)
 
+  const trimmed = query.trim()
+  const friend = username ? lists?.friends.find((p) => p.username === username) : undefined
+  const friendName = friend ? nameOf(friend) : null
+  useEffect(() => {
+    onFriendName(friendName)
+    return () => onFriendName(null)
+  }, [friendName, onFriendName])
+
+  // Ask the server only once typing pauses, and ignore answers to older searches.
+  useEffect(() => {
+    if (trimmed.length < 2) return
+    const id = setTimeout(async () => {
+      const mine = ++request.current
+      try {
+        const found = await social.search(trimmed)
+        if (mine === request.current) setResults(found)
+      } catch {
+        if (mine === request.current) setResults([])
+      } finally {
+        if (mine === request.current) setSearching(false)
+      }
+    }, 300)
+    return () => clearTimeout(id)
+  }, [trimmed])
+
+  function typeQuery(value: string) {
+    setQuery(value)
+    const short = value.trim().length < 2
+    setSearching(!short)
+    if (short) setResults(null)
+    // People results live under All, so searching always shows them.
+    if (value.trim()) setTab('all')
+  }
+
   /** Runs an action once at a time per button, then refreshes everything. */
   async function act(key: string, fn: () => Promise<unknown>, success?: string) {
     setBusy(key)
@@ -61,6 +115,12 @@ export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: Frie
     } finally {
       setBusy(null)
     }
+  }
+
+  async function actOnResult(person: Person, fn: () => Promise<unknown>, success: string) {
+    await act(`person-${person.id}`, fn, success)
+    // Show the new state (e.g. "Requested") right away.
+    if (trimmed.length >= 2) setResults(await social.search(trimmed).catch(() => results ?? []))
   }
 
   async function addShared(share: Share, itemIds?: number[]) {
@@ -83,108 +143,219 @@ export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: Frie
     }
   }
 
-  const newShares = inbox?.filter((s) => s.status === 'new') ?? []
-  const doneShares = inbox?.filter((s) => s.status !== 'new') ?? []
+  const removeDialog = removing && (
+    <ConfirmAction
+      danger
+      icon="users"
+      title={`Remove ${nameOf(removing)}?`}
+      confirmLabel="Remove friend"
+      onCancel={() => setRemoving(null)}
+      onConfirm={async () => {
+        await social.remove(removing.friendship_id!)
+        setRemoving(null)
+        onCloseFriend()
+        await refresh()
+        onChanged()
+      }}
+    >
+      <p>You won't be able to send each other tasks or chat until you're friends again. Your tasks stay in your list.</p>
+    </ConfirmAction>
+  )
+
+  const errorBanner = error && (
+    <div className="error-banner" role="alert">
+      <span>{error}</span>
+      <button className="text-btn" onClick={refresh}>
+        Retry
+      </button>
+    </div>
+  )
+
+  if (username) {
+    return (
+      <div ref={pageRef} className="panel-page">
+        {errorBanner}
+        <section className="card glass" aria-label={friendName ?? 'Friend'}>
+          {lists === null ? (
+            <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
+          ) : !friend ? (
+            <p className="empty">@{username} isn't in your friends.</p>
+          ) : (
+            <>
+              <div className="panel-hero">
+                <span className="avatar avatar-lg" aria-hidden="true">
+                  {initials(friend)}
+                </span>
+                <span className="person-main">
+                  <span className="person-name">{nameOf(friend)}</span>
+                  <span className="task-meta">{handle(friend)}</span>
+                </span>
+              </div>
+              <div className="panel-actions">
+                <button className="primary-btn" onClick={() => onMessage(friend)}>
+                  <Icon name="chat" />
+                  Message
+                </button>
+                <button className="text-btn" onClick={() => onSendTasks(friend)}>
+                  <Icon name="send" />
+                  Send tasks
+                </button>
+              </div>
+              <div className="panel-rows">
+                <button className="more-row danger-row" onClick={() => setRemoving(friend)}>
+                  <Icon name="x" />
+                  <span className="person-name">Remove friend</span>
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+        {removeDialog}
+      </div>
+    )
+  }
+
+  const matches = (p: Person) => `${p.full_name} ${p.username}`.toLowerCase().includes(trimmed.replace(/^@/, '').toLowerCase())
+  const friends = lists?.friends.filter(matches) ?? []
+  const outgoing = lists?.outgoing.filter(matches) ?? []
+  const incoming = lists?.incoming ?? []
+  const shares = [...(inbox?.filter((s) => s.status === 'new') ?? []), ...(inbox?.filter((s) => s.status !== 'new') ?? [])]
+  const newShares = inbox?.filter((s) => s.status === 'new').length ?? 0
+  // Friends and sent requests are already in the list above.
+  const people = results?.filter((p) => p.relationship !== 'friends' && p.relationship !== 'outgoing') ?? []
+  const nothingFound = trimmed.length >= 2 && !searching && results !== null && people.length === 0 && friends.length === 0 && outgoing.length === 0
+  const tabs: { id: Tab; label: string; count: number }[] = [
+    { id: 'all', label: 'All', count: lists?.friends.length ?? 0 },
+    { id: 'requests', label: 'Requests', count: incoming.length },
+    { id: 'sent', label: 'Sent to you', count: newShares },
+  ]
 
   return (
-    <div className="friends-page">
-      {error && (
-        <div className="error-banner" role="alert">
-          <span>{error}</span>
-          <button className="text-btn" onClick={refresh}>
-            Retry
-          </button>
-        </div>
-      )}
-
-      <section className="card glass" aria-labelledby="inbox-h">
-        <div className="section-head">
-          <h2 id="inbox-h">
-            <Icon name="inbox" /> Sent to you
-          </h2>
-          {newShares.length > 0 && <span className="count-pill">{newShares.length} new</span>}
-        </div>
-        {inbox === null ? (
-          <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
-        ) : inbox.length === 0 ? (
-          <p className="empty">When a friend sends you tasks, they show up here. Nothing is added to your list until you choose.</p>
-        ) : (
-          <ul className="share-list">
-            {[...newShares, ...doneShares].map((share) => (
-              <ShareCard key={share.id} share={share} now={now} busy={busy} onAdd={addShared} onDismiss={() => act(`dismiss-${share.id}`, () => social.dismiss(share.id))} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {lists && lists.incoming.length > 0 && (
-        <section className="card glass" aria-labelledby="requests-h">
-          <h2 id="requests-h">Friend requests</h2>
-          <ul className="people">
-            {lists.incoming.map((p) => (
-              <PersonRow key={p.id} person={p}>
-                <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => act(`accept-${p.id}`, () => social.accept(p.friendship_id!), `You and ${nameOf(p)} are now friends`)}>
-                  Accept
-                </button>
-                <button className="text-btn" disabled={busy !== null} onClick={() => act(`decline-${p.id}`, () => social.remove(p.friendship_id!))}>
-                  Decline
-                </button>
-              </PersonRow>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section className="card glass" aria-labelledby="friends-h">
-        <div className="section-head">
-          <h2 id="friends-h">
-            <Icon name="users" /> Friends
-          </h2>
-          {lists && lists.friends.length > 0 && (
-            <button className="primary-btn small-btn" onClick={() => onSendTasks()}>
+    <div ref={pageRef} className="panel-page">
+      {errorBanner}
+      <section className="card glass panel" aria-label="Friends">
+        <div className="panel-top">
+          <SearchField label="Search friends or find people" placeholder="Search people" value={query} onChange={typeQuery} />
+          {Boolean(lists?.friends.length) && (
+            <button className="primary-btn" onClick={() => onSendTasks()}>
               <Icon name="send" />
-              Send tasks
+              <span className="hide-narrow">Send tasks</span>
             </button>
           )}
         </div>
-        {lists === null ? (
-          <Loading active={!error} skeleton={<SkeletonRows count={3} avatar />} onRetry={() => void refresh()} />
-        ) : lists.friends.length === 0 && lists.outgoing.length === 0 ? (
-          <p className="empty">No friends yet. Find people below and send a request.</p>
-        ) : (
-          <ul className="people">
-            {lists.friends.map((p) => (
-              <PersonRow key={p.id} person={p}>
-                <button className="text-btn" onClick={() => onMessage(p)} aria-label={`Message ${nameOf(p)}`}>
-                  <Icon name="chat" />
-                  <span className="hide-narrow">Message</span>
-                </button>
-                <button className="text-btn" onClick={() => onSendTasks(p)} aria-label={`Send tasks to ${nameOf(p)}`}>
-                  <Icon name="send" />
-                  <span className="hide-narrow">Send</span>
-                </button>
-                <RemoveButton name={nameOf(p)} disabled={busy !== null} onConfirm={() => act(`remove-${p.id}`, () => social.remove(p.friendship_id!))} />
-              </PersonRow>
-            ))}
-            {lists.outgoing.map((p) => (
-              <PersonRow key={p.id} person={p} note="Request sent">
-                <button className="text-btn" disabled={busy !== null} onClick={() => act(`cancel-${p.id}`, () => social.remove(p.friendship_id!))}>
-                  Cancel
-                </button>
-              </PersonRow>
-            ))}
-          </ul>
-        )}
-      </section>
+        <div className="chips panel-tabs" role="group" aria-label="Show">
+          {tabs.map((t) => (
+            <button key={t.id} type="button" className="chip" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>
+              {t.label}
+              {t.count > 0 && ` ${t.count}`}
+            </button>
+          ))}
+        </div>
 
-      <FindPeople busy={busy} onAct={act} />
+        <div className="panel-scroll">
+          {tab === 'all' &&
+            (lists === null ? (
+              <Loading active={!error} skeleton={<SkeletonRows count={3} avatar />} onRetry={() => void refresh()} />
+            ) : (
+              <>
+                {lists.friends.length === 0 && lists.outgoing.length === 0 && !trimmed && <p className="empty">No friends yet. Search above to find people and send a request.</p>}
+                {friends.length + outgoing.length > 0 && (
+                  <>
+                    <h3 className="section-label">Your friends</h3>
+                    <ul className="people">
+                      {friends.map((p) => (
+                        <li key={p.id} className="person">
+                          <button className="person-open" onClick={() => onOpenFriend(p.username)}>
+                            <PersonInfo person={p} />
+                          </button>
+                          <span className="person-actions">
+                            <button className="text-btn" onClick={() => onMessage(p)} aria-label={`Message ${nameOf(p)}`}>
+                              <Icon name="chat" />
+                              <span className="hide-narrow">Message</span>
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                      {outgoing.map((p) => (
+                        <PersonRow key={p.id} person={p} note="Request sent">
+                          <button className="text-btn" disabled={busy !== null} onClick={() => act(`cancel-${p.id}`, () => social.remove(p.friendship_id!))}>
+                            Cancel
+                          </button>
+                        </PersonRow>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <Loading active={searching} skeleton={<SkeletonRows count={2} avatar />} />
+                {!searching && people.length > 0 && (
+                  <>
+                    <h3 className="section-label">People on To-Do</h3>
+                    <ul className="people">
+                      {people.map((p) => (
+                        <PersonRow key={p.id} person={p}>
+                          {p.relationship === 'incoming' && (
+                            <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => actOnResult(p, () => social.accept(p.friendship_id!), `You and ${nameOf(p)} are now friends`)}>
+                              Accept
+                            </button>
+                          )}
+                          {p.relationship === 'none' && (
+                            <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => actOnResult(p, () => social.requestFriend(p.id), `Friend request sent to ${nameOf(p)}`)}>
+                              <Icon name="userPlus" />
+                              Add friend
+                            </button>
+                          )}
+                        </PersonRow>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {nothingFound && <p className="empty">No one found. Try their full email address.</p>}
+                {trimmed.length === 1 && friends.length + outgoing.length === 0 && <p className="empty">Keep typing to find people.</p>}
+              </>
+            ))}
+
+          {tab === 'requests' &&
+            (lists === null ? (
+              <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
+            ) : incoming.length === 0 ? (
+              <p className="empty">No friend requests right now.</p>
+            ) : (
+              <ul className="people">
+                {incoming.map((p) => (
+                  <PersonRow key={p.id} person={p}>
+                    <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => act(`accept-${p.id}`, () => social.accept(p.friendship_id!), `You and ${nameOf(p)} are now friends`)}>
+                      Accept
+                    </button>
+                    <button className="text-btn" disabled={busy !== null} onClick={() => act(`decline-${p.id}`, () => social.remove(p.friendship_id!))}>
+                      Decline
+                    </button>
+                  </PersonRow>
+                ))}
+              </ul>
+            ))}
+
+          {tab === 'sent' &&
+            (inbox === null ? (
+              <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
+            ) : shares.length === 0 ? (
+              <p className="empty">When a friend sends you tasks, they show up here. Nothing is added to your list until you choose.</p>
+            ) : (
+              <ul className="share-list">
+                {shares.map((share) => (
+                  <ShareCard key={share.id} share={share} now={now} busy={busy} onAdd={addShared} onDismiss={() => act(`dismiss-${share.id}`, () => social.dismiss(share.id))} />
+                ))}
+              </ul>
+            ))}
+        </div>
+      </section>
+      {removeDialog}
     </div>
   )
 }
 
-function PersonRow({ person, note, children }: { person: Person; note?: string; children: React.ReactNode }) {
+function PersonInfo({ person, note }: { person: Person; note?: string }) {
   return (
-    <li className="person">
+    <>
       <span className="avatar" aria-hidden="true">
         {initials(person)}
       </span>
@@ -192,30 +363,16 @@ function PersonRow({ person, note, children }: { person: Person; note?: string; 
         <span className="person-name">{nameOf(person)}</span>
         <span className="task-meta">{[handle(person), note].filter(Boolean).join(' · ')}</span>
       </span>
-      <span className="person-actions">{children}</span>
-    </li>
+    </>
   )
 }
 
-/** Two-step remove so a stray tap doesn't unfriend someone. */
-function RemoveButton({ name, disabled, onConfirm }: { name: string; disabled: boolean; onConfirm: () => void }) {
-  const [asking, setAsking] = useState(false)
-  if (!asking) {
-    return (
-      <button className="icon-btn" aria-label={`Remove ${name}`} disabled={disabled} onClick={() => setAsking(true)}>
-        <Icon name="x" />
-      </button>
-    )
-  }
+function PersonRow({ person, note, children }: { person: Person; note?: string; children: React.ReactNode }) {
   return (
-    <>
-      <button className="text-btn danger-text" disabled={disabled} onClick={onConfirm}>
-        Remove
-      </button>
-      <button className="text-btn" onClick={() => setAsking(false)}>
-        Keep
-      </button>
-    </>
+    <li className="person">
+      <PersonInfo person={person} note={note} />
+      <span className="person-actions">{children}</span>
+    </li>
   )
 }
 
@@ -285,85 +442,5 @@ function ShareCard({
         </div>
       )}
     </li>
-  )
-}
-
-function FindPeople({ busy, onAct }: { busy: string | null; onAct: (key: string, fn: () => Promise<unknown>, success?: string) => Promise<void> }) {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Person[] | null>(null)
-  const [searching, setSearching] = useState(false)
-  const request = useRef(0)
-
-  // Ask the server only once typing pauses, and ignore answers to older searches.
-  useEffect(() => {
-    const q = query.trim()
-    if (q.length < 2) return
-    const id = setTimeout(async () => {
-      const mine = ++request.current
-      try {
-        const found = await social.search(q)
-        if (mine === request.current) setResults(found)
-      } catch {
-        if (mine === request.current) setResults([])
-      } finally {
-        if (mine === request.current) setSearching(false)
-      }
-    }, 300)
-    return () => clearTimeout(id)
-  }, [query])
-
-  async function run(person: Person, fn: () => Promise<unknown>, success: string) {
-    await onAct(`person-${person.id}`, fn, success)
-    // Show the new state (e.g. "Request sent") right away.
-    if (query.trim().length >= 2) setResults(await social.search(query.trim()).catch(() => results ?? []))
-  }
-
-  return (
-    <section className="card glass" aria-labelledby="find-h">
-      <h2 id="find-h">
-        <Icon name="userPlus" /> Find people
-      </h2>
-      <label className="admin-search" style={{ maxWidth: 'none' }}>
-        <span className="sr-only">Search by name or email</span>
-        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5" />
-        </svg>
-        <input
-          className="field"
-          type="search"
-          placeholder="Name, @username, or exact email"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            const short = e.target.value.trim().length < 2
-            setSearching(!short)
-            if (short) setResults(null)
-          }}
-        />
-      </label>
-      <Loading active={searching} skeleton={<SkeletonRows count={2} avatar />} />
-      {!searching && results && results.length === 0 && <p className="empty">No one found. Try their full email address.</p>}
-      {!searching && results && results.length > 0 && (
-        <ul className="people">
-          {results.map((p) => (
-            <PersonRow key={p.id} person={p}>
-              {p.relationship === 'friends' && <span className="badge badge-active">Friends</span>}
-              {p.relationship === 'outgoing' && <span className="badge badge-inactive">Requested</span>}
-              {p.relationship === 'incoming' && (
-                <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => run(p, () => social.accept(p.friendship_id!), `You and ${nameOf(p)} are now friends`)}>
-                  Accept
-                </button>
-              )}
-              {p.relationship === 'none' && (
-                <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => run(p, () => social.requestFriend(p.id), `Friend request sent to ${nameOf(p)}`)}>
-                  <Icon name="userPlus" />
-                  Add
-                </button>
-              )}
-            </PersonRow>
-          ))}
-        </ul>
-      )}
-    </section>
   )
 }

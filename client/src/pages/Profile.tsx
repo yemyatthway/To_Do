@@ -4,14 +4,28 @@ import { ApiError, api, auth, type Task, type TrustedDevice, type User } from '.
 import { Loading, SkeletonRows } from '../components/Loading'
 import { UsernameField } from '../components/UsernameField'
 import { usernameBlocks, useUsernameCheck } from '../components/usernameCheck'
-import { Icon } from '../icons'
-import { gsap, useGsap } from '../motion'
+import { Icon, type IconName } from '../icons'
+import { gsap, useEnterOnChange, useGsap } from '../motion'
+import { SETTINGS_SECTIONS, type SettingsSection } from '../routes'
 import type { ThemePreference } from '../theme'
 import { initials, isValidEmail, normalizeUsername, PASSWORD_RULES, timeAgo } from '../user'
+
+const SECTION_ICONS: Record<SettingsSection, IconName> = {
+  personal: 'user',
+  preferences: 'bell',
+  password: 'lock',
+  devices: 'shield',
+  deleted: 'trash',
+  help: 'help',
+  delete: 'x',
+}
 
 interface ProfileProps {
   user: User
   now: Date
+  /** Which child page is open; none means the list of settings. */
+  section?: SettingsSection
+  onOpenSection: (section: SettingsSection) => void
   remindersBusy: boolean
   themePreference: ThemePreference
   onUserChange: (user: User) => void
@@ -31,8 +45,10 @@ interface ProfileProps {
 }
 
 export function Profile(props: ProfileProps) {
-  const { user, now, remindersBusy, themePreference, onUserChange, onToggleReminders, onOpenRemindersGuide, onThemeChange, onReplayTutorial, onOpenAdmin, onLogout, onDeleteAccount, notify, onTasksRestored } = props
+  const { user, now, section, onOpenSection, remindersBusy, themePreference, onUserChange, onToggleReminders, onOpenRemindersGuide, onThemeChange, onReplayTutorial, onOpenAdmin, onLogout, onDeleteAccount, notify, onTasksRestored } = props
   const [deleting, setDeleting] = useState(false)
+  const pageRef = useRef<HTMLDivElement>(null)
+  useEnterOnChange(pageRef, section ?? '')
 
   const [fullName, setFullName] = useState(user.full_name)
   const [username, setUsername] = useState(user.username)
@@ -102,8 +118,9 @@ export function Profile(props: ProfileProps) {
   const localTime = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
 
   return (
-    <div className="profile-page">
-      <section className="card neu profile-hero">
+    <div ref={pageRef} className="profile-page">
+      {!section && (
+        <section className="card neu profile-hero">
         <span className="avatar avatar-lg" aria-hidden="true">
           {initials(user)}
         </span>
@@ -113,10 +130,26 @@ export function Profile(props: ProfileProps) {
           <span className="list-sub profile-email">{user.email}</span>
           <span className="list-sub">Member since {joined}</span>
         </div>
-      </section>
+        </section>
+      )}
 
+      {!section && (
+        <section className="card glass" aria-label="Settings">
+          <div className="panel-rows">
+            {(Object.keys(SETTINGS_SECTIONS) as SettingsSection[]).map((key) => (
+              <button key={key} className={`more-row${key === 'delete' ? ' danger-row' : ''}`} onClick={() => onOpenSection(key)}>
+                <Icon name={SECTION_ICONS[key]} />
+                <span className="person-name">{SETTINGS_SECTIONS[key]}</span>
+                <Icon name="chevron" className="more-go" />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {section === 'personal' && (
       <form className="card glass" onSubmit={saveInfo} noValidate aria-labelledby="info-h">
-        <h2 id="info-h">Personal info</h2>
+        <h2 id="info-h" className="sr-only">Personal info</h2>
         <label className="field-group">
           <span className="label">Name</span>
           <input
@@ -165,9 +198,11 @@ export function Profile(props: ProfileProps) {
           {savingInfo ? 'Saving…' : 'Save changes'}
         </button>
       </form>
+      )}
 
+      {section === 'preferences' && (
       <section className="card glass" aria-labelledby="prefs-h">
-        <h2 id="prefs-h">Preferences</h2>
+        <h2 id="prefs-h" className="sr-only">Preferences</h2>
         <div className="toggle-row">
           <span style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -236,9 +271,11 @@ export function Profile(props: ProfileProps) {
           </span>
         </div>
       </section>
+      )}
 
+      {section === 'password' && (
       <form className="card glass" onSubmit={savePassword} noValidate aria-labelledby="pw-h">
-        <h2 id="pw-h">Change password</h2>
+        <h2 id="pw-h" className="sr-only">Change password</h2>
         <input type="email" autoComplete="username" value={user.email} readOnly hidden />
         <label className="field-group">
           <span className="label">Current password</span>
@@ -286,13 +323,15 @@ export function Profile(props: ProfileProps) {
           {savingPw ? 'Changing…' : 'Change password'}
         </button>
       </form>
+      )}
 
-      <RecentlyDeleted now={now} notify={notify} onRestored={onTasksRestored} />
+      {section === 'deleted' && <RecentlyDeleted now={now} notify={notify} onRestored={onTasksRestored} />}
 
-      <Devices now={now} notify={notify} />
+      {section === 'devices' && <Devices now={now} notify={notify} />}
 
+      {section === 'help' && (
       <section className="card glass" aria-labelledby="help-h">
-        <h2 id="help-h">Help and account</h2>
+        <h2 id="help-h" className="sr-only">Help and account</h2>
         <button type="button" className="row-btn" onClick={onReplayTutorial}>
           <Icon name="help" />
           Replay the tutorial
@@ -310,9 +349,11 @@ export function Profile(props: ProfileProps) {
           Log out
         </button>
       </section>
+      )}
 
+      {section === 'delete' && (
       <section className="card glass danger-zone" aria-labelledby="danger-h">
-        <h2 id="danger-h">Delete account</h2>
+        <h2 id="danger-h" className="sr-only">Delete account</h2>
         <p className="list-sub" style={{ margin: 0 }}>
           Deletes your account and logs you out everywhere. You have 30 days to change your mind: just log in again to restore it. After that, your account and tasks are erased for good.
         </p>
@@ -321,6 +362,7 @@ export function Profile(props: ProfileProps) {
           Delete my account
         </button>
       </section>
+      )}
 
       {deleting && <DeleteAccountDialog email={user.email} onCancel={() => setDeleting(false)} onConfirm={onDeleteAccount} />}
     </div>
@@ -378,7 +420,7 @@ function RecentlyDeleted({ now, notify, onRestored }: { now: Date; notify: Profi
   return (
     <section className="card glass" aria-labelledby="trash-h">
       <div className="history-head">
-        <h2 id="trash-h">Recently deleted</h2>
+        <h2 id="trash-h" className="sr-only">Recently deleted</h2>
         {Boolean(tasks?.length) &&
           (confirmEmpty ? (
             <span className="confirm-inline">
@@ -446,7 +488,7 @@ function Devices({ now, notify }: { now: Date; notify: ProfileProps['notify'] })
 
   return (
     <section className="card glass" aria-labelledby="devices-h">
-      <h2 id="devices-h">Trusted devices</h2>
+      <h2 id="devices-h" className="sr-only">Trusted devices</h2>
       <p className="list-sub" style={{ margin: 0 }}>
         Logging in from any other browser needs a code we email to you.
       </p>
