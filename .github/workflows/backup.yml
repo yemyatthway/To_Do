@@ -19,6 +19,8 @@ jobs:
       DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
       BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Check the secrets are set
         run: |
           [ -n "$DATABASE_URL" ] || { echo "Add the BACKUP_DATABASE_URL secret"; exit 1; }
@@ -36,7 +38,7 @@ jobs:
       - name: Back up, check it's readable, encrypt
         run: |
           umask 077
-          pg_dump "$DATABASE_URL" --schema=public --format=custom --no-owner --no-privileges --file=backup.dump
+          python3 scripts/backup_dump.py backup.dump
           # A backup that can't be read is worthless: fail now, not on the day it's needed.
           pg_restore --list backup.dump | grep -q "TABLE DATA public users" || { echo "Backup has no users table"; exit 1; }
           openssl enc -aes-256-cbc -md sha256 -pbkdf2 -iter 200000 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_PASSPHRASE
