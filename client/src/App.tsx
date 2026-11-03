@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, workspaces, type Task, type TaskInput, type User, type WorkspaceList } from './api'
+import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, workspaces, type TeamPageSummary, type Task, type TaskInput, type User, type WorkspaceList } from './api'
 import { SideNav } from './components/SideNav'
 import { AppSkeleton, CardsSkeleton, HomeSkeleton, Loading, LoadingPage } from './components/Loading'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
@@ -12,6 +12,7 @@ import { enter, useGsap } from './motion'
 import { AuthScreen } from './pages/AuthScreen'
 import { isChildPage, parseRoute, SETTINGS_SECTIONS, useRoute, type Route, type View } from './routes'
 import { useLiveRefresh } from './live'
+import { clearPageDrafts, pageStorage, sendLeftoverDrafts } from './pageSaver'
 import { overlayTasks, type TaskPatch } from './outbox'
 import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
@@ -274,6 +275,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const workspaceId = route.view === 'workspace' ? route.id : null
   const go = useCallback((next: Exclude<View, 'workspace'>) => navigate({ view: next } as Route), [navigate])
   const [friendName, setFriendName] = useState<string | null>(null)
+  const [sidePages, setSidePages] = useState<{ workspaceId: number; pages: TeamPageSummary[] } | null>(null)
+  const showSidePages = useCallback((workspaceId: number, pages: TeamPageSummary[]) => setSidePages({ workspaceId, pages }), [])
   // Staff only: anyone else who opens /admin lands on Today, with the address to match.
   useEffect(() => {
     if (asked.view === 'admin' && !user.is_staff) navigate({ view: 'home' }, { replace: true })
@@ -609,6 +612,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     await unsubscribeThisDevice()
     await auth.deleteAccount(password)
     outbox.clear()
+    clearPageDrafts(user.id, pageStorage())
     clearSavedTimer()
     window.history.replaceState(null, '', '/')
     onLoggedOut('Your account was deleted. Changed your mind? Log in within 30 days to restore it.')
@@ -627,6 +631,11 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }
 
   useEffect(preloadScreens, [])
+
+  // Page text left on this device by a page that closed before it could save.
+  useEffect(() => {
+    void sendLeftoverDrafts(user.id, pageStorage(), workspaces.savePage)
+  }, [user.id])
 
   // Panels that scroll on their own (task list, chats) size themselves to the screen below the
   // header, which changes height with banners and window width.
@@ -724,7 +733,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     more: ['Everything else', 'More'],
     workspaces: ['Teams', 'Workspaces'],
     workspace:
-      route.view !== 'workspace' || route.section === 'home'
+      route.view !== 'workspace' || route.section === 'home' || route.section === 'page'
         ? ['Workspaces', workspaceName]
         : route.section === 'members'
           ? [workspaceName, 'Members']
@@ -753,14 +762,18 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
 
       <div className="shell">
       <SideNav
-        view={view === 'workspace' ? `workspace:${workspaceId}` : view}
+        view={route.view === 'workspace' ? (route.section === 'page' ? `page:${route.id}:${route.pageId}` : `workspace:${route.id}`) : view}
+        openWorkspace={route.view === 'workspace' && sidePages?.workspaceId === route.id ? sidePages : null}
         isStaff={user.is_staff}
         chatBadge={chatBadge}
         socialBadge={socialBadge}
         workspaces={workspaceList?.workspaces ?? []}
         inviteBadge={inviteBadge}
         onGo={(next) => {
-          if (next.startsWith('workspace:')) openWorkspace(Number(next.split(':')[1]))
+          if (next.startsWith('page:')) {
+            const [, id, pageId] = next.split(':')
+            navigate({ view: 'workspace', id: Number(id), section: 'page', pageId: Number(pageId) })
+          } else if (next.startsWith('workspace:')) openWorkspace(Number(next.split(':')[1]))
           else go(next as Exclude<View, 'workspace'>)
         }}
       />
@@ -867,9 +880,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                 key={route.id}
                 id={route.id}
                 myId={user.id}
+                now={now}
                 section={route.section}
+                pageId={route.section === 'page' ? route.pageId : undefined}
                 notify={notify}
-                onOpenSection={(section) => navigate({ view: 'workspace', id: route.id, section })}
+                showToast={showToast}
+                onOpenSection={(section, options) => navigate({ view: 'workspace', id: route.id, section }, options)}
+                onOpenPage={(pageId) => navigate({ view: 'workspace', id: route.id, section: 'page', pageId })}
+                onPages={showSidePages}
                 onChanged={loadWorkspaces}
                 onGone={leftWorkspace}
               />

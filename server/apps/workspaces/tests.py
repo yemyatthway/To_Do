@@ -13,7 +13,7 @@ from apps.users.models import User
 from apps.users.services import purge_account
 
 from . import permissions as perms
-from .models import Invitation, Membership, Workspace
+from .models import Invitation, Membership, Page, Workspace
 
 PASSWORD = "Sunny-Clock-2026"
 
@@ -202,3 +202,139 @@ class WorkspaceTests(APITestCase):
         for action, roles in perms.ALLOWED.items():
             self.assertTrue(roles <= set(perms.ROLE_ORDER), action)
             self.assertIn(perms.OWNER, roles, action)
+
+
+@override_settings(EMAIL_SEND_ASYNC=False, PUSH_SEND_ASYNC=False)
+class PageTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.owner, self.editor, self.commenter, self.viewer, self.outsider = (person(n) for n in ["olivia", "eve", "carl", "vera", "otto"])
+        self.client.force_authenticate(self.owner)
+        self.ws = self.client.post("/api/workspaces/", {"name": "Dev Team"}, format="json").data["id"]
+        for user, role in [(self.editor, "editor"), (self.commenter, "commenter"), (self.viewer, "viewer")]:
+            Membership.objects.create(workspace_id=self.ws, user=user, role=role)
+
+    def as_(self, user):
+        self.client.force_authenticate(user)
+        return self.client
+
+    def url(self, rest=""):
+        return f"/api/workspaces/{self.ws}/pages/{rest}"
+
+    def make(self, title="Release plan"):
+        return self.as_(self.editor).post(self.url(), {"title": title}, format="json").data
+
+    def save(self, page, **body):
+        return self.client.patch(self.url(f"{page['id']}/"), {"base_version": page["version"], **body}, format="json")
+
+    def test_the_team_names_its_own_pages(self):
+        page = self.make("  Sprint   12 notes ")
+        self.assertEqual((page["title"], page["blocks"], page["version"]), ("Sprint 12 notes", [], 1))
+        self.assertEqual([p["title"] for p in self.client.get(self.url()).data], ["Sprint 12 notes"])
+        self.assertNotIn("blocks", self.client.get(self.url()).data[0])
+        self.assertEqual(self.make("   ")["title"], "Untitled")
+        self.assertEqual(len(self.make("x" * 300)["title"]), 120)
+
+    def test_only_editors_and_above_can_change_pages(self):
+        page = self.make()
+        for user in (self.commenter, self.viewer):
+            self.assertEqual(self.as_(user).get(self.url(f"{page['id']}/")).status_code, 200)
+            self.assertEqual(self.client.get(self.url()).status_code, 200)
+            self.assertEqual(self.client.post(self.url(), {"title": "No"}, format="json").status_code, 403)
+            self.assertEqual(self.save(page, title="No").status_code, 403)
+            self.assertEqual(self.client.delete(self.url(f"{page['id']}/")).status_code, 403)
+            self.assertEqual(self.client.post(self.url(f"{page['id']}/restore/")).status_code, 403)
+        self.assertEqual(Page.objects.get(pk=page["id"]).title, "Release plan")
+
+    def test_people_outside_cannot_tell_it_exists(self):
+        page = self.make()
+        self.as_(self.outsider)
+        self.assertEqual(self.client.get(self.url()).status_code, 404)
+        self.assertEqual(self.client.get(self.url(f"{page['id']}/")).status_code, 404)
+        self.assertEqual(self.save(page, title="No").status_code, 404)
+        self.assertEqual(self.client.delete(self.url(f"{page['id']}/")).status_code, 404)
+
+    def test_a_page_id_from_another_workspace_is_not_found(self):
+        page = self.make()
+        other = self.as_(self.outsider).post("/api/workspaces/", {"name": "Mine"}, format="json").data["id"]
+        for call in (
+            self.client.get(f"/api/workspaces/{other}/pages/{page['id']}/"),
+            self.client.patch(f"/api/workspaces/{other}/pages/{page['id']}/", {"base_version": 1, "title": "Stolen"}, format="json"),
+            self.client.delete(f"/api/workspaces/{other}/pages/{page['id']}/"),
+        ):
+            self.assertEqual(call.status_code, 404)
+        self.assertEqual(Page.objects.get(pk=page["id"]).title, "Release plan")
+
+    def test_saving_keeps_the_blocks_and_counts_up(self):
+        page = self.make()
+        blocks = [{"id": "a", "type": "h", "text": "Goal"}, {"id": "b", "type": "todo", "text": "Ship it", "done": True}, {"id": "c", "type": "p", "text": "<b>plain</b>", "done": True, "extra": 1}]
+        saved = self.save(page, blocks=blocks, title="Plan").data
+        self.assertEqual(saved["version"], 2)
+        self.assertEqual(saved["title"], "Plan")
+        self.assertEqual(saved["updated_by"], "Eve")
+        # Only known fields are stored; a checkmark only exists on checklist items.
+        self.assertEqual(saved["blocks"][2], {"id": "c", "type": "p", "text": "<b>plain</b>"})
+        self.assertEqual(saved["blocks"][1]["done"], True)
+
+    def test_an_edit_from_an_old_copy_cannot_overwrite_a_newer_one(self):
+        page = self.make()
+        self.assertEqual(self.save(page, title="First").status_code, 200)
+        late = self.save(page, title="Second")
+        self.assertEqual(late.status_code, 409)
+        self.assertEqual((late.data["current"]["title"], late.data["current"]["version"]), ("First", 2))
+        self.assertEqual(Page.objects.get(pk=page["id"]).title, "First")
+        # The person chose to keep theirs: now it's based on the newest version.
+        self.assertEqual(self.save({**page, "version": 2}, title="Second").status_code, 200)
+
+    def test_a_save_must_say_what_it_started_from(self):
+        page = self.make()
+        for bad in (None, "1", True, 1.0):
+            self.assertEqual(self.client.patch(self.url(f"{page['id']}/"), {"base_version": bad, "title": "x"}, format="json").status_code, 400)
+
+    def test_bad_content_is_refused(self):
+        page = self.make()
+        for blocks in (
+            "text",
+            [1],
+            [{"id": "a", "type": "script", "text": "x"}],
+            [{"id": "a", "type": "p"}],
+            [{"id": "a", "type": "p", "text": 5}],
+            [{"type": "p", "text": "x"}],
+            [{"id": "a", "type": "p", "text": "x"}, {"id": "a", "type": "p", "text": "y"}],
+            [{"id": "x" * 65, "type": "p", "text": "x"}],
+            [{"id": "a", "type": "p", "text": "x" * 10_001}],
+            [{"id": str(i), "type": "p", "text": "x" * 9_000} for i in range(30)],
+            [{"id": str(i), "type": "p", "text": ""} for i in range(2001)],
+        ):
+            self.assertEqual(self.save(page, blocks=blocks).status_code, 400, str(blocks)[:60])
+        self.assertEqual(Page.objects.get(pk=page["id"]).version, 1)
+
+    def test_deleting_hides_it_and_restoring_brings_it_back(self):
+        page = self.make()
+        self.assertEqual(self.client.delete(self.url(f"{page['id']}/")).status_code, 204)
+        self.assertEqual(self.client.get(self.url()).data, [])
+        self.assertEqual(self.client.get(self.url(f"{page['id']}/")).status_code, 404)
+        self.assertEqual(self.save(page, title="Ghost").status_code, 404)
+        self.assertEqual(self.client.post(self.url(f"{page['id']}/restore/")).data["title"], "Release plan")
+        self.assertEqual(len(self.client.get(self.url()).data), 1)
+        self.assertEqual(self.client.post(self.url(f"{page['id']}/restore/")).status_code, 404)
+
+    def test_a_deleted_workspace_takes_its_pages_with_it(self):
+        page = self.make()
+        self.as_(self.owner).delete(f"/api/workspaces/{self.ws}/", {"confirm_name": "Dev Team"}, format="json")
+        self.assertEqual(self.client.get(self.url(f"{page['id']}/")).status_code, 404)
+
+    def test_the_clean_up_erases_old_deleted_pages_only(self):
+        keep, recent, old = self.make("Keep"), self.make("Recent"), self.make("Old")
+        Page.all_objects.filter(pk=recent["id"]).update(deleted_at=timezone.now() - timedelta(days=1))
+        Page.all_objects.filter(pk=old["id"]).update(deleted_at=timezone.now() - timedelta(days=400))
+        prune()
+        self.assertEqual(set(Page.all_objects.filter(workspace_id=self.ws).values_list("title", flat=True)), {"Keep", "Recent"})
+        self.assertTrue(Page.objects.filter(pk=keep["id"]).exists())
+
+    def test_an_erased_account_leaves_the_pages_it_wrote(self):
+        page = self.make()
+        purge_account(self.editor)
+        fresh = Page.objects.get(pk=page["id"])
+        self.assertIsNone(fresh.created_by)
+        self.assertIsNone(self.as_(self.owner).get(self.url(f"{page['id']}/")).data["updated_by"])

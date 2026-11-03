@@ -495,6 +495,28 @@ export interface WorkspaceDetail extends WorkspaceSummary {
   invitations: { id: number; label: string; role: Role; created_at: string; expires_at: string }[]
 }
 
+export type BlockType = 'p' | 'h' | 'todo'
+
+export interface Block {
+  id: string
+  type: BlockType
+  text: string
+  /** Checklist items only. */
+  done?: boolean
+}
+
+export interface TeamPageSummary {
+  id: number
+  title: string
+  version: number
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface TeamPage extends TeamPageSummary {
+  blocks: Block[]
+}
+
 export interface WorkspaceList {
   workspaces: WorkspaceSummary[]
   invitations: { id: number; workspace: string; role: Role; invited_by: string; expires_at: string }[]
@@ -513,6 +535,13 @@ export const workspaces = {
   setRole: (id: number, userId: number, role: Role) => request<WorkspaceDetail>(`/api/workspaces/${id}/members/${userId}/`, json('PATCH', { role })),
   removeMember: (id: number, userId: number) => request<void>(`/api/workspaces/${id}/members/${userId}/`, { method: 'DELETE' }),
   transfer: (id: number, userId: number) => request<WorkspaceDetail>(`/api/workspaces/${id}/transfer/`, json('POST', { user_id: userId })),
+  pages: (id: number) => request<TeamPageSummary[]>(`/api/workspaces/${id}/pages/`),
+  createPage: (id: number, title: string) => request<TeamPage>(`/api/workspaces/${id}/pages/`, json('POST', { title })),
+  getPage: (id: number, pageId: number) => request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/`),
+  savePage: (id: number, pageId: number, base: number, doc: { title: string; blocks: Block[] }) =>
+    request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/`, json('PATCH', { base_version: base, title: doc.title, blocks: doc.blocks })),
+  deletePage: (id: number, pageId: number) => request<void>(`/api/workspaces/${id}/pages/${pageId}/`, { method: 'DELETE' }),
+  restorePage: (id: number, pageId: number) => request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/restore/`, json('POST', {})),
 }
 
 /** This person's save queue on this device (see outbox.ts). */

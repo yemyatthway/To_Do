@@ -1,3 +1,4 @@
+import type { TeamPageSummary } from '../api'
 import { Icon, type IconName } from '../icons'
 
 interface Item {
@@ -6,6 +7,7 @@ interface Item {
   icon: IconName
   badge?: number
   tour?: string
+  sub?: boolean
 }
 
 interface SideNavProps {
@@ -15,11 +17,13 @@ interface SideNavProps {
   socialBadge: number
   workspaces: { id: number; name: string }[]
   inviteBadge: number
+  /** The workspace that's open, whose pages show under its name. */
+  openWorkspace: { workspaceId: number; pages: TeamPageSummary[] } | null
   onGo: (view: string) => void
 }
 
 /** Desktop navigation: a full sidebar on wide windows, icons only when there's less room. */
-export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inviteBadge, onGo }: SideNavProps) {
+export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inviteBadge, openWorkspace, onGo }: SideNavProps) {
   const groups: { label: string; items: Item[] }[] = [
     { label: '', items: [{ id: 'home', label: 'Today', icon: 'clock' }] },
     {
@@ -32,7 +36,10 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
     {
       label: 'Workspaces',
       items: [
-        ...workspaces.map((w) => ({ id: `workspace:${w.id}`, label: w.name, icon: 'team' as const })),
+        ...workspaces.flatMap((w): Item[] => [
+          { id: `workspace:${w.id}`, label: w.name, icon: 'team' },
+          ...(openWorkspace?.workspaceId === w.id ? openWorkspace.pages.map((p): Item => ({ id: `page:${w.id}:${p.id}`, label: p.title, icon: 'page', sub: true })) : []),
+        ]),
         { id: 'workspaces', label: workspaces.length ? 'All workspaces' : 'Workspaces', icon: 'inbox' as const, badge: inviteBadge, tour: 'workspaces' },
       ],
     },
@@ -61,7 +68,7 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
             <button
               key={item.id}
               type="button"
-              className="side-item"
+              className={`side-item${item.sub ? ' side-sub' : ''}`}
               title={item.label}
               data-tour={item.tour}
               aria-label={item.badge ? `${item.label}, ${item.badge} new` : item.label}

@@ -118,3 +118,52 @@ class TransferApi(APIView):
     def post(self, request, workspace_id):
         services.transfer(request.user, workspace_id, request.data.get("user_id"))
         return Response(detail_data(services.membership_for(request.user, workspace_id)))
+
+
+def page_summary(page):
+    editor = page.updated_by
+    return {
+        "id": page.pk, "title": page.title, "version": page.version, "updated_at": page.updated_at,
+        "updated_by": (editor.full_name or f"@{editor.username}") if editor else None,
+    }
+
+
+def page_data(page):
+    return {**page_summary(page), "blocks": page.blocks}
+
+
+class PagesApi(APIView):
+    """GET: the workspace's pages, newest first (no content). POST {title}: create one."""
+
+    def get(self, request, workspace_id):
+        return Response([page_summary(p) for p in services.pages_of(request.user, workspace_id)])
+
+    def post(self, request, workspace_id):
+        page = services.create_page(request.user, workspace_id, request.data.get("title"))
+        return Response(page_data(page), status=status.HTTP_201_CREATED)
+
+
+class PageApi(APIView):
+    """GET: one page. PATCH {base_version, title?, blocks?}: save it, or 409 with `current` if
+    someone saved first. DELETE: move it to the bin."""
+
+    throttle_scope = "pages"
+
+    def get(self, request, workspace_id, page_id):
+        return Response(page_data(services.page_for(request.user, workspace_id, page_id)))
+
+    def patch(self, request, workspace_id, page_id):
+        try:
+            page = services.update_page(request.user, workspace_id, page_id, request.data.get("base_version"), request.data.get("title"), request.data.get("blocks"))
+        except services.PageConflict as conflict:
+            return Response({"detail": "Someone else changed this page.", "current": page_data(conflict.current)}, status=status.HTTP_409_CONFLICT)
+        return Response(page_data(page))
+
+    def delete(self, request, workspace_id, page_id):
+        services.delete_page(request.user, workspace_id, page_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RestorePageApi(APIView):
+    def post(self, request, workspace_id, page_id):
+        return Response(page_data(services.restore_page(request.user, workspace_id, page_id)))

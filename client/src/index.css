@@ -4875,3 +4875,140 @@ select.field:focus-visible {
     display: none;
   }
 }
+
+/* ---------- Pages ---------- */
+
+.page-editor {
+  gap: 10px;
+}
+
+.page-title {
+  width: 100%;
+  margin: 0;
+  padding: 2px;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  flex: none;
+}
+
+.page-title::placeholder,
+.page-text::placeholder {
+  color: var(--sub);
+}
+
+.page-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  flex: none;
+}
+
+.page-status {
+  font-size: 13px;
+  color: var(--sub);
+}
+
+.page-status.bad {
+  color: var(--dIcon);
+}
+
+.page-tools {
+  flex: none;
+}
+
+.page-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 160px;
+}
+
+.page-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: none;
+}
+
+.page-block .check {
+  margin-top: 2px;
+  flex: none;
+}
+
+.page-text {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 2px;
+  border: 0;
+  outline: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: none;
+  overflow: hidden;
+}
+
+.page-block.is-h .page-text,
+.page-read.is-h {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.page-block.is-h {
+  margin-top: 8px;
+}
+
+.page-block.done .page-text,
+.page-block.done .page-read {
+  color: var(--sub);
+  text-decoration: line-through;
+}
+
+.page-read {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 2px;
+  min-height: 34px;
+  font-size: 16px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.side-sub {
+  padding-left: 34px;
+  min-height: 38px;
+  font-size: 13.5px;
+}
+
+.side-sub .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.side-sub .side-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1199px) {
+  .side-sub {
+    display: none;
+  }
+}

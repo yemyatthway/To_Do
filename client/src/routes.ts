@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 export type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace'
 
 export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles'
+export type WorkspaceChild = WorkspaceSection | 'page'
 
 export const SETTINGS_SECTIONS = {
   personal: 'Personal info',
@@ -20,6 +21,7 @@ export type Route =
   | { view: Exclude<View, 'friends' | 'workspace' | 'profile'> }
   | { view: 'friends'; username?: string }
   | { view: 'workspace'; id: number; section: WorkspaceSection }
+  | { view: 'workspace'; id: number; section: 'page'; pageId: number }
   | { view: 'profile'; section?: SettingsSection }
 
 const PLAIN: Partial<Record<string, Route>> = {
@@ -55,6 +57,7 @@ export function parseRoute(pathname: string, search = ''): Route {
     if (third === 'members' && !fourth) return { view: 'workspace', id, section: 'members' }
     if (third === 'settings' && !fourth) return { view: 'workspace', id, section: 'settings' }
     if (third === 'settings' && fourth === 'roles') return { view: 'workspace', id, section: 'roles' }
+    if (third === 'pages' && fourth && Number.isInteger(Number(fourth)) && Number(fourth) > 0) return { view: 'workspace', id, section: 'page', pageId: Number(fourth) }
     return { view: 'workspace', id, section: 'home' }
   }
   if (first === 'settings') {
@@ -74,6 +77,7 @@ export function pathFor(route: Route): string {
     case 'workspace': {
       const base = `/workspaces/${route.id}`
       if (route.section === 'home') return base
+      if (route.section === 'page') return `${base}/pages/${route.pageId}`
       return route.section === 'roles' ? `${base}/settings/roles` : `${base}/${route.section}`
     }
     case 'profile':

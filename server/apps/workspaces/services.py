@@ -13,11 +13,16 @@ from apps.users import mail, usernames
 from apps.users.models import User
 
 from . import permissions as perms
-from .models import Invitation, Membership, Workspace
+from .models import Invitation, Membership, Page, Workspace
 
 MAX_WORKSPACES = 20
 MAX_MEMBERS = 50
 INVITE_DAYS = 14
+MAX_PAGES = 500
+MAX_BLOCKS = 2000
+MAX_BLOCK_TEXT = 10_000
+MAX_PAGE_CHARS = 200_000
+BLOCK_TYPES = {"p", "h", "todo"}
 
 
 def _members(workspace):
@@ -253,3 +258,115 @@ def members_of(workspace):
 
 def pending_invitations(workspace):
     return workspace.invitations.filter(status=Invitation.Status.PENDING, expires_at__gt=timezone.now()).order_by("-created_at")
+
+
+def _clean_title(title):
+    title = " ".join(str(title or "").split())
+    return title[:120] or "Untitled"
+
+
+def _clean_blocks(blocks):
+    """Only what the editor can show gets stored: this reaches every member's screen."""
+    if not isinstance(blocks, list):
+        raise ValidationError({"blocks": ["That page content isn't valid."]})
+    if len(blocks) > MAX_BLOCKS:
+        raise ValidationError({"blocks": [f"A page can have up to {MAX_BLOCKS} blocks."]})
+    cleaned, seen, total = [], set(), 0
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("type") not in BLOCK_TYPES or not isinstance(block.get("text"), str):
+            raise ValidationError({"blocks": ["That page content isn't valid."]})
+        block_id = block.get("id")
+        if not isinstance(block_id, str) or not 0 < len(block_id) <= 64 or block_id in seen:
+            raise ValidationError({"blocks": ["That page content isn't valid."]})
+        if len(block["text"]) > MAX_BLOCK_TEXT:
+            raise ValidationError({"blocks": [f"Keep each block under {MAX_BLOCK_TEXT:,} characters."]})
+        total += len(block["text"])
+        if total > MAX_PAGE_CHARS:
+            raise ValidationError({"blocks": ["This page is too long. Split it into two pages."]})
+        seen.add(block_id)
+        item = {"id": block_id, "type": block["type"], "text": block["text"]}
+        if block["type"] == "todo":
+            item["done"] = block.get("done") is True
+        cleaned.append(item)
+    return cleaned
+
+
+def pages_of(me, workspace_id):
+    membership = membership_for(me, workspace_id)
+    return membership.workspace.pages.select_related("updated_by").order_by("-updated_at", "-id")
+
+
+def page_for(me, workspace_id, page_id):
+    membership = membership_for(me, workspace_id)
+    page = membership.workspace.pages.select_related("updated_by").filter(pk=page_id).first()
+    if page is None:
+        raise NotFound("That page doesn't exist.")
+    return page
+
+
+def create_page(me, workspace_id, title):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, perms.EDIT)
+    workspace = membership.workspace
+    if workspace.pages.count() >= MAX_PAGES:
+        raise ValidationError({"title": [f"A workspace can have up to {MAX_PAGES} pages."]})
+    page = Page.objects.create(workspace=workspace, title=_clean_title(title), created_by=me, updated_by=me)
+    _tell_members(workspace)
+    return page
+
+
+class PageConflict(Exception):
+    """Someone saved a newer version than the one this edit started from."""
+
+    def __init__(self, current):
+        self.current = current
+
+
+def update_page(me, workspace_id, page_id, base_version, title=None, blocks=None):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, perms.EDIT)
+    if type(base_version) is not int:
+        raise ValidationError({"base_version": ["Say which version this edit started from."]})
+    cleaned = None if blocks is None else _clean_blocks(blocks)
+    with transaction.atomic():
+        page = membership.workspace.pages.select_for_update().filter(pk=page_id).first()
+        if page is None:
+            raise NotFound("That page doesn't exist.")
+        if page.version != base_version:
+            raise PageConflict(page)
+        renamed = title is not None and _clean_title(title) != page.title
+        if title is not None:
+            page.title = _clean_title(title)
+        if cleaned is not None:
+            page.blocks = cleaned
+        page.version += 1
+        page.updated_by = me
+        page.save()
+    # Saves come every second or so while typing, so open pages check for changes themselves.
+    # Only what changes other people's lists is announced.
+    if renamed:
+        _tell_members(membership.workspace)
+    return page
+
+
+def delete_page(me, workspace_id, page_id):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, perms.EDIT)
+    page = membership.workspace.pages.filter(pk=page_id).first()
+    if page is None:
+        raise NotFound("That page doesn't exist.")
+    page.deleted_at = timezone.now()
+    page.save(update_fields=["deleted_at"])
+    _tell_members(membership.workspace)
+
+
+def restore_page(me, workspace_id, page_id):
+    membership = membership_for(me, workspace_id)
+    perms.require(membership, perms.EDIT)
+    page = Page.all_objects.filter(workspace=membership.workspace, pk=page_id, deleted_at__isnull=False).first()
+    if page is None:
+        raise NotFound("That page can't be restored.")
+    page.deleted_at = None
+    page.save(update_fields=["deleted_at"])
+    _tell_members(membership.workspace)
+    return page

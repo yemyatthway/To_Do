@@ -64,3 +64,35 @@ class Invitation(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["workspace", "email"], condition=Q(status="pending"), name="one_pending_invite_per_email"),
         ]
+
+
+class LivePageManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
+class Page(models.Model):
+    """A page of writing the team named itself: a list of text, heading and checklist blocks."""
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="pages")
+    title = models.CharField(max_length=120)
+    # [{"id": "...", "type": "p" | "h" | "todo", "text": "...", "done": bool (todo only)}]
+    blocks = models.JSONField(default=list)
+    # Goes up with every save, so an edit from an old copy can't overwrite a newer one.
+    version = models.PositiveIntegerField(default=1)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # Soft delete: can be restored until the daily clean-up erases it.
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    objects = LivePageManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        indexes = [models.Index(fields=["workspace", "-updated_at"])]
+
+    def __str__(self):
+        return self.title
