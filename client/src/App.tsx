@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
+import { SideNav } from './components/SideNav'
 import { AppSkeleton, CardsSkeleton, HomeSkeleton, Loading, LoadingPage } from './components/Loading'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
 import { Toast, type ToastData } from './components/Toast'
@@ -15,9 +16,9 @@ import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
+import { More } from './pages/More'
 import { canAskForNotifications, deviceReminderState, subscribeThisDevice, syncThisDevice, unsubscribeThisDevice, type DeviceReminderState } from './push'
 import { useTheme } from './theme'
-import { initials } from './user'
 import {
   addDays,
   deviceTimezone,
@@ -31,7 +32,10 @@ import {
   startOfWeek,
 } from './time'
 
-type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats'
+type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more'
+
+// Phone: screens reached through More, which get a back button.
+const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin']
 
 // Screens most visits never open load on demand, so the first paint stays small.
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
@@ -265,6 +269,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     return id ? { chatId: id, at: Date.now() } : undefined
   })
   const [chatBadge, setChatBadge] = useState(0)
+  // Where the phone's back button goes.
+  const [backTo, setBackTo] = useState<View>('more')
   const clearChatStart = useCallback(() => setChatStart(undefined), [])
   const [sendDialog, setSendDialog] = useState<{ friendId?: number; taskIds?: number[] } | null>(null)
   const [socialBadge, setSocialBadge] = useState(0)
@@ -677,6 +683,11 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   }, [])
 
   const remindersOn = user.reminders_enabled
+  const inMore = MORE_VIEWS.includes(view)
+  function openNested(next: View) {
+    setBackTo(view === next ? 'more' : view)
+    setView(next)
+  }
   const headings: Record<View, [string, string]> = {
     home: [formatLongDate(now), greeting(now)],
     progress: ['This week', 'Your progress'],
@@ -685,6 +696,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     admin: ['Staff only', 'Admin dashboard'],
     friends: ['People', 'Friends'],
     chats: ['Messages', 'Chats'],
+    more: ['Everything else', 'More'],
   }
 
   const bell = (className: string) => (
@@ -705,54 +717,24 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     <>
       <Backdrop />
 
+      <div className="shell">
+      <SideNav view={view} isStaff={user.is_staff} chatBadge={chatBadge} socialBadge={socialBadge} onGo={(next) => setView(next as View)} />
       <div className="app">
         <header className="header">
-          <div className="header-title">
-            <span className="eyebrow">{headings[view][0]}</span>
-            <h1 className="greeting">{headings[view][1]}</h1>
-          </div>
-          <nav className="segmented header-tabs desktop-only" aria-label="View">
-            <button aria-pressed={view === 'home'} onClick={() => setView('home')}>
-              Clock
-            </button>
-            <button aria-pressed={view === 'progress'} data-tour="progress" onClick={() => setView('progress')}>
-              Progress
-            </button>
-            <button aria-pressed={view === 'friends'} data-tour="friends" onClick={() => setView('friends')}>
-              Friends
-              {socialBadge > 0 && <span className="nav-badge" aria-label={`${socialBadge} new`}>{socialBadge}</span>}
-            </button>
-            <button aria-pressed={view === 'timer'} onClick={() => setView('timer')}>
-              Timer
-            </button>
-            {user.is_staff && (
-              <button aria-pressed={view === 'admin'} onClick={() => setView('admin')}>
-                Admin
+          <div className="header-start">
+            {inMore && view !== 'more' && (
+              <button type="button" className="round-btn mobile-only" aria-label="Back" onClick={() => setView(backTo)}>
+                <Icon name="back" />
               </button>
             )}
-          </nav>
+            <div className="header-title">
+              <span className="eyebrow">{headings[view][0]}</span>
+              <h1 className="greeting">{headings[view][1]}</h1>
+            </div>
+          </div>
           <div className="header-actions">
-            <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => setView('timer')} />
-            <button
-              className="round-btn desktop-only"
-              data-tour="chats"
-              aria-label={chatBadge ? `Chats, ${chatBadge} unread` : 'Chats'}
-              aria-pressed={view === 'chats'}
-              onClick={() => setView('chats')}
-            >
-              <Icon name="chat" />
-              {chatBadge > 0 && <span className="nav-badge" aria-hidden="true">{chatBadge}</span>}
-            </button>
+            <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => openNested('timer')} />
             {bell(`round-btn${remindersOn ? ' on' : ''}`)}
-            <button
-              className="avatar-btn desktop-only"
-              data-tour="profile"
-              aria-label="Your profile"
-              aria-current={view === 'profile' ? 'page' : undefined}
-              onClick={() => setView('profile')}
-            >
-              <span className="avatar">{initials(user)}</span>
-            </button>
             <button className="primary-btn desktop-only" data-tour="new-task" onClick={() => openCreate(day)}>
               <Icon name="plus" />
               New task
@@ -826,6 +808,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                 onAddMinute={timer.addMinute}
               />
             </Reveal>
+          ) : view === 'more' ? (
+            <Reveal key="more">
+              <More user={user} onGo={openNested} />
+            </Reveal>
           ) : view === 'friends' ? (
             <Reveal key="friends">
               <Friends
@@ -862,7 +848,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onOpenRemindersGuide={() => setRemindersGuide(true)}
               onThemeChange={theme.choose}
               onReplayTutorial={startTour}
-              onOpenAdmin={user.is_staff ? () => setView('admin') : undefined}
+              onOpenAdmin={user.is_staff ? () => openNested('admin') : undefined}
               onLogout={() => void logout()}
               onDeleteAccount={deleteAccount}
               onTasksRestored={load}
@@ -885,7 +871,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onDelete={remove}
               onCreateAt={(d, time) => openCreate(d, time)}
               onAddOnDay={(d) => openCreate(d)}
-              onShowProgress={() => setView('progress')}
+              onShowProgress={() => openNested('progress')}
             />
             </Reveal>
           ) : (
@@ -896,10 +882,12 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           </Suspense>
         </main>
       </div>
+      </div>
 
       <nav className="bottom-nav glass mobile-only" aria-label="Main">
-        <button className="nav-btn" aria-label="Clock" aria-current={view === 'home' ? 'page' : undefined} onClick={() => setView('home')}>
+        <button className="nav-btn" aria-current={view === 'home' ? 'page' : undefined} onClick={() => setView('home')}>
           <Icon name="clock" />
+          <span className="nav-label">Today</span>
         </button>
         <button
           className="nav-btn"
@@ -909,6 +897,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           onClick={() => setView('chats')}
         >
           <Icon name="chat" />
+          <span className="nav-label">Chats</span>
           {chatBadge > 0 && <span className="nav-badge" aria-hidden="true">{chatBadge}</span>}
         </button>
         <button className="fab" data-tour="new-task" aria-label="New task" onClick={() => openCreate(day)}>
@@ -922,16 +911,12 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           onClick={() => setView('friends')}
         >
           <Icon name="users" />
+          <span className="nav-label">Friends</span>
           {socialBadge > 0 && <span className="nav-badge" aria-hidden="true">{socialBadge}</span>}
         </button>
-        <button
-          className="nav-btn"
-          data-tour="profile"
-          aria-label="Your profile"
-          aria-current={view === 'profile' ? 'page' : undefined}
-          onClick={() => setView('profile')}
-        >
-          <span className="avatar">{initials(user)}</span>
+        <button className="nav-btn" data-tour="progress profile" aria-current={inMore ? 'page' : undefined} onClick={() => setView('more')}>
+          <Icon name="menu" />
+          <span className="nav-label">More</span>
         </button>
       </nav>
 

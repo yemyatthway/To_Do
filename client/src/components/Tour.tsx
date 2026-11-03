@@ -15,7 +15,7 @@ const CARD_WIDTH = 340
 const GAP = 14
 
 function findTarget(name: string) {
-  return [...document.querySelectorAll<Element>(`[data-tour="${name}"]`)].find((el) => {
+  return [...document.querySelectorAll<Element>(`[data-tour~="${name}"]`)].find((el) => {
     const r = el.getBoundingClientRect()
     return r.width > 0 && r.height > 0
   })

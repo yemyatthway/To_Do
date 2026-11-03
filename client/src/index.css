@@ -3452,40 +3452,6 @@ body > .scrim.center {
   font-variant-numeric: tabular-nums;
 }
 
-/* Desktop header: greeting on the left, view tabs in the middle, buttons on the right. */
-@media (min-width: 960px) {
-  .header {
-    display: grid;
-    /* Title and buttons keep their full width; the tabs sit centred in the space between,
-       so the buttons never slide over them. */
-    grid-template-columns: max-content minmax(max-content, 1fr) max-content;
-    column-gap: 28px;
-    align-items: center;
-  }
-
-  .header-tabs {
-    justify-self: center;
-  }
-
-  .header-actions {
-    justify-self: end;
-  }
-}
-
-/* Not quite wide enough for one row: the tabs move to their own centered row below. */
-@media (min-width: 960px) and (max-width: 1359px) {
-  .header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: 18px;
-  }
-
-  .header-tabs {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-}
-
-
 /* Dropdowns: no native browser look (Safari would draw a flat white box and ignore the shadows);
    they sit sunk like every other field, with a drawn chevron. */
 select.field {
@@ -4502,4 +4468,185 @@ select.field:focus-visible {
   .skeleton-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ---------- Layout: sidebar on desktop, bottom bar on phones ---------- */
+
+.shell {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+}
+
+.shell > .app {
+  flex: 1;
+  min-width: 0;
+}
+
+.header-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.side-nav {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  /* Icons only until there's room for names. */
+  .side-nav {
+    position: sticky;
+    top: 0;
+    flex: none;
+    width: 76px;
+    height: 100dvh;
+    overflow-y: auto;
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    background: var(--glassSolid);
+    border-right: 1px solid var(--glassB);
+    box-shadow: 4px 0 24px var(--glassSh);
+  }
+
+  .side-text,
+  .side-label {
+    display: none;
+  }
+}
+
+@media (min-width: 1200px) {
+  .side-nav {
+    width: 240px;
+    padding: 22px 16px;
+  }
+
+  .side-text {
+    display: inline;
+  }
+
+  .side-label {
+    display: block;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--sub);
+  }
+}
+
+.side-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.side-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--sub);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  transition: box-shadow var(--hover-dur) var(--hover-ease), color var(--hover-dur) var(--hover-ease), background var(--hover-dur) var(--hover-ease);
+}
+
+.side-item .icon {
+  flex: none;
+}
+
+.side-item .side-text {
+  flex: 1;
+}
+
+.side-item[aria-current='page'],
+.side-item:hover {
+  background: var(--bg);
+  box-shadow: var(--sk-raised);
+}
+
+.side-item[aria-current='page'] {
+  color: var(--accT);
+}
+
+.side-item:active {
+  box-shadow: var(--sk-press);
+}
+
+.side-item .nav-badge {
+  flex: none;
+}
+
+@media (max-width: 1199px) {
+  .side-item .nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
+}
+
+/* Phone bottom bar: an icon with its name. */
+.nav-btn {
+  flex-direction: column;
+  gap: 1px;
+  width: 60px;
+  height: 54px;
+}
+
+.nav-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.more-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: var(--glassSolid);
+  border: 1px solid var(--glassB);
+  color: var(--text);
+  text-align: left;
+}
+
+.more-row .person-name,
+.more-row .person-main {
+  flex: 1;
+}
+
+.more-go {
+  color: var(--sub);
+  flex: none;
 }
