@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, type Task, type TaskInput, type User } from './api'
+import { AppSkeleton, CardsSkeleton, HomeSkeleton, Loading, LoadingPage } from './components/Loading'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
 import { Toast, type ToastData } from './components/Toast'
 import type { TourStep } from './components/Tour'
@@ -189,9 +190,7 @@ export default function App() {
     return (
       <>
         <Backdrop />
-        <p className="empty" style={{ position: 'relative', paddingTop: '40vh' }}>
-          Loading…
-        </p>
+        <LoadingPage skeleton={<AppSkeleton />} />
       </>
     )
   }
@@ -813,7 +812,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         )}
 
         <main ref={mainRef}>
-          <Suspense fallback={<p className="empty">Loading…</p>}>
+          <Suspense fallback={<LoadingPage skeleton={<CardsSkeleton />} />}>
           {view === 'timer' ? (
             <Reveal key="timer">
               <Timer
@@ -871,7 +870,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             />
             </Reveal>
           ) : loading ? (
-            <p className="empty">Loading your tasks…</p>
+            <Loading skeleton={view === 'home' ? <HomeSkeleton /> : <CardsSkeleton />} onRetry={() => void load()} />
           ) : view === 'home' ? (
             <Reveal key="home">
             <Home

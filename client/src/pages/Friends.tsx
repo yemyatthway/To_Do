@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveRefresh } from '../live'
 import { social, type Person, type Share } from '../api'
+import { Loading, SkeletonRows } from '../components/Loading'
 import { Icon } from '../icons'
 import { formatShortDay, formatTime } from '../time'
 import { handle, initials, timeAgo } from '../user'
@@ -104,7 +105,7 @@ export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: Frie
           {newShares.length > 0 && <span className="count-pill">{newShares.length} new</span>}
         </div>
         {inbox === null ? (
-          <p className="empty">Loading…</p>
+          <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
         ) : inbox.length === 0 ? (
           <p className="empty">When a friend sends you tasks, they show up here. Nothing is added to your list until you choose.</p>
         ) : (
@@ -147,7 +148,7 @@ export function Friends({ now, notify, onSendTasks, onMessage, onChanged }: Frie
           )}
         </div>
         {lists === null ? (
-          <p className="empty">Loading…</p>
+          <Loading active={!error} skeleton={<SkeletonRows count={3} avatar />} onRetry={() => void refresh()} />
         ) : lists.friends.length === 0 && lists.outgoing.length === 0 ? (
           <p className="empty">No friends yet. Find people below and send a request.</p>
         ) : (
@@ -340,7 +341,7 @@ function FindPeople({ busy, onAct }: { busy: string | null; onAct: (key: string,
           }}
         />
       </label>
-      {searching && <p className="empty">Searching…</p>}
+      <Loading active={searching} skeleton={<SkeletonRows count={2} avatar />} />
       {!searching && results && results.length === 0 && <p className="empty">No one found. Try their full email address.</p>}
       {!searching && results && results.length > 0 && (
         <ul className="people">

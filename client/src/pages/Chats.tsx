@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { chat, social, type Chat, type ChatMessage, type Person } from '../api'
+import { Loading, SkeletonRows, ThreadSkeleton } from '../components/Loading'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
 import { pendingMessages, type Outbox, type ShownMessage } from '../outbox'
@@ -168,7 +169,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
 
         {!picking &&
           (chats === null ? (
-            <p className="empty">Loading…</p>
+            <Loading active={!error} skeleton={<SkeletonRows count={4} avatar />} onRetry={() => void refresh()} />
           ) : chats.length === 0 ? (
             <p className="empty">
               {friends.length ? 'No messages yet. Tap New to write to a friend.' : 'Add a friend first, then you can message them here.'}
@@ -229,7 +230,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
             onChanged={refresh}
           />
         ) : openId ? (
-          <p className="empty">Loading…</p>
+          <Loading skeleton={<ThreadSkeleton />} onRetry={() => void refresh()} />
         ) : (
           <div className="chat-placeholder">
             <Icon name="chat" />
@@ -572,7 +573,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           </button>
         )}
         {messages === null ? (
-          <p className="empty">Loading…</p>
+          <Loading active={!error} skeleton={<ThreadSkeleton />} onRetry={() => void loadLatest()} />
         ) : shown?.length === 0 ? (
           <p className="empty">Say hi to {nameOf(friend)}.</p>
         ) : (

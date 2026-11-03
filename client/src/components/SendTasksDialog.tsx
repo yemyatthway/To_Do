@@ -5,6 +5,7 @@ import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { dueDate, formatShortDay, formatTime } from '../time'
 import { initials } from '../user'
+import { Loading, SkeletonRows } from './Loading'
 
 interface SendTasksDialogProps {
   /** Your own tasks to choose from. */
@@ -129,9 +130,7 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
         <div className="field-group">
           <span className="label">To</span>
           {friends === null ? (
-            <p className="empty" style={{ padding: 0, textAlign: 'left' }}>
-              Loading friends…
-            </p>
+            <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} />
           ) : friends.length === 0 ? (
             <p className="hint">You don't have any friends here yet. Add some on the Friends screen first.</p>
           ) : (

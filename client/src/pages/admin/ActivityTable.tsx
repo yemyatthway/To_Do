@@ -1,3 +1,4 @@
+import { Loading, SkeletonRows } from '../../components/Loading'
 import { admin } from '../../api'
 import { Icon } from '../../icons'
 import { formatDateTime, timeAgo } from '../../user'
@@ -86,7 +87,7 @@ export function ActivityTable({ now, initialSearch, onOpenUser }: { now: Date; i
             ))}
           </tbody>
         </table>
-        {table.firstLoad && <p className="empty">Loading…</p>}
+        {table.firstLoad && <Loading active={!table.error} skeleton={<SkeletonRows count={5} avatar />} onRetry={table.reload} />}
         {!table.loading && !table.error && table.rows.length === 0 && <p className="empty">{filtered ? 'No activity matches these filters.' : 'No activity yet.'}</p>}
       </div>
 

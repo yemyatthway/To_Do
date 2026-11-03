@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiError, api, auth, type Task, type TrustedDevice, type User } from '../api'
+import { Loading, SkeletonRows } from '../components/Loading'
 import { UsernameField } from '../components/UsernameField'
 import { usernameBlocks, useUsernameCheck } from '../components/usernameCheck'
 import { Icon } from '../icons'
@@ -332,9 +333,10 @@ function RecentlyDeleted({ now, notify, onRestored }: { now: Date; notify: Profi
   const [error, setError] = useState('')
   const [confirmEmpty, setConfirmEmpty] = useState(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.trash().then(setTasks, (err: Error) => setError(err.message))
   }, [])
+  useEffect(load, [load])
 
   const drop = (id: number) => setTasks((list) => list?.filter((t) => t.id !== id) ?? null)
 
@@ -397,7 +399,7 @@ function RecentlyDeleted({ now, notify, onRestored }: { now: Date; notify: Profi
         Deleted tasks stay here for 7 days, then they're erased for good.
       </p>
       {error && <div className="error-banner">{error}</div>}
-      {tasks === null && !error && <p className="list-sub">Loading…</p>}
+      {tasks === null && <Loading active={!error} skeleton={<SkeletonRows count={2} />} onRetry={load} />}
       {tasks?.length === 0 && <p className="list-sub">Nothing here.</p>}
       <div>
         {tasks?.map((task) => (
@@ -427,9 +429,10 @@ function Devices({ now, notify }: { now: Date; notify: ProfileProps['notify'] })
   const [devices, setDevices] = useState<TrustedDevice[] | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  const load = useCallback(() => {
     auth.devices().then(setDevices, (err: Error) => setError(err.message))
   }, [])
+  useEffect(load, [load])
 
   async function remove(device: TrustedDevice) {
     try {
@@ -448,7 +451,7 @@ function Devices({ now, notify }: { now: Date; notify: ProfileProps['notify'] })
         Logging in from any other browser needs a code we email to you.
       </p>
       {error && <div className="error-banner">{error}</div>}
-      {devices === null && !error && <p className="list-sub">Loading…</p>}
+      {devices === null && <Loading active={!error} skeleton={<SkeletonRows count={2} />} onRetry={load} />}
       {devices?.length === 0 && <p className="list-sub">No trusted devices yet.</p>}
       <div>
         {devices?.map((device) => (

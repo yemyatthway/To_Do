@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLiveRefresh } from '../live'
+import { Bone, Loading } from '../components/Loading'
 import { admin, type AdminStats, type AdminUser, type AdminUserDetail, type User } from '../api'
 import { ActivityTable } from './admin/ActivityTable'
 import { errorMessage } from './admin/useServerTable'
@@ -95,7 +96,9 @@ export function Admin({ me, now, notify }: AdminProps) {
       <section className="admin-stats" aria-label="Overview">
         {statCards.map((card) => (
           <div key={card.label} className={`stat-card neu${card.tone ? ` stat-${card.tone}` : ''}`}>
-            <span className="stat-value">{card.value ?? '–'}</span>
+            <span className="stat-value">
+              {card.value ?? (statsError ? '–' : <Loading quiet skeleton={<Bone width={46} height={26} />} />)}
+            </span>
             <span className="stat-label">{card.label}</span>
           </div>
         ))}

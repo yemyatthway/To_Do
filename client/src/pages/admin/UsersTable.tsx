@@ -1,3 +1,4 @@
+import { Loading, SkeletonRows } from '../../components/Loading'
 import { useEffect } from 'react'
 import { admin, type AdminUser } from '../../api'
 import { formatDateTime, initials, timeAgo } from '../../user'
@@ -118,7 +119,7 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
             ))}
           </tbody>
         </table>
-        {table.firstLoad && <p className="empty">Loading…</p>}
+        {table.firstLoad && <Loading active={!table.error} skeleton={<SkeletonRows count={5} avatar />} onRetry={table.reload} />}
         {!table.loading && !table.error && table.rows.length === 0 && <p className="empty">{filtered ? 'No users match these filters.' : 'No users yet.'}</p>}
       </div>
 

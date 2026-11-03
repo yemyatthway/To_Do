@@ -1,3 +1,4 @@
+import { Loading, SkeletonRows } from '../../components/Loading'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AdminUser, AdminUserDetail, AuthEvent, User } from '../../api'
@@ -63,7 +64,7 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
         </div>
 
         {!detail ? (
-          <p className="empty">Loading…</p>
+          <Loading skeleton={<SkeletonRows count={4} avatar />} />
         ) : (
           <>
             <div className="admin-identity">
