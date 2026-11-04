@@ -481,10 +481,29 @@ export interface ChatMessage {
   /** The message this one answers. */
   reply?: ChatReply | null
   reactions?: ChatReaction[]
+  /** Who wrote it, for group chats. */
+  sender_name?: string
+  /** A line about the group itself instead of words. */
+  event?: ChatEvent | null
+}
+
+export interface ChatEvent {
+  type: 'created' | 'added' | 'removed' | 'left' | 'renamed'
+  name: string
+}
+
+export interface GroupMember extends Person {
+  is_admin: boolean
+  read_at: string | null
 }
 
 export interface Chat {
   id: number
+  is_group?: boolean
+  name?: string
+  members?: GroupMember[]
+  am_admin?: boolean
+  /** For a group, a stand-in holding its name (id 0). */
   friend: Person
   last_message: ChatMessage | null
   last_message_at: string | null
@@ -509,6 +528,11 @@ export const chat = {
   deleteScheduled: (id: number, itemId: number) => request<void>(`/api/chat/${id}/scheduled/${itemId}/`, { method: 'DELETE' }),
   list: () => request<{ chats: Chat[]; unread: number }>('/api/chat/'),
   open: (userId: number) => request<Chat>(`/api/chat/with/${userId}/`, json('POST', {})),
+  createGroup: (name: string, members: number[]) => request<Chat>('/api/chat/groups/', json('POST', { name, members })),
+  renameGroup: (id: number, name: string) => request<Chat>(`/api/chat/${id}/group/`, json('PATCH', { name })),
+  addToGroup: (id: number, members: number[]) => request<Chat>(`/api/chat/${id}/group/`, json('POST', { members })),
+  /** Take someone out, or leave if it's you. */
+  removeFromGroup: (id: number, userId: number) => request<void>(`/api/chat/${id}/group/members/${userId}/`, { method: 'DELETE' }),
   messages: (id: number, before?: number) =>
     request<{ chat: Chat; messages: ChatMessage[] }>(`/api/chat/${id}/messages/${before ? `?before=${before}` : ''}`),
   send: (id: number, text: string, clientId?: string, replyTo?: number) => request<ChatMessage>(`/api/chat/${id}/messages/`, json('POST', { text, client_id: clientId, reply_to: replyTo })),

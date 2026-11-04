@@ -12,6 +12,7 @@ from rest_framework.test import APITestCase
 from apps.notifications.models import PushSubscription
 from apps.social.models import Friendship
 from apps.users.models import User
+from apps.users.services import delete_account, purge_account, restore_account
 
 from . import services
 from .models import Conversation, Message, MessageReaction, ScheduledMessage
@@ -417,3 +418,208 @@ class ScheduledMessageTests(APITestCase):
         with mock.patch("apps.chat.services.MAX_SCHEDULED", 1):
             self.assertEqual(self.add().status_code, 201)
             self.assertEqual(self.add().status_code, 400)
+
+
+@override_settings(PUSH_SEND_ASYNC=False, LIVE_SEND_ASYNC=False)
+@mock.patch("apps.social.services.send_push")
+class GroupChatTests(APITestCase):
+    def setUp(self):
+        now = timezone.now()
+        make = lambda name: User.objects.create_user(f"{name}@example.com", PASSWORD, full_name=name.capitalize(), username=name, email_verified_at=now)
+        self.mia, self.aung, self.sara, self.stranger = make("mia"), make("aung"), make("sara"), make("stranger")
+        for friend in (self.aung, self.sara):
+            Friendship.objects.create(requester=self.mia, addressee=friend, status="accepted", responded_at=now)
+        self.client.force_authenticate(self.mia)
+
+    def group(self, *people, name="Trip"):
+        response = self.client.post("/api/chat/groups/", {"name": name, "members": [p.pk for p in people]}, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        return response.data["id"]
+
+    def as_(self, user):
+        self.client.force_authenticate(user)
+
+    def say(self, chat, text="hi"):
+        return self.client.post(f"/api/chat/{chat}/messages/", {"text": text}, format="json")
+
+    def test_a_deleted_account_leaves_the_list_and_passes_on_admin(self, push):
+        chat = self.group(self.aung, self.sara)
+        delete_account(user=self.mia, password=PASSWORD)
+        self.as_(self.aung)
+        data = self.client.get("/api/chat/").data["chats"]
+        group = next(c for c in data if c["id"] == chat)
+        self.assertEqual({m["id"] for m in group["members"]}, {self.aung.pk, self.sara.pk})
+        self.assertTrue(group["am_admin"])
+        restore_account(user=User.all_objects.get(pk=self.mia.pk))
+        people = next(c for c in self.client.get("/api/chat/").data["chats"] if c["id"] == chat)["members"]
+        self.assertEqual({m["id"] for m in people}, {self.mia.pk, self.aung.pk, self.sara.pk})
+
+    def test_an_account_erased_for_good_leaves_its_groups(self, push):
+        chat = self.group(self.aung)
+        purge_account(self.mia)
+        conversation = Conversation.objects.get(pk=chat)
+        self.assertEqual(list(conversation.members.values_list("user_id", "is_admin")), [(self.aung.pk, True)])
+        purge_account(self.aung)
+        self.assertFalse(Conversation.objects.filter(pk=chat).exists())
+
+    def test_making_a_group_with_friends(self, push):
+        response = self.client.post("/api/chat/groups/", {"name": " Trip  plans ", "members": [self.aung.pk, self.sara.pk]}, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["is_group"])
+        self.assertEqual(response.data["name"], "Trip plans")
+        self.assertEqual(response.data["friend"]["full_name"], "Trip plans")
+        self.assertTrue(response.data["am_admin"])
+        self.assertEqual({m["id"] for m in response.data["members"]}, {self.mia.pk, self.aung.pk, self.sara.pk})
+        self.assertEqual(response.data["last_message"]["event"], {"type": "created", "name": ""})
+
+    def test_only_friends_can_be_added(self, push):
+        response = self.client.post("/api/chat/groups/", {"members": [self.stranger.pk]}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.client.post("/api/chat/groups/", {"members": []}, format="json").status_code, 400)
+        self.assertEqual(self.client.post("/api/chat/groups/", {"members": "all"}, format="json").status_code, 400)
+        self.assertEqual(self.client.post("/api/chat/groups/", {"members": [self.mia.pk]}, format="json").status_code, 400)
+
+    def test_a_group_with_no_name_uses_first_names(self, push):
+        chat = self.group(self.aung, self.sara, name="")
+        data = self.client.get("/api/chat/").data["chats"][0]
+        self.assertEqual(data["id"], chat)
+        self.assertEqual(data["friend"]["full_name"], "Aung, Sara")
+        self.as_(self.aung)
+        self.assertEqual(self.client.get("/api/chat/").data["chats"][0]["friend"]["full_name"], "Mia, Sara")
+
+    def test_everyone_can_talk_and_unread_counts_each_person(self, push):
+        chat = self.group(self.aung, self.sara)
+        self.assertEqual(self.say(chat, "hello all").status_code, 201)
+        self.as_(self.aung)
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 1)
+        self.client.post(f"/api/chat/{chat}/read/")
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 0)
+        self.as_(self.sara)
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 1)
+        message = self.say(chat, "me too").data
+        self.assertEqual(message["sender_name"], "Sara")
+        self.as_(self.mia)
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 1)
+
+    def test_group_lines_are_not_unread_messages(self, push):
+        chat = self.group(self.aung)
+        self.as_(self.aung)
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 0)
+        self.assertEqual(self.client.get(f"/api/chat/{chat}/messages/").data["messages"][0]["event"]["type"], "created")
+
+    def test_outsiders_cannot_see_or_write(self, push):
+        chat = self.group(self.aung)
+        self.as_(self.sara)
+        self.assertEqual(self.client.get(f"/api/chat/{chat}/messages/").status_code, 404)
+        self.assertEqual(self.say(chat).status_code, 404)
+        self.assertEqual(self.client.get("/api/chat/").data["chats"], [])
+
+    def test_a_push_goes_to_everyone_else_with_who_said_it(self, push):
+        chat = self.group(self.aung, self.sara)
+        for user in (self.aung, self.sara):
+            PushSubscription.objects.create(user=user, endpoint=f"https://push/{user.pk}", p256dh="p", auth="a")
+            User.objects.filter(pk=user.pk).update(reminders_enabled=True)
+        push.reset_mock()
+        self.say(chat, "dinner?")
+        self.assertEqual(push.call_count, 2)
+        self.assertEqual(push.call_args.args[1:3], ("Trip", "Mia: dinner?"))
+
+    def test_new_members_only_see_messages_from_when_they_joined(self, push):
+        chat = self.group(self.aung)
+        self.say(chat, "before Sara")
+        self.assertEqual(self.client.post(f"/api/chat/{chat}/group/", {"members": [self.sara.pk]}, format="json").status_code, 200)
+        self.say(chat, "after Sara")
+        self.as_(self.sara)
+        messages = self.client.get(f"/api/chat/{chat}/messages/").data["messages"]
+        self.assertEqual([m["text"] for m in messages if not m["event"]], ["after Sara"])
+        self.assertEqual(self.client.get("/api/chat/").data["unread"], 1)
+
+    def test_only_admins_rename_add_or_remove(self, push):
+        chat = self.group(self.aung)
+        self.as_(self.aung)
+        self.assertEqual(self.client.patch(f"/api/chat/{chat}/group/", {"name": "Mine"}, format="json").status_code, 403)
+        self.assertEqual(self.client.post(f"/api/chat/{chat}/group/", {"members": [self.mia.pk]}, format="json").status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/chat/{chat}/group/members/{self.mia.pk}/").status_code, 403)
+        self.as_(self.mia)
+        renamed = self.client.patch(f"/api/chat/{chat}/group/", {"name": "New"}, format="json").data
+        self.assertEqual(renamed["name"], "New")
+        self.assertEqual(renamed["last_message"]["event"], {"type": "renamed", "name": "New"})
+
+    def test_an_admin_cannot_add_a_stranger(self, push):
+        chat = self.group(self.aung)
+        self.assertEqual(self.client.post(f"/api/chat/{chat}/group/", {"members": [self.stranger.pk]}, format="json").status_code, 403)
+
+    def test_someone_removed_loses_the_chat_at_once(self, push):
+        chat = self.group(self.aung, self.sara)
+        self.assertEqual(self.client.delete(f"/api/chat/{chat}/group/members/{self.sara.pk}/").status_code, 204)
+        self.as_(self.sara)
+        self.assertEqual(self.client.get(f"/api/chat/{chat}/messages/").status_code, 404)
+        self.assertEqual(self.say(chat).status_code, 404)
+        self.assertEqual(self.client.get("/api/chat/").data["chats"], [])
+        self.as_(self.mia)
+        self.assertEqual(self.client.get(f"/api/chat/{chat}/messages/").data["messages"][-1]["event"], {"type": "removed", "name": "Sara"})
+
+    def test_when_the_last_admin_leaves_someone_takes_over(self, push):
+        chat = self.group(self.aung, self.sara)
+        self.assertEqual(self.client.delete(f"/api/chat/{chat}/group/members/{self.mia.pk}/").status_code, 204)
+        self.as_(self.aung)
+        data = self.client.get(f"/api/chat/{chat}/messages/").data
+        self.assertEqual(data["chat"]["am_admin"], True)
+        self.assertEqual(data["messages"][-1]["event"], {"type": "left", "name": "Mia"})
+
+    def test_the_last_person_out_ends_the_group(self, push):
+        chat = self.group(self.aung)
+        self.client.delete(f"/api/chat/{chat}/group/members/{self.mia.pk}/")
+        self.as_(self.aung)
+        self.client.delete(f"/api/chat/{chat}/group/members/{self.aung.pk}/")
+        self.assertFalse(Conversation.objects.filter(pk=chat).exists())
+
+    def test_a_friendship_ending_does_not_remove_someone(self, push):
+        chat = self.group(self.aung)
+        Friendship.objects.all().delete()
+        self.assertEqual(self.say(chat, "still here").status_code, 201)
+
+    def test_replies_reactions_edits_and_clearing_work(self, push):
+        chat = self.group(self.aung)
+        first = self.say(chat, "one").data["id"]
+        self.as_(self.aung)
+        reply = self.client.post(f"/api/chat/{chat}/messages/", {"text": "two", "reply_to": first}, format="json").data
+        self.assertEqual(reply["reply"]["id"], first)
+        reacted = self.client.post(f"/api/chat/{chat}/messages/{first}/react/", {"emoji": "🔥"}, format="json")
+        self.assertEqual(reacted.data["reactions"], [{"user": self.aung.pk, "emoji": "🔥"}])
+        self.assertEqual(self.client.patch(f"/api/chat/{chat}/messages/{reply['id']}/", {"text": "two!"}, format="json").data["text"], "two!")
+        self.client.post(f"/api/chat/{chat}/clear/")
+        self.assertEqual(self.client.get(f"/api/chat/{chat}/messages/").data["messages"], [])
+        self.as_(self.mia)
+        self.assertEqual(len([m for m in self.client.get(f"/api/chat/{chat}/messages/").data["messages"] if not m["event"]]), 2)
+
+    def test_a_group_line_cannot_be_edited_deleted_or_reacted_to(self, push):
+        chat = self.group(self.aung)
+        line = self.client.get(f"/api/chat/{chat}/messages/").data["messages"][0]["id"]
+        self.assertEqual(self.client.patch(f"/api/chat/{chat}/messages/{line}/", {"text": "x"}, format="json").status_code, 404)
+        self.assertEqual(self.client.delete(f"/api/chat/{chat}/messages/{line}/").status_code, 404)
+        self.assertEqual(self.client.post(f"/api/chat/{chat}/messages/{line}/react/", {"emoji": "🔥"}, format="json").status_code, 404)
+
+    def test_a_scheduled_message_goes_out_and_fails_cleanly_after_leaving(self, push):
+        chat = self.group(self.aung)
+        future = (timezone.now() + timedelta(hours=1)).isoformat()
+        self.assertEqual(self.client.post(f"/api/chat/{chat}/scheduled/", {"text": "later", "send_at": future}, format="json").status_code, 201)
+        self.assertEqual(services.send_due_scheduled(timezone.now() + timedelta(hours=2)), 1)
+        self.client.post(f"/api/chat/{chat}/scheduled/", {"text": "never", "send_at": future}, format="json")
+        self.client.delete(f"/api/chat/{chat}/group/members/{self.mia.pk}/")
+        self.assertEqual(services.send_due_scheduled(timezone.now() + timedelta(hours=2)), 0)
+
+    def test_one_to_one_chats_keep_working_beside_groups(self, push):
+        self.group(self.aung)
+        chat = self.client.post(f"/api/chat/with/{self.aung.pk}/").data
+        self.assertFalse(chat["is_group"])
+        self.assertEqual(chat["friend"]["id"], self.aung.pk)
+        self.say(chat["id"], "just us")
+        self.assertEqual(len(self.client.get("/api/chat/").data["chats"]), 2)
+
+    def test_the_live_pass_includes_groups(self, push):
+        chat = self.group(self.aung)
+        with override_settings(ABLY_API_KEY=KEY):
+            self.as_(self.aung)
+            capability = self.client.get("/api/live/token/").data["token_request"]["capability"]
+        self.assertIn(f"chat:{chat}", capability)

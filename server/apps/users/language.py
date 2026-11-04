@@ -25,6 +25,8 @@ BURMESE = {
     "A scheduled message wasn't sent": "စီစဉ်ထားသော မက်ဆေ့ချ် မပို့ရပါ",
     "This message can't be sent.": "ဤမက်ဆေ့ချ်ကို ပို့၍ မရပါ။",
     "You're no longer friends, so you can't send messages here.": "သူငယ်ချင်း မဟုတ်တော့သဖြင့် ဤနေရာတွင် မက်ဆေ့ချ်ပို့၍ မရပါ။",
+    "{name} added you to this group": "{name} က ဤအုပ်စုသို့ သင့်ကို ထည့်လိုက်ပါသည်",
+    "You're no longer in this group.": "သင်သည် ဤအုပ်စုတွင် မရှိတော့ပါ။",
     # Workspaces
     "Workspace invitation": "လုပ်ငန်းခွင် ဖိတ်ကြားချက်",
     "{who} invited you to {workspace}.": "{who} က {workspace} သို့ သင့်ကို ဖိတ်လိုက်ပါသည်။",

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { chat, social, type Chat, type ChatMessage, type ChatReaction, type Person, type ScheduledMessage } from '../api'
+import { ApiError, chat, social, type Chat, type ChatMessage, type ChatReaction, type GroupMember, type Person, type ScheduledMessage } from '../api'
 import { scheduledSummary, sendAtText } from '../chatSchedule'
-import { chatSections, dayLabel, isSeen, matchesChat, messageTime, momentLabel } from '../chatTimeline'
+import { chatSections, dayLabel, eventLine, isSeen, matchesChat, messageTime, momentLabel, seenBy } from '../chatTimeline'
 import { ConfirmAction } from '../components/ConfirmAction'
 import { Dial } from '../components/Dial'
+import { GroupDialog, MembersSheet } from '../components/GroupDialogs'
 import { EmojiGrid } from '../components/emoji'
 import { Loading, SkeletonRows, ThreadSkeleton } from '../components/Loading'
 import { MessageMenu, type MessageAction } from '../components/MessageMenu'
@@ -24,6 +25,7 @@ import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const nameOf = (p: Person) => p.full_name || p.email
+const firstName = (name?: string) => (name ?? tr('Someone')).split(/\s+/)[0]
 const MAX_LENGTH = 2000
 const PAGE = 50
 const EDIT_HOURS = 24 // same as the server
@@ -48,6 +50,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
   // The open chat, kept even when it isn't in the list (no messages yet, or just cleared).
   const [opened, setOpened] = useState<Chat | null>(null)
   const [picking, setPicking] = useState(false)
+  const [makingGroup, setMakingGroup] = useState(false)
   const [online, setOnline] = useState<Set<number>>(new Set())
   const [search, setSearch] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -77,27 +80,23 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
   const typingTimers = useRef(new Map<number, number>())
   const watched = (chats ?? [])
     .slice(0, 20)
-    .map((c) => `${c.id}:${c.friend.id}`)
+    .map((c) => c.id)
     .join(',')
   useEffect(() => {
-    const list = watched ? watched.split(',').map((pair) => pair.split(':').map(Number)) : []
     const timers = typingTimers.current
-    const stop = watchTyping(
-      list.map(([id, friendId]) => ({ id, friendId })),
-      (chatId) => {
-        setTypingIn((s) => new Set(s).add(chatId))
-        clearTimeout(timers.get(chatId))
-        timers.set(
-          chatId,
-          window.setTimeout(() => setTypingIn((s) => new Set([...s].filter((id) => id !== chatId))), 4000),
-        )
-      },
-    )
+    const stop = watchTyping(watched ? watched.split(',').map(Number) : [], myId, (chatId) => {
+      setTypingIn((s) => new Set(s).add(chatId))
+      clearTimeout(timers.get(chatId))
+      timers.set(
+        chatId,
+        window.setTimeout(() => setTypingIn((s) => new Set([...s].filter((id) => id !== chatId))), 4000),
+      )
+    })
     return () => {
       stop()
       timers.forEach((t) => clearTimeout(t))
     }
-  }, [watched])
+  }, [watched, myId])
   // A new message ends their "typing…".
   useEffect(
     () =>
@@ -138,7 +137,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
   }, [start, openWith, onStarted])
 
   const active = chats?.find((c) => c.id === openId) ?? (opened?.id === openId ? opened : null)
-  const withMessages = new Set(chats?.map((c) => c.friend.id))
+  const withMessages = new Set(chats?.filter((c) => !c.is_group).map((c) => c.friend.id))
   const newFriends = friends.filter((f) => !withMessages.has(f.id))
 
   const sections = chatSections((chats ?? []).filter((c) => matchesChat(c, search)), now)
@@ -189,6 +188,21 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
         <div ref={listRef} className="panel-scroll chat-scroll">
           {picking && (
             <ul className="chat-list" aria-label={tr('Start a chat with')}>
+              <li>
+                <button
+                  className="flat-row"
+                  onClick={() => {
+                    setPicking(false)
+                    setMakingGroup(true)
+                  }}
+                >
+                  <Dial id={0} initials="" group />
+                  <span className="row-main">
+                    <span className="person-name">{tr('New group')}</span>
+                    <span className="row-sub">{tr('Chat with several friends')}</span>
+                  </span>
+                </button>
+              </li>
               {friends.filter((f) => `${f.full_name} ${f.username}`.toLowerCase().includes(search.trim().toLowerCase())).map((f) => (
                 <li key={f.id}>
                   <button className="flat-row" onClick={() => openWith(f.id)}>
@@ -227,7 +241,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
                             setOpenId(c.id)
                           }}
                         >
-                          <Dial id={c.friend.id} initials={initials(c.friend)} ring={c.unread ? 'new' : online.has(c.friend.id) ? 'live' : null} />
+                          <Dial id={c.is_group ? c.id : c.friend.id} initials={initials(c.friend)} group={c.is_group} ring={c.unread ? 'new' : online.has(c.friend.id) ? 'live' : null} />
                           <span className="row-main">
                             <span className="person-name">{nameOf(c.friend)}</span>
                             {typingIn.has(c.id) ? (
@@ -277,8 +291,10 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
             online={online.has(active.friend.id)}
             notify={notify}
             outbox={outbox}
+            friends={friends}
             onBack={() => setOpenId(null)}
             onChanged={refresh}
+            onChat={setOpened}
           />
         ) : openId ? (
           <Loading skeleton={<ThreadSkeleton />} onRetry={() => void refresh()} />
@@ -290,6 +306,20 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
           </div>
         )}
       </section>
+
+      {makingGroup && (
+        <GroupDialog
+          friends={friends}
+          onClose={() => setMakingGroup(false)}
+          onCreate={async (name, members) => {
+            const group = await chat.createGroup(name, members)
+            setMakingGroup(false)
+            setOpened(group)
+            setOpenId(group.id)
+            void refresh()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -305,8 +335,10 @@ function withDeleted<T extends ChatMessage>(list: T[], id: number): T[] {
 function preview(c: Chat) {
   const m = c.last_message
   if (!m) return tr('No messages yet')
+  if (m.event) return eventLine(m)
   if (m.deleted) return m.mine ? tr('You deleted a message') : tr('Message deleted')
-  return m.mine ? tr('You: {text}', { text: m.text }) : m.text
+  if (m.mine) return tr('You: {text}', { text: m.text })
+  return c.is_group ? `${firstName(m.sender_name)}: ${m.text}` : m.text
 }
 
 /** A message on screen: real ones from the server, plus my own still in the save queue. */
@@ -319,12 +351,22 @@ interface ThreadProps {
   online: boolean
   notify: (title: string, detail?: string) => void
   outbox: Outbox
+  friends: Person[]
   onBack: () => void
   onChanged: () => void
+  /** The latest about this chat, so it survives leaving the list. */
+  onChat: (chat: Chat) => void
 }
 
-function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChanged }: ThreadProps) {
+function Thread({ chat: info, myId, now, online, notify, outbox, friends, onBack, onChanged, onChat }: ThreadProps) {
   const friend = info.friend
+  const isGroup = Boolean(info.is_group)
+  const [members, setMembers] = useState<GroupMember[]>(info.members ?? [])
+  const [amAdmin, setAmAdmin] = useState(Boolean(info.am_admin))
+  const [title, setTitle] = useState(nameOf(friend))
+  const [typingWho, setTypingWho] = useState<number | null>(null)
+  const [showMembers, setShowMembers] = useState(false)
+  const [leaving, setLeaving] = useState(false)
   const [messages, setMessages] = useState<Shown[] | null>(null)
   const [more, setMore] = useState(false)
   const [friendReadAt, setFriendReadAt] = useState(info.friend_read_at)
@@ -349,6 +391,12 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
   const typingTimer = useRef(0)
   const firstLoad = useRef(true)
 
+  // Kept aside: the list around this redraws often, and that's no reason to reload or reconnect.
+  const outside = useRef({ notify, onChanged, onBack })
+  useEffect(() => {
+    outside.current = { notify, onChanged, onBack }
+  })
+
   const own = useCallback((m: ChatMessage): Shown => ({ ...m, mine: m.sender === myId }), [myId])
 
   /** Merge the latest page with what's on screen (keeps older pages and messages still sending).
@@ -357,6 +405,9 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
     try {
       const page = await chat.messages(info.id)
       setFriendReadAt(page.chat.friend_read_at)
+      setMembers(page.chat.members ?? [])
+      setAmAdmin(Boolean(page.chat.am_admin))
+      setTitle(nameOf(page.chat.friend))
       if (firstLoad.current) {
         firstLoad.current = false
         setMore(page.messages.length === PAGE)
@@ -371,9 +422,16 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       })
       setError('')
     } catch (err) {
+      // Taken out of this group, or it's gone: nothing here to show any more.
+      if (isGroup && err instanceof ApiError && err.status === 404) {
+        outside.current.notify(tr('You\'re no longer in this group.'))
+        outside.current.onChanged()
+        outside.current.onBack()
+        return
+      }
       setError(errorMessage(err))
     }
-  }, [info.id, own])
+  }, [info.id, own, isGroup])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
@@ -392,12 +450,12 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
 
   // Live: new and deleted messages, "Seen", "typing…", and whether they're in this chat now.
   useEffect(() => {
-    const connection = joinChat(info.id, friend.id, {
+    const connection = joinChat(info.id, myId, {
       onEvent: (name, data) => {
         if (name === 'message') {
           const m = own(data as ChatMessage)
           setMessages((list) => (list && !list.some((x) => x.id === m.id) ? [...list, m] : list))
-          if (m.sender === friend.id) {
+          if (m.sender !== myId) {
             setTyping(false)
             clearTimeout(typingTimer.current)
           }
@@ -413,10 +471,14 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         } else if (name === 'read') {
           const read = data as { user: number; at: string }
           if (read.user === friend.id) setFriendReadAt(read.at)
+          setMembers((list) => list.map((m) => (m.id === read.user ? { ...m, read_at: read.at } : m)))
+        } else if (name === 'members') {
+          void loadLatest()
         }
       },
-      onTyping: () => {
+      onTyping: (from) => {
         setTyping(true)
+        setTypingWho(from)
         clearTimeout(typingTimer.current)
         typingTimer.current = window.setTimeout(() => setTyping(false), 4000)
       },
@@ -428,7 +490,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       live.current = null
       clearTimeout(typingTimer.current)
     }
-  }, [info.id, friend.id, own])
+  }, [info.id, friend.id, myId, own, loadLatest])
 
   // Deleted for me or cleared on another of my devices: show what the server shows.
   useEffect(
@@ -441,7 +503,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
   )
 
   // Reading: mark as read whenever their newest message is on screen.
-  const lastFromFriend = messages?.filter((m) => m.sender === friend.id).at(-1)?.id
+  const lastFromFriend = messages?.filter((m) => m.sender !== myId && !m.event).at(-1)?.id
   useEffect(() => {
     if (!visible || !lastFromFriend) return
     chat
@@ -683,9 +745,27 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
     requestAnimationFrame(() => el.setSelectionRange(start + emoji.length, start + emoji.length))
   }
 
-  const lastMine = messages?.filter((m) => m.mine && !m.deleted && m.id > 0).at(-1)
+  const lastMine = messages?.filter((m) => m.mine && !m.deleted && !m.event && m.id > 0).at(-1)
   const seen = lastMine && friendReadAt && new Date(friendReadAt) >= new Date(lastMine.created_at)
-  const status = typing ? tr('Typing…') : here ? tr('In this chat') : online ? tr('Online') : tr('Offline')
+  const typistName = firstName(members.find((m) => m.id === typingWho)?.full_name || undefined)
+  const status = isGroup
+    ? typing
+      ? tr('{value} is typing', { value: typistName })
+      : tr('{count} people', { count: members.length })
+    : typing
+      ? tr('Typing…')
+      : here
+        ? tr('In this chat')
+        : online
+          ? tr('Online')
+          : tr('Offline')
+  /** Who a quote or reply is from, in any kind of chat. */
+  const nameFor = (id: number) => {
+    if (id === myId) return tr('You')
+    if (!isGroup) return nameOf(friend)
+    const person = members.find((m) => m.id === id)
+    return person ? nameOf(person) : (messages?.find((m) => m.sender === id)?.sender_name ?? tr('Someone'))
+  }
 
   return (
     <div className="thread">
@@ -695,15 +775,61 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         </button>
         <span className="row-main">
           <span className={`eyebrow${typing || online ? ' live-status' : ''}`}>
-            {status} · {handle(friend)}
+            {isGroup ? status : `${status} · ${handle(friend)}`}
           </span>
-          <h2 className="thread-name">{nameOf(friend)}</h2>
+          {isGroup ? (
+            <button type="button" className="thread-name thread-name-btn" onClick={() => setShowMembers(true)}>
+              {title}
+            </button>
+          ) : (
+            <h2 className="thread-name">{nameOf(friend)}</h2>
+          )}
         </span>
-        <OptionsMenu label={tr('Chat options')} options={[{ icon: 'trash', label: tr('Clear chat'), danger: true, run: () => setConfirmClear(true) }]} />
+        <OptionsMenu
+          label={tr('Chat options')}
+          options={[
+            ...(isGroup ? [{ icon: 'users' as const, label: tr('Members'), run: () => setShowMembers(true) }] : []),
+            { icon: 'trash' as const, label: tr('Clear chat'), danger: true, run: () => setConfirmClear(true) },
+            ...(isGroup ? [{ icon: 'logout' as const, label: tr('Leave group'), danger: true, run: () => setLeaving(true) }] : []),
+          ]}
+        />
       </header>
+      {showMembers && (
+        <MembersSheet
+          chatId={info.id}
+          title={title}
+          members={members}
+          myId={myId}
+          amAdmin={amAdmin}
+          friends={friends}
+          onClose={() => setShowMembers(false)}
+          onChanged={(next) => {
+            if (next) onChat(next)
+            void loadLatest()
+            onChanged()
+          }}
+        />
+      )}
+      {leaving && (
+        <ConfirmAction
+          danger
+          icon="logout"
+          title={tr('Leave {name}?', { name: title })}
+          confirmLabel={tr('Leave group')}
+          onCancel={() => setLeaving(false)}
+          onConfirm={async () => {
+            await chat.removeFromGroup(info.id, myId)
+            setLeaving(false)
+            onChanged()
+            onBack()
+          }}
+        >
+          <p>{tr('You won\'t get new messages, and someone would have to add you back.')}</p>
+        </ConfirmAction>
+      )}
       {confirmClear && (
         <ConfirmAction danger icon="trash" title={tr('Clear this chat?')} confirmLabel={tr('Clear chat')} onCancel={() => setConfirmClear(false)} onConfirm={clearChat}>
-          <p>{tr('It\'s cleared for you.')}{' '}{nameOf(friend)} {tr('keeps their copy.')}</p>
+          <p>{isGroup ? tr('It\'s cleared for you. Everyone else keeps their copy.') : <>{tr('It\'s cleared for you.')}{' '}{nameOf(friend)} {tr('keeps their copy.')}</>}</p>
         </ConfirmAction>
       )}
 
@@ -733,19 +859,28 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         {messages === null ? (
           <Loading active={!error} skeleton={<ThreadSkeleton />} onRetry={() => void loadLatest()} />
         ) : shown?.length === 0 ? (
-          <p className="empty">{tr('Say hi to')}{' '}{nameOf(friend)}.</p>
+          <p className="empty">{tr('Say hi to')}{' '}{isGroup ? title : nameOf(friend)}.</p>
         ) : (
           <ol className="bubbles" aria-live="polite">
             {shown?.map((m, i) => {
               const at = new Date(m.created_at)
               const prev = shown[i - 1]
               const newDay = !prev || !sameDay(new Date(prev.created_at), at)
-              const grouped = !newDay && prev.sender === m.sender
+              const grouped = !newDay && prev.sender === m.sender && !prev.event
+              if (m.event) {
+                return (
+                  <li key={m.id} className="bubble-item" data-id={m.id}>
+                    {newDay && <div className="day-sep">{dayLabel(at, now)}</div>}
+                    <p className="chat-event">{eventLine(m)}</p>
+                  </li>
+                )
+              }
               const big = m.deleted ? null : onlyEmoji(m.text)
               const reactions = m.deleted ? [] : groupReactions(m.reactions ?? [], myId)
               return (
                 <li key={m.id} className={`bubble-item${big ? ' is-sticker' : ''}`} data-id={m.id}>
                   {newDay && <div className="day-sep">{dayLabel(at, now)}</div>}
+                  {isGroup && !m.mine && !grouped && <div className="bubble-sender">{m.sender_name ?? nameFor(m.sender)}</div>}
                   <div className={`bubble-row${m.mine ? ' mine' : ''}${grouped ? ' grouped' : ''}`}>
                     <div className="bubble-line">
                     <div
@@ -773,13 +908,13 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                         <button
                           type="button"
                           className="bubble-quote"
-                          aria-label={tr('Go to the message from {value}', { value: m.reply.sender === myId ? tr('you') : nameOf(friend) })}
+                          aria-label={tr('Go to the message from {value}', { value: m.reply.sender === myId ? tr('you') : nameFor(m.reply.sender) })}
                           onClick={(e) => {
                             e.stopPropagation()
                             jumpTo(m.reply!.id)
                           }}
                         >
-                          <span className="quote-name">{m.reply.sender === myId ? tr('You') : nameOf(friend)}</span>
+                          <span className="quote-name">{nameFor(m.reply.sender)}</span>
                           <span className="quote-text">{m.reply.deleted ? tr('Message deleted') : m.reply.text}</span>
                         </button>
                       )}
@@ -823,7 +958,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                   )}
                   {m.failed && menu?.message.id !== m.id && <div className="bubble-note mine">{tr('Not sent. Tap to try again.')}</div>}
                   {m.waiting && <div className="bubble-note mine">{tr('Waiting for network')}</div>}
-                  {lastMine?.id === m.id && <div className="bubble-note mine">{seen ? tr('Seen') : tr('Sent')}</div>}
+                  {lastMine?.id === m.id && <div className="bubble-note mine">{isGroup ? seenBy(members, myId, m.created_at) || tr('Sent') : seen ? tr('Seen') : tr('Sent')}</div>}
                 </li>
               )
             })}
@@ -831,7 +966,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         )}
         {typing && (
           <div className="bubble-row">
-            <div className="bubble typing-bubble" aria-label={tr('{value} is typing', { value: nameOf(friend) })}>
+            <div className="bubble typing-bubble" aria-label={tr('{value} is typing', { value: isGroup ? typistName : nameOf(friend) })}>
               <span />
               <span />
               <span />
@@ -863,7 +998,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         </ul>
       )}
       {editing && <ComposerNote icon="edit" title={tr('Editing your message')} text={editing.text} cancelLabel={tr('Cancel editing')} onCancel={cancelEdit} />}
-      {replying && <ComposerNote icon="reply" title={replying.sender === myId ? tr('Replying to your message') : tr('Replying to {value}', { value: nameOf(friend) })} text={replying.text} cancelLabel={tr('Cancel reply')} onCancel={() => setReplying(null)} />}
+      {replying && <ComposerNote icon="reply" title={replying.sender === myId ? tr('Replying to your message') : tr('Replying to {value}', { value: nameFor(replying.sender) })} text={replying.text} cancelLabel={tr('Cancel reply')} onCancel={() => setReplying(null)} />}
       {picker && <EmojiPanel onPick={insertEmoji} />}
       <form
         className="composer"
@@ -882,7 +1017,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           rows={1}
           value={draft}
           maxLength={MAX_LENGTH}
-          placeholder={tr('Message {value}', { value: nameOf(friend) })}
+          placeholder={isGroup ? tr('Message') : tr('Message {value}', { value: nameOf(friend) })}
           aria-label={tr('Message')}
           onChange={(e) => {
             setDraft(e.target.value)
@@ -914,7 +1049,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           item={scheduling.item}
           text={scheduling.text}
           now={now}
-          friendName={nameOf(friend)}
+          friendName={isGroup ? title : nameOf(friend)}
           onClose={() => setScheduling(null)}
           onDone={(sentNow) => {
             setScheduling(null)
@@ -941,7 +1076,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       {deleting && (
         <DeleteMessage
           message={deleting}
-          friendName={nameOf(friend)}
+          friendName={isGroup ? tr('Everyone else') : nameOf(friend)}
           onCancel={() => setDeleting(null)}
           onDelete={(forMe) => {
             setDeleting(null)

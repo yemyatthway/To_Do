@@ -5,6 +5,8 @@ from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied, ValidationError
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
+from apps.chat.services import settle_group_admins
+
 from .models import EmailCode, RotatedRefresh, TrustedDevice, User
 
 MAX_FAILED_LOGINS = 5
@@ -110,6 +112,7 @@ def delete_account(*, user, password):
     user.push_subscriptions.all().delete()
     TrustedDevice.objects.filter(user=user).delete()
     EmailCode.objects.filter(user=user).delete()
+    settle_group_admins(user)
     return user
 
 
@@ -117,6 +120,7 @@ def restore_account(*, user):
     user.deleted_at = None
     user.is_active = True
     user.save(update_fields=["deleted_at", "is_active"])
+    settle_group_admins(user)
     return user
 
 

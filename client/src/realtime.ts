@@ -147,22 +147,23 @@ export function watchOnline(friendIds: number[], onChange: (online: Set<number>)
 export interface ChatHandlers {
   /** Server events: "message", "deleted", "read". */
   onEvent: (name: string, data: unknown) => void
-  onTyping: () => void
-  /** Is the friend in this chat right now? */
+  /** Who's typing. */
+  onTyping: (from: number) => void
+  /** Is anyone else in this chat right now? */
   onHere: (here: boolean) => void
 }
 
 /** Open a conversation's channel: get its events, show that I'm here, and say when I type. */
-export function joinChat(conversationId: number, friendId: number, handlers: ChatHandlers) {
+export function joinChat(conversationId: number, myId: number, handlers: ChatHandlers) {
   const name = `chat:${conversationId}`
-  const friend = String(friendId)
+  const me = String(myId)
   let channel: RealtimeChannel | null = null
   let left = false
   let refreshHere = () => {}
   const onMessage = (message: import('ably').InboundMessage) => {
     if (message.clientId) {
       // Sent by a person, not our server: only "typing" counts (real messages come from the server).
-      if (message.name === 'typing' && message.clientId === friend) handlers.onTyping()
+      if (message.name === 'typing' && message.clientId !== me) handlers.onTyping(Number(message.clientId))
       return
     }
     handlers.onEvent(message.name ?? '', message.data)
@@ -180,7 +181,7 @@ export function joinChat(conversationId: number, friendId: number, handlers: Cha
     refreshHere = () =>
       void ch.presence
         .get()
-        .then((members) => handlers.onHere(members.some((m) => m.clientId === friend)))
+        .then((members) => handlers.onHere(members.some((m) => m.clientId !== me)))
         .catch(() => undefined)
     ch.presence.subscribe(refreshHere).catch(() => undefined)
     ch.presence.enter().catch(() => undefined) // the server skips the push while I'm here
@@ -206,21 +207,20 @@ export function joinChat(conversationId: number, friendId: number, handlers: Cha
   }
 }
 
-/** "typing…" on the chat list: calls `onTyping(chatId)` whenever a friend types in one of these chats. */
-export function watchTyping(chats: { id: number; friendId: number }[], onTyping: (chatId: number) => void) {
+/** "typing…" on the chat list: calls `onTyping(chatId)` whenever someone else types in one of these chats. */
+export function watchTyping(chatIds: number[], myId: number, onTyping: (chatId: number) => void) {
   const listeners: [RealtimeChannel, (m: import('ably').InboundMessage) => void][] = []
   let stopped = false
   void (async () => {
     await starting
     const live = client
-    if (!live || stopped || !chats.length) return
-    await ensureAccess(chats.map((c) => `chat:${c.id}`))
+    if (!live || stopped || !chatIds.length) return
+    await ensureAccess(chatIds.map((id) => `chat:${id}`))
     if (stopped) return
-    for (const c of chats) {
-      const channel = live.channels.get(`chat:${c.id}`)
-      const friend = String(c.friendId)
+    for (const id of chatIds) {
+      const channel = live.channels.get(`chat:${id}`)
       const listener = (m: import('ably').InboundMessage) => {
-        if (m.clientId === friend) onTyping(c.id)
+        if (m.clientId && m.clientId !== String(myId)) onTyping(id)
       }
       channel.subscribe('typing', listener).catch(() => undefined)
       listeners.push([channel, listener])

@@ -7853,3 +7853,47 @@ button.file-thumb:focus-visible .thumb-open {
     color: var(--accT);
   }
 }
+
+/* ---------- Choosing people for a group ---------- */
+
+.group-people {
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.group-person {
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 2px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line, rgba(127, 140, 170, 0.18));
+  cursor: pointer;
+}
+
+.group-people li:first-child .group-person {
+  border-top: 0;
+}
+
+.group-person {
+  --cat: var(--work);
+}
+
+.group-person .check {
+  flex: none;
+}
+
+.table-sheet-foot > .primary-btn:only-child {
+  grid-column: 1 / -1;
+}
+
+.group-person-role {
+  flex: none;
+  color: var(--sub);
+  font-size: 12px;
+  font-weight: 600;
+}

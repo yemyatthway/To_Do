@@ -14,7 +14,7 @@ from apps.social.services import _notify
 from apps.users.language import tr
 from apps.users.models import User
 
-from .models import Conversation, HiddenMessage, Message, MessageReaction, ScheduledMessage
+from .models import Conversation, GroupMember, HiddenMessage, Message, MessageReaction, ScheduledMessage
 
 MAX_LENGTH = 2000
 PAGE = 50
@@ -22,6 +22,8 @@ EDIT_HOURS = 24  # your own messages can be edited for a day
 MAX_SCHEDULED = 50
 MAX_SCHEDULE_DAYS = 365
 MAX_SCHEDULED_PER_RUN = 100
+MAX_GROUP_MEMBERS = 50
+MAX_GROUP_NAME = 80
 # One emoji as a keyboard types it, with any skin tone, joined people, flag or keycap. Nothing else.
 _PICTURE = (
     r"[\u00a9\u00ae\u203c\u2049\u2122\u2139\u2194-\u21aa\u231a-\u23ff\u24c2\u25aa-\u25fe\u2600-\u27bf"
@@ -36,7 +38,7 @@ def _pair(a, b):
 
 
 def conversation_for(me, conversation_id):
-    conversation = Conversation.involving(me).select_related("user_a", "user_b").filter(pk=conversation_id).first()
+    conversation = Conversation.involving(me).select_related("user_a", "user_b").prefetch_related("members__user").filter(pk=conversation_id).first()
     if conversation is None:
         raise NotFound("That chat doesn't exist.")
     return conversation
@@ -66,6 +68,8 @@ def visible(me, conversation):
     messages = conversation.messages.exclude(hidden_for__user=me)
     if cleared := conversation.cleared_at(me):
         messages = messages.filter(created_at__gt=cleared)
+    if conversation.is_group and (member := conversation.member(me)):
+        messages = messages.filter(created_at__gte=member.joined_at)
     return messages
 
 
@@ -74,11 +78,9 @@ def send(me, conversation, text, client_id=None, reply_to=None):
     if client_id and (existing := conversation.messages.filter(sender=me, client_id=client_id).first()):
         return existing
     text = _clean(text)
-    other = conversation.other(me)
-    if not other.is_active or not Friendship.are_friends(me, other):
-        raise PermissionDenied("You're no longer friends, so you can't send messages here.")
+    _can_message(me, conversation)
     # Something it answers that's gone (or was never in this chat) just makes it a normal message.
-    original = conversation.messages.filter(pk=reply_to).first() if type(reply_to) is int else None
+    original = conversation.messages.filter(pk=reply_to, event__isnull=True).first() if type(reply_to) is int else None
 
     now = timezone.now()
     try:
@@ -87,8 +89,8 @@ def send(me, conversation, text, client_id=None, reply_to=None):
             message.text = text
             message.save()
             conversation.last_message_at = message.created_at
-            field = conversation.set_read(me, now)  # your own message counts as read by you
-            conversation.save(update_fields=["last_message_at", field])
+            conversation.save(update_fields=["last_message_at"])
+            conversation.save_read(me, now)  # your own message counts as read by you
     except IntegrityError:  # the same send arrived twice at once
         if client_id and (existing := conversation.messages.filter(sender=me, client_id=client_id).first()):
             return existing
@@ -96,21 +98,25 @@ def send(me, conversation, text, client_id=None, reply_to=None):
 
     payload = message_data(message, viewer=None)
     ably.to_chat(conversation.pk, "message", payload)
-    ably.to_users([other.pk, me.pk], "chat", {"conversation": conversation.pk})
+    ably.to_users(conversation.people_ids(), "chat", {"conversation": conversation.pk})
     # Asking Ably who's in the chat takes a moment, so the sender doesn't wait for it.
     if settings.PUSH_SEND_ASYNC:
-        threading.Thread(target=_push_in_background, args=(me, other, conversation, text), daemon=True).start()
+        threading.Thread(target=_push_in_background, args=(me, conversation, text), daemon=True).start()
     else:
-        _push_if_away(me, other, conversation, text)
+        _push_if_away(me, conversation, text)
     return message
 
 
-def _push_if_away(me, other, conversation, text):
-    """A push only when they don't have this chat open right now."""
-    if str(other.pk) in ably.present(f"chat:{conversation.pk}"):
-        return
+def _push_if_away(me, conversation, text):
+    """A push only for those who don't have this chat open right now."""
+    here = ably.present(f"chat:{conversation.pk}")
     name = me.full_name or me.email
-    _notify(other, name, text if len(text) <= 140 else text[:137] + "…", url=f"/?view=chats&chat={conversation.pk}", event="chat")
+    words = text if len(text) <= 140 else text[:137] + "…"
+    for other in conversation.others(me):
+        if str(other.pk) in here:
+            continue
+        title, body = (conversation.title_for(other), f"{name}: {words}") if conversation.is_group else (name, words)
+        _notify(other, title, body, url=f"/?view=chats&chat={conversation.pk}", event="chat")
 
 
 def _push_in_background(*args):
@@ -131,15 +137,14 @@ def history(me, conversation, before=None):
 
 def mark_read(me, conversation):
     now = timezone.now()
-    field = conversation.set_read(me, now)
-    conversation.save(update_fields=[field])
+    conversation.save_read(me, now)
     ably.to_chat(conversation.pk, "read", {"user": me.pk, "at": now.isoformat()})
     ably.to_users([me.pk], "chat", {"conversation": conversation.pk})
     return now
 
 
 def edit_message(me, conversation, message_id, text):
-    message = conversation.messages.filter(pk=message_id, sender=me, deleted_at__isnull=True).first()
+    message = conversation.messages.filter(pk=message_id, sender=me, deleted_at__isnull=True, event__isnull=True).first()
     if message is None:
         raise NotFound("You can only edit your own messages.")
     if timezone.now() - message.created_at > timedelta(hours=EDIT_HOURS):
@@ -150,7 +155,7 @@ def edit_message(me, conversation, message_id, text):
         message.edited_at = timezone.now()
         message.save(update_fields=["body", "edited_at"])
         ably.to_chat(conversation.pk, "edited", message_data(message, viewer=None))
-        ably.to_users([conversation.user_a_id, conversation.user_b_id], "chat", {"conversation": conversation.pk})
+        ably.to_users(conversation.people_ids(), "chat", {"conversation": conversation.pk})
     return message
 
 
@@ -165,20 +170,19 @@ def hide_message(me, conversation, message_id):
 
 def clear_chat(me, conversation):
     """Empties the chat on my side only; new messages show up as usual."""
-    field = conversation.set_cleared(me, timezone.now())
-    conversation.save(update_fields=[field])
+    conversation.save_cleared(me, timezone.now())
     ably.to_users([me.pk], "chat", {"conversation": conversation.pk, "cleared": True})
 
 
 def delete_message(me, conversation, message_id):
-    message = conversation.messages.filter(pk=message_id, sender=me, deleted_at__isnull=True).first()
+    message = conversation.messages.filter(pk=message_id, sender=me, deleted_at__isnull=True, event__isnull=True).first()
     if message is None:
         raise NotFound("You can only delete your own messages.")
     message.deleted_at = timezone.now()
     message.text = ""  # the words themselves are gone, not just hidden
     message.save(update_fields=["deleted_at", "body"])
     ably.to_chat(conversation.pk, "deleted", {"id": message.pk})
-    ably.to_users([conversation.user_a_id, conversation.user_b_id], "chat", {"conversation": conversation.pk})
+    ably.to_users(conversation.people_ids(), "chat", {"conversation": conversation.pk})
     return message
 
 
@@ -186,20 +190,24 @@ def react(me, conversation, message_id, emoji):
     """Your reaction to a message, or none with emoji=None. Tell the other person straight away."""
     if emoji is not None and (len(emoji) > 32 or not ONE_EMOJI.fullmatch(emoji)):
         raise ValidationError({"emoji": ["Choose one emoji."]})
-    message = visible(me, conversation).filter(pk=message_id, deleted_at__isnull=True).first()
+    message = visible(me, conversation).filter(pk=message_id, deleted_at__isnull=True, event__isnull=True).first()
     if message is None:
         raise NotFound("That message doesn't exist.")
-    other = conversation.other(me)
     if emoji is None:
         MessageReaction.objects.filter(message=message, user=me).delete()
     else:
-        if not other.is_active or not Friendship.are_friends(me, other):
-            raise PermissionDenied("You're no longer friends, so you can't react here.")
+        if conversation.is_group:
+            _can_message(me, conversation)
+        else:
+            other = conversation.other(me)
+            if not other.is_active or not Friendship.are_friends(me, other):
+                raise PermissionDenied("You're no longer friends, so you can't react here.")
         MessageReaction.objects.update_or_create(message=message, user=me, defaults={"emoji": emoji})
     reactions = reactions_of(message)
     ably.to_chat(conversation.pk, "reacted", {"id": message.pk, "reactions": reactions})
-    if emoji is not None and message.sender_id == other.pk and str(other.pk) not in ably.present(f"chat:{conversation.pk}"):
-        _notify(other, me.full_name or me.email, tr(other, "Reacted {emoji} to your message", emoji=emoji), url=f"/?view=chats&chat={conversation.pk}", event="chat")
+    author = message.sender
+    if emoji is not None and author.pk != me.pk and str(author.pk) not in ably.present(f"chat:{conversation.pk}"):
+        _notify(author, me.full_name or me.email, tr(author, "Reacted {emoji} to your message", emoji=emoji), url=f"/?view=chats&chat={conversation.pk}", event="chat")
     return reactions
 
 
@@ -216,14 +224,14 @@ def reply_data(message):
 
 def unread_count(me, conversation):
     read_at = conversation.read_at(me)
-    messages = visible(me, conversation).exclude(sender=me).filter(deleted_at__isnull=True)
+    messages = visible(me, conversation).exclude(sender=me).filter(deleted_at__isnull=True, event__isnull=True)
     if read_at:
         messages = messages.filter(created_at__gt=read_at)
     return messages.count()
 
 
 def total_unread(me):
-    return sum(unread_count(me, c) for c in Conversation.involving(me).filter(last_message_at__isnull=False))
+    return sum(unread_count(me, c) for c in Conversation.involving(me).filter(last_message_at__isnull=False).prefetch_related("members"))
 
 
 def message_data(message, viewer):
@@ -232,6 +240,8 @@ def message_data(message, viewer):
         "client_id": str(message.client_id) if message.client_id else None,
         "conversation": message.conversation_id,
         "sender": message.sender_id,
+        "sender_name": message.sender.full_name or f"@{message.sender.username}",
+        "event": message.event,
         "mine": viewer is not None and message.sender_id == viewer.pk,
         "text": message.text,
         "deleted": message.deleted_at is not None,
@@ -240,6 +250,138 @@ def message_data(message, viewer):
         "reactions": [] if message.deleted_at else reactions_of(message),
         "created_at": message.created_at.isoformat(),
     }
+
+
+# --- groups ---------------------------------------------------------------------------------
+
+def _person_name(user):
+    return user.full_name or f"@{user.username}"
+
+
+def _clean_group_name(name):
+    if name is not None and not isinstance(name, str):
+        raise ValidationError({"name": ["That isn't valid."]})
+    name = " ".join((name or "").split())
+    if len(name) > MAX_GROUP_NAME:
+        raise ValidationError({"name": [f"Keep the name under {MAX_GROUP_NAME} characters."]})
+    return name
+
+
+def _my_friends(me, ids):
+    """The people asked for, all of whom have to be your friends. You can't add a stranger."""
+    if not isinstance(ids, list) or not all(type(i) is int for i in ids):
+        raise ValidationError({"members": ["That list isn't valid."]})
+    people = list(User.objects.filter(pk__in=set(ids) - {me.pk}, is_active=True))
+    if len(people) != len(set(ids) - {me.pk}) or not all(Friendship.are_friends(me, person) for person in people):
+        raise PermissionDenied("You can only add your friends.")
+    return people
+
+
+def _post_event(me, conversation, kind, name=""):
+    """A line about the group, shown to everyone in it."""
+    message = Message.objects.create(conversation=conversation, sender=me, body="", event={"type": kind, "name": name})
+    Conversation.objects.filter(pk=conversation.pk).update(last_message_at=message.created_at)
+    ably.to_chat(conversation.pk, "message", message_data(message, viewer=None))
+    return message
+
+
+def _members_changed(conversation, also=()):
+    """Open chats redraw, and lists catch up, for everyone involved (including anyone just removed)."""
+    ably.to_chat(conversation.pk, "members")
+    ably.to_users(list(GroupMember.objects.filter(conversation=conversation).values_list("user_id", flat=True)) + list(also), "chat", {"conversation": conversation.pk})
+
+
+def _group_for_admin(me, conversation):
+    member = conversation.member(me) if conversation.is_group else None
+    if member is None:
+        raise NotFound("That chat doesn't exist.")
+    if not member.is_admin:
+        raise PermissionDenied("Only a group admin can do that.")
+
+
+def create_group(me, name, member_ids):
+    name = _clean_group_name(name)
+    people = _my_friends(me, member_ids)
+    if not people:
+        raise ValidationError({"members": ["Add at least one friend."]})
+    if len(people) + 1 > MAX_GROUP_MEMBERS:
+        raise ValidationError({"members": [f"A group can have up to {MAX_GROUP_MEMBERS} people."]})
+    with transaction.atomic():
+        conversation = Conversation.objects.create(is_group=True, name=name)
+        GroupMember.objects.create(conversation=conversation, user=me, is_admin=True, read_at=timezone.now())
+        GroupMember.objects.bulk_create(GroupMember(conversation=conversation, user=person) for person in people)
+    _post_event(me, conversation, "created")
+    conversation = conversation_for(me, conversation.pk)
+    _members_changed(conversation)
+    for person in people:
+        _notify(person, conversation.title_for(person), tr(person, "{name} added you to this group", name=_person_name(me)), url=f"/?view=chats&chat={conversation.pk}", event="chat")
+    return conversation
+
+
+def rename_group(me, conversation, name):
+    _group_for_admin(me, conversation)
+    name = _clean_group_name(name)
+    if name != conversation.name:
+        conversation.name = name
+        conversation.save(update_fields=["name"])
+        _post_event(me, conversation, "renamed", name)
+        _members_changed(conversation)
+    return conversation
+
+
+def add_members(me, conversation, member_ids):
+    _group_for_admin(me, conversation)
+    people = [person for person in _my_friends(me, member_ids) if conversation.member(person) is None]
+    if conversation.members.count() + len(people) > MAX_GROUP_MEMBERS:
+        raise ValidationError({"members": [f"A group can have up to {MAX_GROUP_MEMBERS} people."]})
+    for person in people:
+        GroupMember.objects.create(conversation=conversation, user=person)
+        _post_event(me, conversation, "added", _person_name(person))
+    conversation = conversation_for(me, conversation.pk)
+    if people:
+        _members_changed(conversation)
+    for person in people:
+        _notify(person, conversation.title_for(person), tr(person, "{name} added you to this group", name=_person_name(me)), url=f"/?view=chats&chat={conversation.pk}", event="chat")
+    return conversation
+
+
+def keep_an_admin(conversation):
+    """Whoever's been in longest takes over if no admin with a working account is left."""
+    active = conversation.members.filter(user__is_active=True).order_by("joined_at", "id")
+    first = active.first()
+    if first and not active.filter(is_admin=True).exists():
+        GroupMember.objects.filter(pk=first.pk).update(is_admin=True)
+
+
+def settle_group_admins(user):
+    """Someone's account was deleted or restored: every group they're in still needs an admin."""
+    for member in GroupMember.objects.filter(user=user).select_related("conversation"):
+        keep_an_admin(member.conversation)
+
+
+def remove_member(me, conversation, user_id):
+    """Take someone out (admins), or leave yourself. The last person out ends the group. If the last
+    admin goes, whoever's been in longest takes over, so a group is never left without one."""
+    if not conversation.is_group or conversation.member(me) is None:
+        raise NotFound("That chat doesn't exist.")
+    leaving = user_id == me.pk
+    if not leaving:
+        _group_for_admin(me, conversation)
+    member = conversation.members.filter(user_id=user_id).select_related("user").first()
+    if member is None:
+        raise NotFound("They aren't in this group.")
+    name = _person_name(member.user)
+    with transaction.atomic():
+        member.delete()
+        conversation.scheduled.filter(sender_id=user_id).delete()
+        left = conversation.members.order_by("joined_at", "id")
+        if not left.exists():
+            conversation.delete()
+            return None
+        keep_an_admin(conversation)
+    _post_event(me, conversation, "left" if leaving else "removed", name)
+    _members_changed(conversation, also=[user_id])
+    return conversation
 
 
 def _clean_send_at(value, now=None):
@@ -258,6 +400,10 @@ def _clean_send_at(value, now=None):
 
 
 def _can_message(me, conversation):
+    if conversation.is_group:
+        if not conversation.members.filter(user=me).exists():
+            raise PermissionDenied("You're no longer in this group.")
+        return
     other = conversation.other(me)
     if not other.is_active or not Friendship.are_friends(me, other):
         raise PermissionDenied("You're no longer friends, so you can't send messages here.")

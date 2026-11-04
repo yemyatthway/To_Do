@@ -5,6 +5,9 @@ from . import views
 urlpatterns = [
     path("", views.ChatListApi.as_view()),
     path("with/<int:user_id>/", views.ChatOpenApi.as_view()),
+    path("groups/", views.GroupsApi.as_view()),
+    path("<int:conversation_id>/group/", views.GroupApi.as_view()),
+    path("<int:conversation_id>/group/members/<int:user_id>/", views.GroupMemberApi.as_view()),
     path("<int:conversation_id>/messages/", views.MessagesApi.as_view()),
     path("<int:conversation_id>/messages/<int:message_id>/", views.MessageApi.as_view()),
     path("<int:conversation_id>/messages/<int:message_id>/react/", views.ReactApi.as_view()),

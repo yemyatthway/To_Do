@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,12 +15,34 @@ class SendSerializer(serializers.Serializer):
     reply_to = serializers.IntegerField(required=False, allow_null=True)
 
 
+def member_data(member):
+    return {**person(member.user), "is_admin": member.is_admin, "read_at": member.read_at.isoformat() if member.read_at else None}
+
+
 def conversation_data(conversation, me):
+    if conversation.is_group:
+        last = services.visible(me, conversation).order_by("-created_at", "-id").select_related("sender").first()
+        mine = conversation.member(me)
+        return {
+            "id": conversation.pk,
+            "is_group": True,
+            "name": conversation.name,
+            # So the screens that show one person can show the group the same way.
+            "friend": {"id": 0, "full_name": conversation.title_for(me), "username": "", "email": ""},
+            # A deleted account disappears from the group, but comes back if it's restored.
+            "members": [member_data(m) for m in conversation.members.all() if m.user.is_active],
+            "am_admin": bool(mine and mine.is_admin),
+            "last_message": services.message_data(last, me) if last else None,
+            "last_message_at": conversation.last_message_at,
+            "unread": services.unread_count(me, conversation),
+            "friend_read_at": None,
+        }
     other = conversation.other(me)
     other_read = conversation.read_at(other)
     last = services.visible(me, conversation).order_by("-created_at", "-id").select_related("sender").first()
     return {
         "id": conversation.pk,
+        "is_group": False,
         "friend": person(other),
         "last_message": services.message_data(last, me) if last else None,
         "last_message_at": conversation.last_message_at,
@@ -38,8 +61,9 @@ class ChatListApi(APIView):
         me = request.user
         conversations = (
             Conversation.involving(me)
-            .filter(last_message_at__isnull=False, user_a__is_active=True, user_b__is_active=True)
+            .filter(Q(is_group=True) | Q(user_a__is_active=True, user_b__is_active=True), last_message_at__isnull=False)
             .select_related("user_a", "user_b")
+            .prefetch_related("members__user")
             .order_by("-last_message_at")[:100]
         )
         # A chat you cleared stays out of the list until something new arrives.
@@ -55,6 +79,41 @@ class ChatOpenApi(APIView):
     def post(self, request, user_id):
         conversation = services.open_with(request.user, user_id)
         return Response(conversation_data(conversation, request.user))
+
+
+class GroupsApi(APIView):
+    """POST {name?, members: [user ids]}: make a group with some of your friends."""
+
+    throttle_scope = "chat"
+
+    def post(self, request):
+        conversation = services.create_group(request.user, request.data.get("name"), request.data.get("members"))
+        return Response(conversation_data(conversation, request.user), status=status.HTTP_201_CREATED)
+
+
+class GroupApi(APIView):
+    """PATCH {name}: rename it (admins). POST {members: [user ids]}: add friends (admins)."""
+
+    throttle_scope = "chat"
+
+    def patch(self, request, conversation_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        services.rename_group(request.user, conversation, request.data.get("name"))
+        return Response(conversation_data(services.conversation_for(request.user, conversation_id), request.user))
+
+    def post(self, request, conversation_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        return Response(conversation_data(services.add_members(request.user, conversation, request.data.get("members")), request.user))
+
+
+class GroupMemberApi(APIView):
+    """DELETE: take this person out (admins), or leave, if it's you."""
+
+    throttle_scope = "chat"
+
+    def delete(self, request, conversation_id, user_id):
+        services.remove_member(request.user, services.conversation_for(request.user, conversation_id), user_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MessagesApi(APIView):

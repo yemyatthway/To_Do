@@ -391,3 +391,35 @@
 .clear-bar .danger {
   color: var(--dIcon);
 }
+
+/* Group chats */
+
+.thread-name-btn {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.bubble-sender {
+  margin: 8px 0 3px 14px;
+  color: var(--sub);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chat-event {
+  margin: 10px auto;
+  max-width: 80%;
+  color: var(--sub);
+  font-size: 12.5px;
+  text-align: center;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Chat } from './api'
-import { chatSections, dayLabel, isSeen, matchesChat, messageTime, momentLabel } from './chatTimeline'
+import { chatSections, dayLabel, eventLine, isSeen, matchesChat, messageTime, momentLabel, seenBy } from './chatTimeline'
 
 const now = new Date(2026, 10, 4, 15, 0)
 const chat = (id: number, at: Date | null, more: Partial<Chat> = {}) =>
@@ -54,5 +54,30 @@ describe('the chat timeline', () => {
     expect(messageTime(new Date(2026, 10, 4, 9, 41))).toMatch(/^9:41\sAM$/)
     expect(messageTime(new Date(2026, 10, 4, 15, 5))).toMatch(/^3:05\sPM$/)
     expect(messageTime(new Date(2026, 10, 4, 0, 30))).toMatch(/^12:30\sAM$/)
+  })
+})
+
+describe('group chats', () => {
+  it('words a group line for the reader', () => {
+    const line = (type: 'created' | 'added' | 'removed' | 'left' | 'renamed', name = '', mine = false) => eventLine({ event: { type, name }, mine, sender_name: 'Mia' })
+    expect(line('created')).toBe('Mia created this group')
+    expect(line('created', '', true)).toBe('You created this group')
+    expect(line('added', 'Aung')).toBe('Mia added Aung')
+    expect(line('removed', 'Aung')).toBe('Mia removed Aung')
+    expect(line('left', 'Aung')).toBe('Aung left the group')
+    expect(line('renamed', 'Trip')).toBe('Mia renamed the group to Trip')
+    expect(line('renamed')).toBe('Mia removed the group name')
+  })
+
+  it('says who has seen a message', () => {
+    const person = (id: number, name: string, read: string | null) => ({ id, full_name: name, username: name, email: '', is_admin: false, read_at: read })
+    const sent = '2026-11-04T10:00:00Z'
+    const after = '2026-11-04T10:01:00Z'
+    const before = '2026-11-04T09:00:00Z'
+    expect(seenBy([person(1, 'Me', after), person(2, 'Aung Kyaw', before), person(3, 'Mia', null)], 1, sent)).toBe('')
+    expect(seenBy([person(1, 'Me', after), person(2, 'Aung Kyaw', after), person(3, 'Mia', null)], 1, sent)).toBe('Seen by Aung')
+    expect(seenBy([person(1, 'Me', after), person(2, 'Aung', after), person(3, 'Mia', after)], 1, sent)).toBe('Seen by everyone')
+    const many = [person(1, 'Me', after), person(2, 'A', after), person(3, 'B', after), person(4, 'C', after), person(5, 'D', null)]
+    expect(seenBy(many, 1, sent)).toBe('Seen by 3')
   })
 })
