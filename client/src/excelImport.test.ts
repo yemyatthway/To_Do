@@ -67,6 +67,13 @@ describe('planning a table from a sheet', () => {
     expect([local.getFullYear(), local.getMonth(), local.getDate(), local.getHours(), local.getMinutes()]).toEqual([2026, 10, 4, 9, 30])
   })
 
+  it('corrects the tiny rounding errors Excel stores in times', () => {
+    const nearly = new Date(utc(2026, 11, 12, 16, 45).getTime() - 1)
+    const local = new Date(planImport([['At'], [nearly]]).rows[0][0] as string)
+    expect([local.getHours(), local.getMinutes(), local.getSeconds()]).toEqual([16, 45, 0])
+    expect(planImport([['At'], [new Date(utc(1899, 12, 30, 16, 45).getTime() - 1)]]).rows[0][0]).toBe('16:45')
+  })
+
   it('keeps a time with no date as text', () => {
     const plan = planImport([['At'], [utc(1899, 12, 30, 9, 30)]])
     expect(plan.columns[0].type).toBe('text')

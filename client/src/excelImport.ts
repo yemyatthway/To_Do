@@ -40,7 +40,11 @@ const isTimeOnly = (date: Date) => date.getUTCFullYear() < 1902
 function tidy(cell: SheetCell): SheetCell {
   if (typeof cell === 'string') return cell.trim() || null
   if (typeof cell === 'number' && !Number.isFinite(cell)) return null
-  if (cell instanceof Date && Number.isNaN(cell.getTime())) return null
+  if (cell instanceof Date) {
+    if (Number.isNaN(cell.getTime())) return null
+    // Excel keeps times as fractions of a day, so 16:45 can arrive as 16:44:59.999.
+    return new Date(Math.round(cell.getTime() / 1000) * 1000)
+  }
   return cell ?? null
 }
 
