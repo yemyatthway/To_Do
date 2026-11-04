@@ -8,6 +8,8 @@ export interface ToastData {
   title: string
   detail?: string
   action?: { label: string; onClick: () => void }
+  /** How long it stays, for something that shouldn't be missed. */
+  durationMs?: number
 }
 
 const DURATION_MS = 5000
@@ -27,9 +29,9 @@ export function Toast({ toast, onDismiss }: { toast: ToastData; onDismiss: () =>
   }, [onDismiss])
 
   useEffect(() => {
-    const id = setTimeout(leave, DURATION_MS)
+    const id = setTimeout(leave, toast.durationMs ?? DURATION_MS)
     return () => clearTimeout(id)
-  }, [toast.id, leave])
+  }, [toast.id, toast.durationMs, leave])
 
   return (
     <div ref={ref} className="toast" role="status">

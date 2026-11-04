@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import close_old_connections, transaction
 from django.db.models import Case, IntegerField, Q, When
 from django.utils import timezone
+import requests
 from pywebpush import WebPushException
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
@@ -176,7 +177,7 @@ def _send_all(subscriptions, title, body, url):
     for subscription in subscriptions:
         try:
             send_push(subscription, title, body, url=url)
-        except WebPushException as exc:
+        except (WebPushException, requests.RequestException) as exc:
             logger.warning("Social push to %s failed: %s", subscription, exc)
 
 

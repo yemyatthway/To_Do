@@ -30,6 +30,8 @@ class Task(models.Model):
     done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
     reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    # When a sender last started on this reminder, so two can't send it at once and a failed try is retried.
+    reminder_claimed_at = models.DateTimeField(null=True, blank=True)
     # Soft delete: shown under "Recently deleted" and restorable for settings.TASK_RESTORE_DAYS.
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
     # A task a friend put in this list ("Remind a friend"). While linked_from is set, the friend's

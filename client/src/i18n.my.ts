@@ -662,6 +662,7 @@ export const my: Record<string, string> = {
   "{count} columns": "ကော်လံ {count} ခု",
   "1 row": "အတန်း 1 ကြောင်း",
   "{count} rows": "အတန်း {count} ကြောင်း",
+  "{count} more coming up": "နောက်ထပ် {count} ခု လာမည်",
   "No.": "စဉ်",
   "You: {text}": "သင်: {text}",
   "{n}m": "{n} မိ",

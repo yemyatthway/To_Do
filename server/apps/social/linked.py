@@ -112,9 +112,10 @@ def sync_copies(task, before):
         update_fields = list(changed)
         if "due_at" in changed:
             other.reminder_sent_at = None  # new time: the reminder fires again
+            other.reminder_claimed_at = None
             if other.due_at and not other.remind_before_minutes:
                 other.remind_before_minutes = DEFAULT_REMIND_MINUTES
-            update_fields += ["reminder_sent_at", "remind_before_minutes"]
+            update_fields += ["reminder_sent_at", "reminder_claimed_at", "remind_before_minutes"]
         other.save(update_fields=update_fields)
         if "due_at" in changed:
             title, body = tr(other.owner, "{name} moved a task", name=editor), tr(other.owner, "{title} is now {when}", title=other.title, when=when(other, other.owner))

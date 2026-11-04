@@ -1,5 +1,7 @@
 import hmac
+import logging
 
+import requests
 from django.conf import settings
 from pywebpush import WebPushException
 from rest_framework import serializers, status
@@ -21,6 +23,8 @@ from apps.chat.services import send_due_scheduled
 from apps.workspaces.digest import send_due_emails
 
 from .reminders import send_due_reminders
+
+logger = logging.getLogger(__name__)
 
 
 class SubscriptionSerializer(serializers.Serializer):
@@ -79,6 +83,8 @@ class TestPushView(APIView):
         except WebPushException as exc:
             detail = exc.response.text if exc.response is not None else str(exc)
             return Response({"detail": f"Push failed: {detail}"}, status=status.HTTP_502_BAD_GATEWAY)
+        except requests.RequestException as exc:
+            return Response({"detail": f"Push failed: {type(exc).__name__}"}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response({"detail": "Push sent."})
 
@@ -127,6 +133,14 @@ class ReminderStatusView(APIView):
         )
 
 
+def _run(job):
+    try:
+        return job()
+    except Exception:
+        logger.exception("%s failed", job.__name__)
+        return None
+
+
 class SendDueRemindersView(APIView):
     """
     Called every minute by an external scheduler (e.g. cron-job.org) in production,
@@ -141,4 +155,6 @@ class SendDueRemindersView(APIView):
         given = request.headers.get("X-Cron-Secret", "")
         if not secret or not hmac.compare_digest(given, secret):
             return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
-        return Response({"sent": send_due_reminders(), "emails": send_due_emails(), "messages": send_due_scheduled()})
+        # Each runs whatever happened to the others, and the job still gets its OK: too many failed
+        # calls and cron-job.org switches itself off, which stops every reminder.
+        return Response({"sent": _run(send_due_reminders), "emails": _run(send_due_emails), "messages": _run(send_due_scheduled)})

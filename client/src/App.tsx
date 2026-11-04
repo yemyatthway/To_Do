@@ -19,6 +19,7 @@ import type { WorkspaceItem } from './pages/Workspaces'
 import { overlayTasks, type TaskPatch } from './outbox'
 import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
+import { loadShownReminders, reminderKey, remindersDue, saveShownReminders } from './taskReminders'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
 import { More } from './pages/More'
@@ -354,6 +355,27 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const showToast = useCallback((data: Omit<ToastData, 'id'>) => setToast({ ...data, id: Date.now() }), [])
   const notify = useCallback((title: string, detail?: string) => showToast({ title, detail }), [showToast])
   const dismissToast = useCallback(() => setToast(null), [])
+
+  // A reminder whose time comes while the app is on screen: the phone may not show a notification
+  // over its own app, and this works even if a push never arrives.
+  const pageVisible = usePageVisible()
+  useEffect(() => {
+    if (!user.reminders_enabled || !pageVisible) return
+    const shown = loadShownReminders(now)
+    const due = remindersDue(tasks, now, shown)
+    if (!due.length) return
+    for (const task of due) shown[reminderKey(task)] = now.getTime()
+    saveShownReminders(shown)
+    const first = due[0]
+    const minutes = Math.max(1, Math.round((new Date(first.due_at!).getTime() - now.getTime()) / 60_000))
+    const when = `${tr('in {minutes} min', { minutes })} · ${formatTime(new Date(first.due_at!))}`
+    // oxlint-disable-next-line react-hooks/set-state-in-effect -- the clock moved on, nothing to derive it from
+    showToast({
+      title: first.title,
+      detail: due.length > 1 ? `${when} · ${tr('{count} more coming up', { count: due.length - 1 })}` : when,
+      durationMs: 12_000,
+    })
+  }, [now, tasks, user.reminders_enabled, pageVisible, showToast])
 
   // When a timer ends: a message with "Mark done" for its task, plus a system notification if the
   // page is in the background and notifications are allowed.

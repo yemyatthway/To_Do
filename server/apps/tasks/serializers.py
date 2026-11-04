@@ -78,6 +78,7 @@ class TaskSerializer(serializers.ModelSerializer):
             for key in ("due_at", "remind_before_minutes")
         ):
             instance.reminder_sent_at = None
+            instance.reminder_claimed_at = None
         if "done" in validated_data and validated_data["done"] != instance.done:
             instance.completed_at = timezone.now() if validated_data["done"] else None
         return super().update(instance, validated_data)
