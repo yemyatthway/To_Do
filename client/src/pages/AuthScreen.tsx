@@ -12,11 +12,14 @@ import { enter, gsap, useGsap } from '../motion'
 import { deviceTimezone } from '../time'
 import { isValidEmail, normalizeUsername, PASSWORD_RULES, usernameFromName } from '../user'
 import { chooseLanguage, formatDate, language, LANGUAGES, tr } from '../i18n'
+import { joinEmail } from '../guestLink'
 
 type Mode = 'login' | 'register'
 
 export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user: User) => void; notice?: string }) {
-  const [mode, setMode] = useState<Mode>('login')
+  // Came from a guest link: they most likely need an account, and it must use the invited address.
+  const [joining] = useState(joinEmail)
+  const [mode, setMode] = useState<Mode>(joining ? 'register' : 'login')
   const [fullName, setFullName] = useState('')
   const [username, setUsername] = useState('')
   // Until they type one, the username follows the name ("Ryen Kai" -> ryenkai).
@@ -27,7 +30,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState('')
   // Messages from outside ("session expired", "account deleted") fade after a few seconds.
-  const [noticeText, setNoticeText] = useState(notice ?? '')
+  const [noticeText, setNoticeText] = useState(notice || (joining ? tr('Use {email} to join the workspace.', { email: joining }) : ''))
   const [busy, setBusy] = useState(false)
   // Set when this browser needs the emailed sign-in code.
   const [challenge, setChallenge] = useState<LoginChallenge | null>(null)
@@ -311,7 +314,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
               </p>
             </div>
 
-            <Banner tone="notice" message={noticeText} autoHideMs={6000} onHide={() => setNoticeText('')} />
+            <Banner tone="notice" message={noticeText} autoHideMs={joining ? undefined : 6000} onHide={() => setNoticeText('')} />
             <Banner tone="error" message={formError} />
 
             {registering && (

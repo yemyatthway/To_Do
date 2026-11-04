@@ -1,9 +1,12 @@
 {% load email_text %}{% autoescape off %}{% say "{who} invited you to join {workspace} on Todo Clock as {role}." who=who workspace=workspace role=role %}
 
-{% say "Open Todo Clock to accept or decline:" %} {{ app_url }}
+{% if guest_url %}{% say "View the workspace" %}: {{ guest_url }}
+
+{% say "You can look around without an account. To join as {role}, sign up with this email address. The link works for {days} days." role=role days=days %}
+{% else %}{% say "Open Todo Clock to accept or decline:" %} {{ app_url }}
 
 {% say "If you don't have an account yet, sign up with this email address and the invitation will be waiting. It expires in {days} days." days=days %}
-
+{% endif %}
 {% say "Not expecting this? You can ignore this email." %}
 
 — Todo Clock

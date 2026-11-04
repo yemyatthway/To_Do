@@ -59,6 +59,7 @@ REST_FRAMEWORK = {
         "username_check": "60/min",
         "chat": "120/min",
         "workspace_invite": "30/hour",
+        "guest": "240/min",
         "pages": "240/min",
         "tables": "300/min",
         "comments": "120/min",

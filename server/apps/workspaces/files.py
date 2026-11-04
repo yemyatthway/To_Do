@@ -248,6 +248,22 @@ def in_use(workspace):
     return used
 
 
+def shown_to_guest(workspace, ids):
+    """Of these, the files a guest can see: only those on a page or in a table, never one in a
+    comment or in the bin."""
+    shown = set()
+    for blocks in workspace.pages.values_list("blocks", flat=True):
+        shown.update(block.get("file") for block in blocks if block.get("type") == "file")
+    for table in workspace.tables.all():
+        columns = [column["id"] for column in table.columns if column["type"] == "file"]
+        if columns:
+            for values in table.rows.values_list("values", flat=True):
+                for column in columns:
+                    shown.update(values.get(column) or [])
+    wanted = [i for i in ids if i in shown]
+    return list(workspace.files.select_related("uploaded_by").filter(pk__in=wanted))
+
+
 def prune(now=None):
     """Clears uploads that never finished, then files nothing has pointed at for a while."""
     now = now or timezone.now()

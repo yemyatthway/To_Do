@@ -6,6 +6,7 @@ from datetime import timedelta
 from datetime import timezone as dt_timezone
 
 from django.conf import settings
+from django.core import signing
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
@@ -28,6 +29,7 @@ from .models import ActivityEvent, Comment, Invitation, Membership, Notification
 MAX_WORKSPACES = 20
 MAX_MEMBERS = 50
 INVITE_DAYS = 14
+_GUEST_SIGNER = signing.Signer(salt="workspaces.guest", sep=".")
 MAX_PAGES = 500
 MAX_LIVE_BYTES = 48_000  # Ably's limit is 64 KB a message
 MAX_BLOCKS = 2000
@@ -170,19 +172,45 @@ def invite(me, workspace_id, invitee, role):
             raise ValidationError({"invitee": ["They already have an invitation waiting."]})
     who = " ".join(me.full_name.split()) or f"@{me.username}"
     language = user.language if user is not None else me.language
+    app_url = settings.APP_URL.rstrip("/")
     mail.send(
         to=email,
         subject=tr(language, "{who} invited you to {workspace} on Todo Clock", who=who, workspace=workspace.name),
         template="workspace_invite",
         context={
             "language": language, "who": who, "workspace": workspace.name, "role": tr(language, role.capitalize()), "days": INVITE_DAYS,
-            "app_url": f"{settings.APP_URL.rstrip('/')}/?view=workspaces",
+            "app_url": f"{app_url}/?view=workspaces",
+            # No account yet: they can look around, read only, until they join.
+            "guest_url": f"{app_url}/guest/{guest_token(invitation)}" if user is None else None,
             "preheader": tr(language, "Join {workspace} on Todo Clock.", workspace=workspace.name),
         },
     )
     if user is not None:
         _notify(user, tr(user, "Workspace invitation"), tr(user, "{who} invited you to {workspace}.", who=who, workspace=workspace.name), url="/?view=workspaces", event="workspaces")
     _tell_members(workspace)
+    return invitation
+
+
+def guest_token(invitation):
+    return _GUEST_SIGNER.sign(str(invitation.pk))
+
+
+def guest_invitation(token):
+    """The invitation behind a guest link. It stops working the moment the invitation is cancelled,
+    answered or out of date, so the owner stays in control of who can look."""
+    try:
+        invitation_id = int(_GUEST_SIGNER.unsign(token or ""))
+    except (signing.BadSignature, ValueError):
+        raise NotFound("This link doesn't work.")
+    invitation = (
+        Invitation.objects.select_related("workspace", "invited_by")
+        .filter(pk=invitation_id, workspace__deleted_at__isnull=True)
+        .first()
+    )
+    if invitation is not None and invitation.status == Invitation.Status.ACCEPTED:
+        raise NotFound("You've already joined this workspace. Log in to open it.")
+    if invitation is None or invitation.status != Invitation.Status.PENDING or invitation.expires_at <= timezone.now():
+        raise NotFound("This link doesn't work any more. Ask whoever invited you for a new invitation.")
     return invitation
 
 

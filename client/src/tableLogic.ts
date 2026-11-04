@@ -161,3 +161,6 @@ export function groupValue(column: TableColumn, key: string): CellValue {
   if (key === NONE) return null
   return column.type === 'person' ? Number(key) : key
 }
+
+/** The files in a file cell. */
+export const fileIds = (value: CellValue | undefined) => (Array.isArray(value) ? value : [])

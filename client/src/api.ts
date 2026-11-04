@@ -654,6 +654,34 @@ export interface Comment {
   files: number[]
 }
 
+/** What the link in an invitation shows someone who hasn't joined. It can only read. */
+export interface GuestWorkspace {
+  id: number
+  invitation: number
+  name: string
+  role: Role
+  /** Partly hidden: the link could have been forwarded. */
+  email: string
+  invited_by: string | null
+  expires_at: string
+  pages: TeamPageSummary[]
+  tables: TeamTableSummary[]
+}
+
+export type GuestTable = TeamTable & { members: Member[] }
+
+export function guestApi(token: string) {
+  const read = <T,>(path: string) => request<T>(`/api/workspaces/guest/${path}`, { headers: { 'X-Guest-Token': token } })
+  return {
+    workspace: () => read<GuestWorkspace>(''),
+    page: (id: number) => read<TeamPage>(`pages/${id}/`),
+    table: (id: number) => read<GuestTable>(`tables/${id}/`),
+    files: (ids: number[]) => read<TeamFile[]>(`files/?ids=${ids.join(',')}`),
+  }
+}
+
+export type GuestApi = ReturnType<typeof guestApi>
+
 export interface TeamFile {
   id: number
   name: string

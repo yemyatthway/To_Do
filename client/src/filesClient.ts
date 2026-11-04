@@ -6,7 +6,14 @@ import { Uploads } from './uploads'
 
 const STALE_CHECK_MS = 5000
 
-export const teamFiles = new TeamFiles((workspaceId, ids) => api.files(workspaceId, ids))
+let readFiles = (workspaceId: number, ids: number[]) => api.files(workspaceId, ids)
+
+/** A guest has no account, so their files come through their link. */
+export const readFilesWith = (read: typeof readFiles) => {
+  readFiles = read
+}
+
+export const teamFiles = new TeamFiles((workspaceId, ids) => readFiles(workspaceId, ids))
 
 export const uploads = new Uploads<TeamFile>({
   prepare: prepareFile,

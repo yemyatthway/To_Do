@@ -114,6 +114,9 @@ BURMESE = {
     "You're invited to {workspace}": "{workspace} သို့ ဖိတ်ကြားခံရပါသည်",
     "{who} wants you on their team in Todo Clock. You'll join {workspace} as {role}.": "{who} က Todo Clock တွင် အတူလုပ်ဆောင်ရန် ဖိတ်လိုက်ပါသည်။ {workspace} သို့ {role} အဖြစ် ဝင်ပါမည်။",
     "See the invitation": "ဖိတ်ကြားချက် ကြည့်ရန်",
+    "View the workspace": "လုပ်ငန်းခွင်ကို ကြည့်ရန်",
+    "You can look around without an account. To join as {role}, sign up with this email address. The link works for {days} days.": "အကောင့်မရှိဘဲ ကြည့်ရှုနိုင်ပါသည်။ {role} အဖြစ် ပါဝင်ရန် ဤအီးမေးလ်လိပ်စာဖြင့် စာရင်းသွင်းပါ။ ဤလင့်ခ်ကို {days} ရက်အတွင်း အသုံးပြုနိုင်ပါသည်။",
+    "You can look around without an account. To join as {role}, sign up with this email address. The link works for {days} days. Not expecting this? You can ignore this email.": "အကောင့်မရှိဘဲ ကြည့်ရှုနိုင်ပါသည်။ {role} အဖြစ် ပါဝင်ရန် ဤအီးမေးလ်လိပ်စာဖြင့် စာရင်းသွင်းပါ။ ဤလင့်ခ်ကို {days} ရက်အတွင်း အသုံးပြုနိုင်ပါသည်။ မမျှော်လင့်ထားပါက ဤအီးမေးလ်ကို လျစ်လျူရှုနိုင်ပါသည်။",
     "No account yet? Sign up with this email address and the invitation will be waiting. It expires in {days} days. Not expecting this? You can ignore this email.": "အကောင့်မရှိသေးပါသလား။ ဤအီးမေးလ်လိပ်စာဖြင့် ဖွင့်ပါ။ ဖိတ်ကြားချက် စောင့်နေပါမည်။ {days} ရက်အတွင်း သက်တမ်းကုန်ပါမည်။ မမျှော်လင့်ထားလျှင် လျစ်လျူရှုနိုင်ပါသည်။",
     "Owner": "ပိုင်ရှင်", "Admin": "စီမံသူ", "Editor": "တည်းဖြတ်သူ", "Commenter": "မှတ်ချက်ပေးသူ", "Viewer": "ကြည့်ရှုသူ", "Member": "အဖွဲ့ဝင်",
     # Workspace history. It follows a name, so "က" joins the sentence to whoever did it.

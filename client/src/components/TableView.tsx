@@ -12,6 +12,7 @@ import { RowSaver, type RowSaveState } from '../rowSaver'
 import {
   boardGroups,
   displayValue,
+  fileIds,
   firstOfType,
   fromLocalInput,
   groupableColumns,
@@ -36,6 +37,7 @@ import { OptionsMenu } from './OptionsMenu'
 import { SearchField } from './SearchField'
 import type { ToastData } from './Toast'
 import { tr } from '../i18n'
+import { usePhoneLayout } from '../visibility'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const MAX_CELL_FILES = 10
@@ -57,17 +59,6 @@ const COLUMN_ICONS: Record<ColumnType, string> = {
   checkbox: 'M5 12l5 5L20 7',
   number: 'M5 9h14M5 15h14M10 4L8 20M16 4l-2 16',
   file: 'M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.500 3.500 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8',
-}
-
-function usePhoneLayout() {
-  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 759px)').matches)
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 759px)')
-    const onChange = () => setPhone(query.matches)
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
-  return phone
 }
 
 interface TableViewProps {
@@ -717,7 +708,6 @@ interface GridCellProps {
 }
 
 /** Cells read as plain text until clicked, so a long table stays quick. */
-const fileIds = (value: CellValue | undefined) => (Array.isArray(value) ? value : [])
 
 /** The files in a cell: small squares in the grid, full cards in the row sheet. */
 function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange }: { workspaceId: number; value: CellValue | undefined; canEdit: boolean; columnName: string; expanded?: boolean; onChange: (value: CellValue) => void }) {
@@ -794,7 +784,7 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
   )
 }
 
-function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange, draft, onTyping, notAssignable, heldBy }: GridCellProps) {
+export function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange, draft, onTyping, notAssignable, heldBy }: GridCellProps) {
   const value = row.values[column.id]
   if (column.type === 'file') return <CellFiles workspaceId={workspaceId} value={value} canEdit={canEdit} columnName={column.name} onChange={onChange} />
   if (column.type === 'checkbox') return <RowCheck row={row} column={column} canEdit={canEdit} onChange={onChange} />
@@ -1222,7 +1212,7 @@ function FilterSheet({
   )
 }
 
-function ColumnIcon({ type }: { type: ColumnType }) {
+export function ColumnIcon({ type }: { type: ColumnType }) {
   return (
     <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d={COLUMN_ICONS[type]} />

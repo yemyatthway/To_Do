@@ -724,6 +724,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
               ))}
             </select>
           </label>
+          <p className="guest-note" style={leftField}>{tr('No account? They can view this workspace from the email until they join.')}</p>
         </ConfirmAction>
       )}
       {dialog?.kind === 'rename' && (

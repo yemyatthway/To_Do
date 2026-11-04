@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import guest, views
 from .dev_files import dev_file
 
 urlpatterns = [
@@ -10,6 +10,10 @@ urlpatterns = [
     path("invitations/<int:invitation_id>/accept/", views.AcceptInvitationApi.as_view()),
     path("invitations/<int:invitation_id>/decline/", views.DeclineInvitationApi.as_view()),
     path("files/dev/<str:token>/", dev_file),
+    path("guest/", guest.GuestWorkspaceApi.as_view()),
+    path("guest/pages/<int:page_id>/", guest.GuestPageApi.as_view()),
+    path("guest/tables/<int:table_id>/", guest.GuestTableApi.as_view()),
+    path("guest/files/", guest.GuestFilesApi.as_view()),
     path("<int:workspace_id>/", views.WorkspaceApi.as_view()),
     path("<int:workspace_id>/files/", views.FilesApi.as_view()),
     path("<int:workspace_id>/files/<int:file_id>/", views.FileApi.as_view()),

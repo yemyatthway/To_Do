@@ -7897,3 +7897,109 @@ button.file-thumb:focus-visible .thumb-open {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* ---------- Looking at a workspace from an invitation's link ---------- */
+
+.guest {
+  --screen-room: max(320px, calc(100dvh - 118px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  position: relative;
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.guest-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.guest:has(.panel-page.wide) .guest-head {
+  max-width: none;
+}
+
+.guest-head .auth-logo {
+  flex: none;
+  margin: 0;
+}
+
+.guest-name {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.guest-name strong {
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guest-head .primary-btn {
+  flex: none;
+}
+
+.guest-note {
+  flex: none;
+  margin: 0;
+  color: var(--sub);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.guest-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.guest-top .page-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.guest-description {
+  flex: none;
+  margin: 0;
+}
+
+.guest-language {
+  flex: none;
+  align-self: flex-start;
+}
+
+.guest-closed {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 16px;
+}
+
+.guest-closed-card {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.guest-closed-card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.guest-closed-card .primary-btn {
+  text-decoration: none;
+}

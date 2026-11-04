@@ -10,6 +10,7 @@ import { Icon } from './icons'
 import { clearSavedTimer, useTimer, type TimerState } from './timer/useTimer'
 import { enter, useGsap } from './motion'
 import { AuthScreen } from './pages/AuthScreen'
+import { forgetJoinEmail, guestTokenFrom } from './guestLink'
 import { isChildPage, parseRoute, SETTINGS_SECTIONS, useRoute, type Route, type View } from './routes'
 import { useLiveRefresh } from './live'
 import { clearPageDrafts, pageStorage, sendLeftoverDrafts } from './pageSaver'
@@ -43,6 +44,7 @@ import { ConfirmAction } from './components/ConfirmAction'
 const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace', 'notifications']
 
 // Screens most visits never open load on demand, so the first paint stays small.
+const GuestScreen = lazy(() => import('./pages/Guest').then((m) => ({ default: m.GuestScreen })))
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
 const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m.Progress })))
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
@@ -185,6 +187,21 @@ function Backdrop() {
 
 /** Signed-in gate, like afm_sys: restore the session from the refresh cookie, otherwise show login. */
 export default function App() {
+  const guestToken = guestTokenFrom(window.location.pathname)
+  if (guestToken) {
+    return (
+      <>
+        <Backdrop />
+        <Suspense fallback={<LoadingPage skeleton={<CardsSkeleton />} />}>
+          <GuestScreen token={guestToken} />
+        </Suspense>
+      </>
+    )
+  }
+  return <AccountApp />
+}
+
+function AccountApp() {
   useTheme()
   const [booting, setBooting] = useState(true)
   const [user, setUser] = useState<User | null>(null)
@@ -231,6 +248,7 @@ export default function App() {
         <AuthScreen
           notice={notice}
           onAuthenticated={(u) => {
+            forgetJoinEmail()
             setNotice('')
             setUser(u)
           }}

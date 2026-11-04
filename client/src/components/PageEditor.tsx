@@ -497,7 +497,7 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
   )
 }
 
-function ReadOnlyBlock({ block }: { block: Block }) {
+export function ReadOnlyBlock({ block }: { block: Block }) {
   if (block.type === 'h') return <h3 className="page-read is-h">{block.text}</h3>
   if (block.type === 'todo') {
     return (
