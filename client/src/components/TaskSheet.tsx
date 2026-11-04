@@ -6,22 +6,23 @@ import { Calendar } from './Calendar'
 import { TimePicker } from './TimePicker'
 import { gsap, useGsap } from '../motion'
 import { addDays, dueDate, formatLead, fromInputs, REMINDER_LEADS, startOfDay, toDateInput, toTimeInput } from '../time'
+import { formatDate, tr } from '../i18n'
 
 const parseDate = (value: string) => {
   const [y, m, d] = value.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
-const dateLabel = (value: string) => parseDate(value).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+const dateLabel = (value: string) => formatDate(parseDate(value), { weekday: 'short', day: 'numeric', month: 'short' })
 
 const CATEGORIES: { value: Category; label: string; color: string }[] = [
-  { value: 'work', label: 'Work', color: '#2f6fd6' },
-  { value: 'personal', label: 'Personal', color: '#6a5ae0' },
-  { value: 'health', label: 'Health', color: '#17766b' },
+  { value: 'work', label: tr('Work'), color: '#2f6fd6' },
+  { value: 'personal', label: tr('Personal'), color: '#6a5ae0' },
+  { value: 'health', label: tr('Health'), color: '#17766b' },
 ]
 const PRIORITIES: { value: Priority; label: string; color: string }[] = [
-  { value: 'low', label: 'Low', color: '#2f6fd6' },
-  { value: 'medium', label: 'Medium', color: '#2f6fd6' },
-  { value: 'high', label: 'High', color: '#b8431f' },
+  { value: 'low', label: tr('Low'), color: '#2f6fd6' },
+  { value: 'medium', label: tr('Medium'), color: '#2f6fd6' },
+  { value: 'high', label: tr('High'), color: '#b8431f' },
 ]
 const DEFAULT_LEAD = 10
 
@@ -29,7 +30,7 @@ type RowName = 'date' | 'time' | 'remind' | 'category' | 'priority' | 'notes'
 
 const timeLabel = (value: string) => {
   const [hours, minutes] = value.split(':').map(Number)
-  return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return formatDate(new Date(2000, 0, 1, hours, minutes), { hour: 'numeric', minute: '2-digit' })
 }
 
 /** One line of the form: what it is and what it's set to. Tapping shows the choices. */
@@ -159,17 +160,17 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) {
-      setError('Enter a title.')
+      setError(tr('Enter a title.'))
       titleRef.current?.focus()
       return
     }
     if (!date) {
-      setError('Pick a date.')
+      setError(tr('Pick a date.'))
       return
     }
     // A past day is only kept when editing a task that was already on it.
     if (date < today && date !== originalDate.current) {
-      setError('Pick today or a later date.')
+      setError(tr('Pick today or a later date.'))
       return
     }
     setSaving(true)
@@ -197,14 +198,14 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
         <div className="sheet-top">
         <div className="grabber" aria-hidden="true" />
         <div className="sheet-head">
-          <h2 id={headingId}>{task ? 'Edit task' : 'New task'}</h2>
+          <h2 id={headingId}>{task ? tr('Edit task') : tr('New task')}</h2>
           <div style={{ display: 'flex', gap: 10 }}>
             {task && (
-              <button type="button" className="icon-btn danger" aria-label="Delete task" onClick={() => leave(() => onDelete(task))}>
+              <button type="button" className="icon-btn danger" aria-label={tr('Delete task')} onClick={() => leave(() => onDelete(task))}>
                 <Icon name="trash" />
               </button>
             )}
-            <button type="button" className="icon-btn" aria-label="Close" onClick={close}>
+            <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={close}>
               <Icon name="x" />
             </button>
           </div>
@@ -215,12 +216,12 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
         <input
           ref={titleRef}
           className="task-title-input"
-          aria-label="Title"
+          aria-label={tr('Title')}
           value={title}
           maxLength={200}
           autoComplete="off"
-          placeholder="What do you need to do?"
-          aria-invalid={error === 'Enter a title.'}
+          placeholder={tr('What do you need to do?')}
+          aria-invalid={error === tr('Enter a title.')}
           onChange={(e) => {
             setTitle(e.target.value)
             setError('')
@@ -228,7 +229,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
         />
 
         <div className="panel-rows task-rows">
-          <TaskRowButton icon="calendar" label="Date" value={date === today ? 'Today' : date === tomorrow ? 'Tomorrow' : dateLabel(date)} open={openRow === 'date'} onToggle={() => toggleRow('date')} />
+          <TaskRowButton icon="calendar" label={tr('Date')} value={date === today ? tr('Today') : date === tomorrow ? tr('Tomorrow') : dateLabel(date)} open={openRow === 'date'} onToggle={() => toggleRow('date')} />
           {openRow === 'date' && (
             <div className="task-row-body">
               <div className="chips">
@@ -241,7 +242,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
                     setOpenRow(null)
                   }}
                 >
-                  Today
+                  {tr('Today')}
                 </button>
                 <button
                   type="button"
@@ -252,10 +253,10 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
                     setOpenRow(null)
                   }}
                 >
-                  Tomorrow
+                  {tr('Tomorrow')}
                 </button>
                 <button type="button" className="chip" aria-pressed={showCalendar} aria-expanded={showCalendar} onClick={() => setShowCalendar(!showCalendar)}>
-                  Other date
+                  {tr('Other date')}
                 </button>
               </div>
               {showCalendar && (
@@ -273,24 +274,24 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
             </div>
           )}
 
-          <TaskRowButton icon="clock" label="Time" value={time ? timeLabel(time) : 'Anytime'} open={openRow === 'time'} onToggle={() => toggleRow('time')} />
+          <TaskRowButton icon="clock" label={tr('Time')} value={time ? timeLabel(time) : tr('Anytime')} open={openRow === 'time'} onToggle={() => toggleRow('time')} />
           {openRow === 'time' && (
             <div className="task-row-body">
               <div className="toggle-row">
-                <span>Set a time</span>
-                <button type="button" className="switch" role="switch" aria-checked={Boolean(time)} aria-label="Set a time" onClick={toggleTime} />
+                <span>{tr('Set a time')}</span>
+                <button type="button" className="switch" role="switch" aria-checked={Boolean(time)} aria-label={tr('Set a time')} onClick={toggleTime} />
               </div>
-              {time ? <TimePicker value={time} onChange={setTime} /> : <span className="hint">The task goes under Anytime.</span>}
+              {time ? <TimePicker value={time} onChange={setTime} /> : <span className="hint">{tr('The task goes under Anytime.')}</span>}
             </div>
           )}
 
           {time && (
             <>
-              <TaskRowButton icon="bell" label="Reminder" value={!remindersOn ? 'Off in settings' : remind ? formatLead(lead) : 'None'} open={openRow === 'remind'} onToggle={() => toggleRow('remind')} />
+              <TaskRowButton icon="bell" label={tr('Reminder')} value={!remindersOn ? tr('Off in settings') : remind ? formatLead(lead) : tr('None')} open={openRow === 'remind'} onToggle={() => toggleRow('remind')} />
               {openRow === 'remind' && (
                 <div className="task-row-body">
                   {remindersOn ? (
-                    <div className="chips lead-chips" role="radiogroup" aria-label="When to remind me">
+                    <div className="chips lead-chips" role="radiogroup" aria-label={tr('When to remind me')}>
                       <button
                         type="button"
                         role="radio"
@@ -302,7 +303,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
                           setOpenRow(null)
                         }}
                       >
-                        None
+                        {tr('None')}
                       </button>
                       {REMINDER_LEADS.map((minutes) => (
                         <button
@@ -318,12 +319,12 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
                             setOpenRow(null)
                           }}
                         >
-                          {minutes === 0 ? 'At the time' : formatLead(minutes).replace(' before', '')}
+                          {minutes === 0 ? tr('At the time') : formatLead(minutes).replace(' before', '')}
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <span className="hint">Reminders are off. Turn them on with the bell button or in Settings.</span>
+                    <span className="hint">{tr('Reminders are off. Turn them on with the bell button or in Settings.')}</span>
                   )}
                 </div>
               )}
@@ -332,7 +333,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
 
           <TaskRowButton
             icon="menu"
-            label="Category"
+            label={tr('Category')}
             value={CATEGORIES.find((c) => c.value === category)?.label ?? ''}
             open={openRow === 'category'}
             onToggle={() => toggleRow('category')}
@@ -359,7 +360,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
             </div>
           )}
 
-          <TaskRowButton icon="flag" label="Priority" value={PRIORITIES.find((p) => p.value === priority)?.label ?? ''} open={openRow === 'priority'} onToggle={() => toggleRow('priority')} />
+          <TaskRowButton icon="flag" label={tr('Priority')} value={PRIORITIES.find((p) => p.value === priority)?.label ?? ''} open={openRow === 'priority'} onToggle={() => toggleRow('priority')} />
           {openRow === 'priority' && (
             <div className="task-row-body">
               <div className="chips">
@@ -382,10 +383,10 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
             </div>
           )}
 
-          <TaskRowButton icon="edit" label="Notes" value={notes.trim() ? notes.trim() : 'Add notes'} open={openRow === 'notes'} onToggle={() => toggleRow('notes')} />
+          <TaskRowButton icon="edit" label={tr('Notes')} value={notes.trim() ? notes.trim() : tr('Add notes')} open={openRow === 'notes'} onToggle={() => toggleRow('notes')} />
           {openRow === 'notes' && (
             <div className="task-row-body">
-              <textarea className="field" rows={3} autoFocus aria-label="Notes" value={notes} placeholder="Anything to remember about it" onChange={(e) => setNotes(e.target.value)} />
+              <textarea className="field" rows={3} autoFocus aria-label={tr('Notes')} value={notes} placeholder={tr('Anything to remember about it')} onChange={(e) => setNotes(e.target.value)} />
             </div>
           )}
         </div>
@@ -394,14 +395,14 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
           <p className="hint friend-note">
             <Icon name="users" />
             {task.linked
-              ? `Shared plan from ${task.added_by_name}. Changes anyone makes to the time, title or notes reach everyone, and the others are notified. Done is just for you.`
-              : `Added by ${task.added_by_name}. It's no longer shared, so changes stay here.`}
+              ? tr('Shared plan from {added_by_name}. Changes anyone makes to the time, title or notes reach everyone, and the others are notified. Done is just for you.', { added_by_name: task.added_by_name })
+              : tr('Added by {added_by_name}. It\'s no longer shared, so changes stay here.', { added_by_name: task.added_by_name })}
           </p>
         )}
         {!task?.added_by_name && Boolean(task?.shared_with?.length) && (
           <p className="hint friend-note">
             <Icon name="users" />
-            {`Shared with ${task!.shared_with!.join(', ')}. Changes anyone makes reach everyone, and the others are notified. Deleting it cancels it for everyone.`}
+            {tr('Shared with {value}. Changes anyone makes reach everyone, and the others are notified. Deleting it cancels it for everyone.', { value: task!.shared_with!.join(', ') })}
           </p>
         )}
 
@@ -409,12 +410,12 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
           <div className="task-actions">
             <button type="button" className={`task-action done-action${done ? ' is-done' : ''}`} onClick={() => setDone(!done)} aria-pressed={done}>
               <Icon name={done ? 'undo' : 'check'} />
-              {done ? 'Mark as not done' : 'Mark as done'}
+              {done ? tr('Mark as not done') : tr('Mark as done')}
             </button>
             {onSend && (
               <button type="button" className="task-action send-action" onClick={() => leave(() => onSend(task))}>
                 <Icon name="send" />
-                Send to a friend
+                {tr('Send to a friend')}
               </button>
             )}
           </div>
@@ -428,7 +429,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
             </span>
           )}
           <button type="submit" className="primary-btn" disabled={saving}>
-            {saving ? 'Saving…' : task ? 'Save changes' : 'Add task'}
+            {saving ? tr('Saving…') : task ? tr('Save changes') : tr('Add task')}
           </button>
         </div>
       </form>

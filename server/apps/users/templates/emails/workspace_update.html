@@ -1,4 +1,5 @@
 {% extends "emails/base.html" %}
+{% load email_text %}
 
 {% block hero %}
 <p style="margin:30px 0 8px;font:600 12px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#255fc0;" class="hero-eyebrow">{{ eyebrow }}</p>
@@ -16,8 +17,8 @@
   </tr>
   {% endfor %}
 </table>
-{% if more %}<p class="muted" style="margin:6px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;">And {{ more }} more in the app.</p>{% endif %}
+{% if more %}<p class="muted" style="margin:6px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;">{% say "And {more} more in the app." more=more %}</p>{% endif %}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 0;"><tr><td bgcolor="#2f6fd6" style="border-radius:16px;background:#2f6fd6;box-shadow:0 10px 22px rgba(47,111,214,0.32);"><a href="{{ open_url }}" style="display:inline-block;padding:15px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">{{ open_label }}</a></td></tr></table>
 {% endblock %}
 
-{% block footer %}You get these because you're in a workspace. Turn them off in Settings, under Preferences.{% endblock %}
+{% block footer %}{% say "You get these because you're in a workspace. Turn them off in Settings, under Preferences." %}{% endblock %}

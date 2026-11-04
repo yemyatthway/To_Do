@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../icons'
 import { addDays, monthGrid, monthStart, sameDay, startOfDay, toDateInput } from '../time'
+import { formatDate, tr } from '../i18n'
 
 const WEEKDAYS = Array.from({ length: 7 }, (_, i) =>
   // 2024-01-01 was a Monday; only the weekday names are used.
-  new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: 'narrow' }),
+  formatDate(new Date(2024, 0, 1 + i), { weekday: 'narrow' }),
 )
-const WEEKDAY_NAMES = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: 'long' }))
+const WEEKDAY_NAMES = Array.from({ length: 7 }, (_, i) => formatDate(new Date(2024, 0, 1 + i), { weekday: 'long' }))
 
 const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1)
 
@@ -66,7 +67,7 @@ export function Calendar({ value, onChange, minDate, marked, onMonthChange }: Ca
     }
   }
 
-  const title = month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const title = formatDate(month, { month: 'long', year: 'numeric' })
 
   return (
     <div className="calendar">
@@ -74,7 +75,7 @@ export function Calendar({ value, onChange, minDate, marked, onMonthChange }: Ca
         <button
           type="button"
           className="icon-btn"
-          aria-label="Previous month"
+          aria-label={tr('Previous month')}
           disabled={!canGoBack}
           onClick={() => setMonth(addMonths(month, -1))}
         >
@@ -83,7 +84,7 @@ export function Calendar({ value, onChange, minDate, marked, onMonthChange }: Ca
         <span className="calendar-title" aria-live="polite">
           {title}
         </span>
-        <button type="button" className="icon-btn" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}>
+        <button type="button" className="icon-btn" aria-label={tr('Next month')} onClick={() => setMonth(addMonths(month, 1))}>
           <Icon name="chevron" />
         </button>
       </div>
@@ -108,7 +109,7 @@ export function Calendar({ value, onChange, minDate, marked, onMonthChange }: Ca
               const classes = ['calendar-day', outside && 'outside', isToday && 'today', selected && 'selected', hasTasks && 'marked']
                 .filter(Boolean)
                 .join(' ')
-              const label = day.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+              const label = formatDate(day, { weekday: 'long', day: 'numeric', month: 'long' })
               return (
                 <span key={key} role="gridcell" aria-selected={selected}>
                   <button
@@ -117,7 +118,7 @@ export function Calendar({ value, onChange, minDate, marked, onMonthChange }: Ca
                     data-day={key}
                     disabled={past}
                     tabIndex={sameDay(day, focused) ? 0 : -1}
-                    aria-label={`${label}${isToday ? ', today' : ''}${hasTasks ? ', has tasks' : ''}${past ? ', past' : ''}`}
+                    aria-label={`${label}${isToday ? ', today' : ''}${hasTasks ? tr(', has tasks') : ''}${past ? ', past' : ''}`}
                     aria-current={isToday ? 'date' : undefined}
                     onClick={() => {
                       keyboard.current = false

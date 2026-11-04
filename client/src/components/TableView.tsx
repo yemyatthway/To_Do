@@ -31,17 +31,18 @@ import { Loading, SkeletonRows } from './Loading'
 import { OptionsMenu } from './OptionsMenu'
 import { SearchField } from './SearchField'
 import type { ToastData } from './Toast'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const MAX_CELL_FILES = 10
 const COLUMN_TYPES: { type: ColumnType; label: string; hint: string }[] = [
-  { type: 'text', label: 'Text', hint: 'Words and sentences' },
-  { type: 'select', label: 'Choice', hint: 'Pick from a list, like Login or Sidebar' },
-  { type: 'person', label: 'Person', hint: 'Someone in this workspace' },
-  { type: 'date', label: 'Date and time', hint: 'A row can land on your clock' },
-  { type: 'checkbox', label: 'Checkbox', hint: 'Yes or no, like Done' },
-  { type: 'number', label: 'Number', hint: 'Amounts and counts' },
-  { type: 'file', label: 'Images and files', hint: 'Screenshots, PDFs and more' },
+  { type: 'text', label: tr('Text'), hint: tr('Words and sentences') },
+  { type: 'select', label: tr('Choice'), hint: tr('Pick from a list, like Login or Sidebar') },
+  { type: 'person', label: tr('Person'), hint: tr('Someone in this workspace') },
+  { type: 'date', label: tr('Date and time'), hint: tr('A row can land on your clock') },
+  { type: 'checkbox', label: tr('Checkbox'), hint: tr('Yes or no, like Done') },
+  { type: 'number', label: tr('Number'), hint: tr('Amounts and counts') },
+  { type: 'file', label: tr('Images and files'), hint: tr('Screenshots, PDFs and more') },
 ]
 const typeLabel = (type: ColumnType) => COLUMN_TYPES.find((t) => t.type === type)?.label ?? type
 const COLUMN_ICONS: Record<ColumnType, string> = {
@@ -109,12 +110,12 @@ export function TableView(props: TableViewProps) {
 
   if (!table) {
     return (
-      <section className="card glass panel" aria-label="Table">
+      <section className="card glass panel" aria-label={tr('Table')}>
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button className="text-btn" onClick={() => void load()}>
-              Retry
+              {tr('Retry')}
             </button>
           </div>
         )}
@@ -126,10 +127,10 @@ export function TableView(props: TableViewProps) {
 }
 
 function saveText(state: RowSaveState, canEdit: boolean) {
-  if (!canEdit) return "You can read this table. Your role doesn't allow editing."
-  if (state === 'saving') return 'Saving…'
-  if (state === 'waiting') return "Can't reach the server. It's safe on this device and will save automatically."
-  return 'Saved'
+  if (!canEdit) return tr('You can read this table. Your role doesn\'t allow editing.')
+  if (state === 'saving') return tr('Saving…')
+  if (state === 'waiting') return tr('Can\'t reach the server. It\'s safe on this device and will save automatically.')
+  return tr('Saved')
 }
 
 function TableScreen({
@@ -184,10 +185,10 @@ function TableScreen({
         replaceRow(row)
         // Their version stays, but your words aren't lost without you seeing them.
         const typed = Object.values(mine.values).find((value) => typeof value === 'string' && value)
-        notify('Someone else changed that cell', typed ? `Their version is showing. You had typed: ${typed}` : 'Their version is showing now.')
+        notify(tr('Someone else changed that cell'), typed ? tr('Their version is showing. You had typed: {typed}', { typed: String(typed) }) : tr('Their version is showing now.'))
       },
       onRefused: (_rowId, message) => {
-        notify("Couldn't save that change", message)
+        notify(tr('Couldn\'t save that change'), message)
         redraw((n) => n + 1)
       },
     })
@@ -232,7 +233,7 @@ function TableScreen({
   // The linked row no longer exists: say so rather than showing nothing.
   useEffect(() => {
     if (rowId && !table.rows.some((r) => r.id === rowId)) {
-      notify('That row was deleted')
+      notify(tr('That row was deleted'))
       onRowClosed()
     }
   }, [rowId, table.rows, notify, onRowClosed])
@@ -253,7 +254,7 @@ function TableScreen({
       setTable(saved)
       onSaved(saved)
     } catch (err) {
-      notify("Couldn't save that", errorMessage(err))
+      notify(tr('Couldn\'t save that'), errorMessage(err))
     }
   }
 
@@ -270,11 +271,13 @@ function TableScreen({
       if (phone || view === 'board' || !first) setOpenRow(row.id)
       else setEditing({ row: row.id, column: first.id })
     } catch (err) {
-      notify("Couldn't add a row", errorMessage(err))
+      notify(tr('Couldn\'t add a row'), errorMessage(err))
     } finally {
       setAdding(false)
     }
   }
+
+  const [deletingRow, setDeletingRow] = useState<TableRowData | null>(null)
 
   async function deleteRow(row: TableRowData) {
     await api.deleteRow(workspaceId, tableId, row.id)
@@ -282,14 +285,14 @@ function TableScreen({
     setOpenRow(null)
     setTable((t) => t && { ...t, rows: t.rows.filter((r) => r.id !== row.id) })
     showToast({
-      title: 'Row deleted',
+      title: tr('Row deleted'),
       detail: rowTitle(row, columns),
       action: {
-        label: 'Undo',
+        label: tr('Undo'),
         onClick: () => {
           api.restoreRow(workspaceId, tableId, row.id).then(
             (restored) => setTable((t) => t && { ...t, rows: [...t.rows, restored] }),
-            (err: unknown) => notify("Couldn't bring it back", errorMessage(err)),
+            (err: unknown) => notify(tr('Couldn\'t bring it back'), errorMessage(err)),
           )
         },
       },
@@ -301,9 +304,9 @@ function TableScreen({
       const result = await api.addRowToTasks(workspaceId, tableId, row.id)
       replaceRow(result.row)
       onTasksChanged()
-      notify('Added to your tasks', result.due_at ? 'It shows on your clock too.' : result.task_title)
+      notify(tr('Added to your tasks'), result.due_at ? tr('It shows on your clock too.') : result.task_title)
     } catch (err) {
-      notify("Couldn't add it to your tasks", errorMessage(err))
+      notify(tr('Couldn\'t add it to your tasks'), errorMessage(err))
     }
   }
 
@@ -314,13 +317,13 @@ function TableScreen({
     setSort((s) => (s.column !== column ? { column, descending: false } : s.descending ? { column: 'no', descending: false } : { column, descending: true }))
 
   return (
-    <section className="card glass panel table-screen" aria-label={title || 'Untitled'}>
+    <section className="card glass panel table-screen" aria-label={title || tr('Untitled')}>
       <div className="table-title-row">
         {canEdit ? (
           <input
             className="page-title"
-            aria-label="Table name"
-            placeholder="Untitled"
+            aria-label={tr('Table name')}
+            placeholder={tr('Untitled')}
             maxLength={120}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -330,14 +333,14 @@ function TableScreen({
           <h2 className="page-title">{table.title}</h2>
         )}
         <OptionsMenu
-          label="Table options"
+          label={tr('Table options')}
           options={[
-            { icon: 'table', label: 'Show as table', current: view === 'table', run: () => setView('table') },
-            { icon: 'columns', label: 'Show as board', current: view === 'board', run: () => setView('board') },
+            { icon: 'table', label: tr('Show as table'), current: view === 'table', run: () => setView('table') },
+            { icon: 'columns', label: tr('Show as board'), current: view === 'board', run: () => setView('board') },
             ...(canEdit
               ? [
-                  { icon: 'menu' as const, label: 'Edit columns', run: () => setColumnsOpen(true) },
-                  { icon: 'trash' as const, label: 'Delete table', danger: true, run: () => setDeletingTable(true) },
+                  { icon: 'menu' as const, label: tr('Edit columns'), run: () => setColumnsOpen(true) },
+                  { icon: 'trash' as const, label: tr('Delete table'), danger: true, run: () => setDeletingTable(true) },
                 ]
               : []),
           ]}
@@ -347,8 +350,8 @@ function TableScreen({
       {canEdit ? (
         <input
           className="table-desc-text"
-          aria-label="Table description"
-          placeholder="Add a description"
+          aria-label={tr('Table description')}
+          placeholder={tr('Add a description')}
           maxLength={500}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -359,26 +362,26 @@ function TableScreen({
       )}
 
       <div className="table-tools">
-        <SearchField label="Search rows" placeholder="Search" value={query} onChange={setQuery} />
-        <button type="button" className={`text-btn icon-only table-filter-btn${activeFilters.length ? ' is-on' : ''}`} aria-label={activeFilters.length ? `Filter rows, ${activeFilters.length} on` : 'Filter rows'} onClick={() => setFilterOpen(true)}>
+        <SearchField label={tr('Search rows')} placeholder={tr('Search')} value={query} onChange={setQuery} />
+        <button type="button" className={`text-btn icon-only table-filter-btn${activeFilters.length ? ' is-on' : ''}`} aria-label={activeFilters.length ? tr('Filter rows, {length} on', { length: activeFilters.length }) : tr('Filter rows')} onClick={() => setFilterOpen(true)}>
           <Icon name="filter" />
           {activeFilters.length > 0 && <span className="count-pill">{activeFilters.length}</span>}
         </button>
         {canEdit && (
-          <button type="button" className="primary-btn icon-only table-new" aria-label="New row" disabled={adding} onClick={() => void addRow()}>
+          <button type="button" className="primary-btn icon-only table-new" aria-label={tr('New row')} disabled={adding} onClick={() => void addRow()}>
             <Icon name="plus" />
           </button>
         )}
       </div>
 
       {activeFilters.length > 0 && (
-        <div className="table-active" role="group" aria-label="Filters on">
+        <div className="table-active" role="group" aria-label={tr('Filters on')}>
           {activeFilters.map((column) => (
             <button
               key={column.id}
               type="button"
               className="filter-chip"
-              aria-label={`Remove filter: ${filterText(column, filters[column.id], members, userId)}`}
+              aria-label={tr('Remove filter: {value}', { value: filterText(column, filters[column.id], members, userId) })}
               onClick={() => setFilters((f) => ({ ...f, [column.id]: '' }))}
             >
               {filterText(column, filters[column.id], members, userId)}
@@ -391,11 +394,11 @@ function TableScreen({
       <div className="table-bar">
         {checkbox && rows.length > 0 && (
           <>
-            <span className="table-progress" role="img" aria-label={`${doneCount} of ${rows.length} ${checkbox.name.toLowerCase()}`}>
+            <span className="table-progress" role="img" aria-label={tr('{doneCount} of {length} {value}', { doneCount, length: rows.length, value: checkbox.name.toLowerCase() })}>
               <span style={{ width: `${(doneCount / rows.length) * 100}%` }} />
             </span>
             <span className="task-meta">
-              {doneCount} of {rows.length} {checkbox.name.toLowerCase()}
+              {tr('{doneCount} of {length}', { doneCount, length: rows.length })}{' '}{checkbox.name.toLowerCase()}
             </span>
           </>
         )}
@@ -408,7 +411,7 @@ function TableScreen({
         board ? (
           <Board rows={shown} columns={columns} column={board} members={members} canEdit={canEdit} onOpen={(row) => setOpenRow(row.id)} onMove={(row, value) => setCells(row, { [board.id]: value })} />
         ) : (
-          <p className="empty">A board groups rows by a Choice, Person or Checkbox column. Add one under Columns.</p>
+          <p className="empty">{tr('A board groups rows by a Choice, Person or Checkbox column. Add one under Columns.')}</p>
         )
       ) : phone ? (
         <ul className="panel-scroll table-list">
@@ -424,10 +427,10 @@ function TableScreen({
                       {[`No. ${row.no}`, ...columns.filter((c) => c.type !== 'checkbox' && displayValue(c, row.values[c.id], members) !== rowTitle(row, columns)).map((c) => displayValue(c, row.values[c.id], members))]
                         .filter((part) => part !== '')
                         .join(' · ')}
-                      {row.comment_count > 0 && ` · ${row.comment_count} ${row.comment_count === 1 ? 'comment' : 'comments'}`}
+                      {row.comment_count > 0 && ` · ${tr('{comment_count} comments', { comment_count: row.comment_count })}`}
                     </span>
                   </span>
-                  {done && <span className="row-status done">Done</span>}
+                  {done && <span className="row-status done">{tr('Done')}</span>}
                   <Icon name="chevron" className="more-go" />
                 </button>
               </li>
@@ -435,10 +438,10 @@ function TableScreen({
           })}
         </ul>
       ) : (
-        <div className="panel-scroll grid-box" role="table" aria-label={title || 'Table'}>
+        <div className="panel-scroll grid-box" role="table" aria-label={title || tr('Table')}>
           <div className="grid-row grid-head" role="row">
             <button type="button" className="grid-cell grid-no" role="columnheader" onClick={() => sortBy('no')}>
-              No{sort.column === 'no' && sort.descending ? ' ↓' : ''}
+              {tr('No.')}{sort.column === 'no' && sort.descending ? ' ↓' : ''}
             </button>
             {columns.map((column) => (
               <button
@@ -459,11 +462,11 @@ function TableScreen({
           </div>
           {shown.map((row) => (
             <div key={row.id} className={`grid-row${row.highlighted ? ' row-red' : ''}`} role="row">
-              <button type="button" className="grid-cell grid-no grid-open" role="cell" aria-label={`Open row ${row.no}`} onClick={() => setOpenRow(row.id)}>
+              <button type="button" className="grid-cell grid-no grid-open" role="cell" aria-label={tr('Open row {no}', { no: row.no })} onClick={() => setOpenRow(row.id)}>
                 <Icon name="page" />
                 {row.no}
                 {row.comment_count > 0 && (
-                  <span className="row-comments" aria-label={`${row.comment_count} comments`}>
+                  <span className="row-comments" aria-label={tr('{comment_count} comments', { comment_count: row.comment_count })}>
                     <Icon name="chat" />
                     {row.comment_count}
                   </span>
@@ -485,13 +488,34 @@ function TableScreen({
                   />
                 </div>
               ))}
+              {canEdit && (
+                <button type="button" className="grid-delete" aria-label={tr('Delete row {no}', { no: row.no })} onClick={() => setDeletingRow(row)}>
+                  <Icon name="trash" />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {view === 'table' && table.rows.length === 0 && <p className="empty">{canEdit ? 'No rows yet. Press New row to add the first one.' : 'No rows yet.'}</p>}
-      {view === 'table' && table.rows.length > 0 && shown.length === 0 && <p className="empty">No rows match.</p>}
+      {deletingRow && (
+        <ConfirmAction
+          danger
+          icon="trash"
+          title={tr('Delete row {no}?', { no: deletingRow.no })}
+          confirmLabel={tr('Delete row')}
+          onCancel={() => setDeletingRow(null)}
+          onConfirm={async () => {
+            await deleteRow(deletingRow)
+            setDeletingRow(null)
+          }}
+        >
+          <p>{tr('Everyone in the workspace loses it. You can undo this right after.')}</p>
+        </ConfirmAction>
+      )}
+
+      {view === 'table' && table.rows.length === 0 && <p className="empty">{canEdit ? tr('No rows yet. Press New row to add the first one.') : tr('No rows yet.')}</p>}
+      {view === 'table' && table.rows.length > 0 && shown.length === 0 && <p className="empty">{tr('No rows match.')}</p>}
 
       {opened && (
         <RowSheet
@@ -550,8 +574,8 @@ function TableScreen({
         <ConfirmAction
           danger
           icon="trash"
-          title={`Delete ${table.title}?`}
-          confirmLabel="Delete table"
+          title={tr('Delete {title}?', { title: table.title })}
+          confirmLabel={tr('Delete table')}
           onCancel={() => setDeletingTable(false)}
           onConfirm={async () => {
             await api.deleteTable(workspaceId, tableId)
@@ -559,7 +583,7 @@ function TableScreen({
             onDeleted(table)
           }}
         >
-          <p>Everyone in the workspace loses it, with its {table.rows.length} rows. You can undo this right after.</p>
+          <p>{tr('Everyone in the workspace loses it, with its {length} rows. You can undo this right after.', { length: table.rows.length })}</p>
         </ConfirmAction>
       )}
     </section>
@@ -568,7 +592,7 @@ function TableScreen({
 
 function RowCheck({ row, column, canEdit, onChange }: { row: TableRowData; column: TableColumn; canEdit: boolean; onChange: (value: boolean) => void }) {
   const on = Boolean(row.values[column.id])
-  const name = `${column.name}, row ${row.no}`
+  const name = tr('{name}, row {no}', { name: column.name, no: row.no })
   if (!canEdit) {
     return (
       <span className={`check${on ? ' on' : ''}`} role="img" aria-label={`${name}: ${on ? 'yes' : 'no'}`}>
@@ -612,7 +636,7 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
     setError('')
     for (const file of files) {
       if (latest.current.length >= MAX_CELL_FILES) {
-        setError(`A cell can hold up to ${MAX_CELL_FILES} files.`)
+        setError(tr('A cell can hold up to {MAX_CELL_FILES} files.', { MAX_CELL_FILES }))
         return
       }
       try {
@@ -625,6 +649,11 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
     }
   }
 
+  const remove = (id: number) => {
+    latest.current = latest.current.filter((other) => other !== id)
+    onChange(latest.current)
+  }
+
   const errorLine = error && (
     <span className="field-error" role="alert">
       {error}
@@ -633,9 +662,9 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
   if (!expanded) {
     return (
       <span className="cell-files">
-        <FileThumbs workspaceId={workspaceId} ids={ids} />
+        <FileThumbs workspaceId={workspaceId} ids={ids} onRemove={canEdit ? remove : undefined} />
         {canEdit && (
-          <button type="button" className="cell-add" aria-label={`Add to ${columnName}`} title={error || undefined} onClick={() => pickFiles((files) => void add(files))}>
+          <button type="button" className="cell-add" aria-label={tr('Add to {columnName}', { columnName })} title={error || undefined} onClick={() => pickFiles((files) => void add(files))}>
             <Icon name="plus" />
           </button>
         )}
@@ -655,13 +684,13 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
       }}
     >
       {ids.map((id) => (
-        <FileView key={id} workspaceId={workspaceId} id={id} compact onRemove={canEdit ? () => onChange((latest.current = latest.current.filter((other) => other !== id))) : undefined} />
+        <FileView key={id} workspaceId={workspaceId} id={id} compact onRemove={canEdit ? () => remove(id) : undefined} />
       ))}
       {ids.length === 0 && !canEdit && <p className="sheet-read">—</p>}
       {canEdit && (
         <button type="button" className="text-btn" onClick={() => pickFiles((files) => void add(files))}>
           <Icon name="attach" />
-          Add screenshot or file
+          {tr('Add screenshot or file')}
         </button>
       )}
       {errorLine}
@@ -677,7 +706,7 @@ function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, o
   if (!canEdit) return <span className="grid-text">{text}</span>
   if (!editing) {
     return (
-      <button type="button" className={`grid-text grid-edit${text ? '' : ' empty-cell'}`} aria-label={`${column.name}, row ${row.no}: ${text || 'empty'}. Edit`} onClick={onEdit}>
+      <button type="button" className={`grid-text grid-edit${text ? '' : ' empty-cell'}`} aria-label={tr('{name}, row {no}: {value}. Edit', { name: column.name, no: row.no, value: text || 'empty' })} onClick={onEdit}>
         {text}
       </button>
     )
@@ -750,7 +779,7 @@ function CellEditor({ column, value, rows, members, autoFocus, label, live, onCh
         onBlur={() => onDone?.()}
         onKeyDown={onKey}
       >
-        <option value="">Nobody</option>
+        <option value="">{tr('Nobody')}</option>
         {members.map((m) => (
           <option key={m.id} value={m.id}>
             {memberName(m)}
@@ -765,7 +794,7 @@ function CellEditor({ column, value, rows, members, autoFocus, label, live, onCh
   if (column.type === 'select') {
     return (
       <>
-        <input {...common} list={listId} maxLength={60} placeholder="Choose or type" value={draft} onChange={(e) => type(e.target.value)} onBlur={finish} onKeyDown={onKey} />
+        <input {...common} list={listId} maxLength={60} placeholder={tr('Choose or type')} value={draft} onChange={(e) => type(e.target.value)} onBlur={finish} onKeyDown={onKey} />
         <datalist id={listId}>
           {optionsFor(rows, column).map((option) => (
             <option key={option} value={option} />
@@ -818,8 +847,7 @@ function Board({
             <button key={row.id} type="button" className={`board-card${row.highlighted ? ' row-red' : ''}`} draggable={canEdit} onDragStart={() => setDragged(row.id)} onDragEnd={() => setDragged(null)} onClick={() => onOpen(row)}>
               <span className="task-title">{rowTitle(row, columns)}</span>
               <span className="task-meta">
-                No. {row.no}
-                {row.comment_count > 0 && ` · ${row.comment_count} ${row.comment_count === 1 ? 'comment' : 'comments'}`}
+                {tr('No. {no}', { no: row.no })}{' '}{row.comment_count > 0 && ` · ${tr('{comment_count} comments', { comment_count: row.comment_count })}`}
               </span>
             </button>
           ))}
@@ -871,18 +899,18 @@ function RowSheet({
 
   return createPortal(
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={`Row ${row.no}`}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={tr('Row {no}', { no: row.no })}>
         <div className="sheet-top">
           <div className="grabber" aria-hidden="true" />
           <div className="sheet-head">
-            <h2>No. {row.no}</h2>
+            <h2>{tr('No. {no}', { no: row.no })}</h2>
             <div style={{ display: 'flex', gap: 10 }}>
               {canEdit && (
-                <button type="button" className="icon-btn" aria-label="Delete this row" onClick={() => setDeleting(true)}>
+                <button type="button" className="icon-btn" aria-label={tr('Delete this row')} onClick={() => setDeleting(true)}>
                   <Icon name="trash" />
                 </button>
               )}
-              <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+              <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={onClose}>
                 <Icon name="x" />
               </button>
             </div>
@@ -907,8 +935,8 @@ function RowSheet({
           ))}
           {canEdit && (
             <div className="toggle-row">
-              <span>Highlight in red</span>
-              <button type="button" className="switch" role="switch" aria-checked={row.highlighted} aria-label="Highlight in red" onClick={() => onHighlight(!row.highlighted)} />
+              <span>{tr('Highlight in red')}</span>
+              <button type="button" className="switch" role="switch" aria-checked={row.highlighted} aria-label={tr('Highlight in red')} onClick={() => onHighlight(!row.highlighted)} />
             </div>
           )}
           <Comments target={{ workspaceId, tableId, rowId: row.id }} now={now} members={members} canComment={canComment} onChanged={onCommentsChanged} />
@@ -917,16 +945,16 @@ function RowSheet({
         <div className="sheet-foot table-sheet-foot">
           <button type="button" className="text-btn" disabled={row.on_my_tasks} onClick={onAddToTasks}>
             <Icon name={row.on_my_tasks ? 'check' : 'plus'} />
-            {row.on_my_tasks ? 'On your tasks' : 'Add to my tasks'}
+            {row.on_my_tasks ? tr('On your tasks') : tr('Add to my tasks')}
           </button>
           <button type="button" className="primary-btn" onClick={onClose}>
-            Done
+            {tr('Done')}
           </button>
         </div>
       </div>
       {deleting && (
-        <ConfirmAction danger icon="trash" title={`Delete row ${row.no}?`} confirmLabel="Delete row" onCancel={() => setDeleting(false)} onConfirm={onDelete}>
-          <p>Everyone in the workspace loses it. You can undo this right after.</p>
+        <ConfirmAction danger icon="trash" title={tr('Delete row {no}?', { no: row.no })} confirmLabel={tr('Delete row')} onCancel={() => setDeleting(false)} onConfirm={onDelete}>
+          <p>{tr('Everyone in the workspace loses it. You can undo this right after.')}</p>
         </ConfirmAction>
       )}
     </div>,
@@ -936,14 +964,14 @@ function RowSheet({
 
 /** What an active filter reads as, in its chip. */
 function filterText(column: TableColumn, value: string, members: Member[], userId: number) {
-  if (column.type === 'checkbox') return value === 'yes' ? column.name : `Not ${column.name.toLowerCase()}`
+  if (column.type === 'checkbox') return value === 'yes' ? column.name : tr('Not {value}', { value: column.name.toLowerCase() })
   if (column.type === 'person') {
-    if (value === NONE) return `${column.name}: Nobody`
-    if (Number(value) === userId) return `${column.name}: Me`
+    if (value === NONE) return tr('{name}: Nobody', { name: column.name })
+    if (Number(value) === userId) return tr('{name}: Me', { name: column.name })
     const member = members.find((m) => m.id === Number(value))
-    return `${column.name}: ${member ? memberName(member) : 'Former member'}`
+    return `${column.name}: ${member ? memberName(member) : tr('Former member')}`
   }
-  return `${column.name}: ${value === NONE ? 'Empty' : value}`
+  return `${column.name}: ${value === NONE ? tr('Empty') : value}`
 }
 
 /** A dialog on desktop and a bottom sheet on phones, like the task and row sheets. */
@@ -965,13 +993,13 @@ function Sheet({ title, onBack, onClose, foot, children }: { title: string; onBa
           <div className="sheet-head">
             <div className="sheet-title">
               {onBack && (
-                <button type="button" className="icon-btn" aria-label="Back" onClick={onBack}>
+                <button type="button" className="icon-btn" aria-label={tr('Back')} onClick={onBack}>
                   <Icon name="back" />
                 </button>
               )}
               <h2>{title}</h2>
             </div>
-            <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+            <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={onClose}>
               <Icon name="x" />
             </button>
           </div>
@@ -1013,7 +1041,7 @@ function FilterSheet({
 }) {
   return (
     <Sheet
-      title="Filter and sort"
+      title={tr('Filter and sort')}
       onClose={onClose}
       foot={
         <>
@@ -1025,24 +1053,24 @@ function FilterSheet({
               onSort({ column: 'no', descending: false })
             }}
           >
-            Clear all
+            {tr('Clear all')}
           </button>
           <button type="button" className="primary-btn" onClick={onClose}>
-            Done
+            {tr('Done')}
           </button>
         </>
       }
     >
-      {filterable.length === 0 && <p className="task-meta">Add a Choice, Person or Checkbox column to filter by it.</p>}
+      {filterable.length === 0 && <p className="task-meta">{tr('Add a Choice, Person or Checkbox column to filter by it.')}</p>}
       {filterable.map((column) => (
         <label key={column.id} className="field-group">
           <span className="label">{column.name}</span>
           <select className="field" value={filters[column.id] ?? ''} onChange={(e) => onFilters((f) => ({ ...f, [column.id]: e.target.value }))}>
-            <option value="">{column.type === 'person' ? 'Anyone' : 'All'}</option>
+            <option value="">{column.type === 'person' ? tr('Anyone') : tr('All')}</option>
             {column.type === 'checkbox' && (
               <>
                 <option value="yes">{column.name}</option>
-                <option value="no">Not {column.name.toLowerCase()}</option>
+                <option value="no">{tr('Not')}{' '}{column.name.toLowerCase()}</option>
               </>
             )}
             {column.type === 'select' && (
@@ -1052,12 +1080,12 @@ function FilterSheet({
                     {option}
                   </option>
                 ))}
-                <option value={NONE}>Empty</option>
+                <option value={NONE}>{tr('Empty')}</option>
               </>
             )}
             {column.type === 'person' && (
               <>
-                <option value={String(userId)}>Me</option>
+                <option value={String(userId)}>{tr('Me')}</option>
                 {members
                   .filter((m) => m.id !== userId)
                   .map((m) => (
@@ -1065,14 +1093,14 @@ function FilterSheet({
                       {memberName(m)}
                     </option>
                   ))}
-                <option value={NONE}>Nobody</option>
+                <option value={NONE}>{tr('Nobody')}</option>
               </>
             )}
           </select>
         </label>
       ))}
       <label className="field-group">
-        <span className="label">Sort by</span>
+        <span className="label">{tr('Sort by')}</span>
         <select
           className="field"
           value={`${sort.column}|${sort.descending ? 'd' : 'a'}`}
@@ -1081,21 +1109,21 @@ function FilterSheet({
             onSort({ column, descending: direction === 'd' })
           }}
         >
-          <option value="no|a">Oldest first</option>
-          <option value="no|d">Newest first</option>
+          <option value="no|a">{tr('Oldest first')}</option>
+          <option value="no|d">{tr('Newest first')}</option>
           {columns.flatMap((c) => [
             <option key={`${c.id}a`} value={`${c.id}|a`}>
-              {c.name}, A to Z
+              {tr('{name}, A to Z', { name: c.name })}
             </option>,
             <option key={`${c.id}d`} value={`${c.id}|d`}>
-              {c.name}, Z to A
+              {tr('{name}, Z to A', { name: c.name })}
             </option>,
           ])}
         </select>
       </label>
       {boardColumn && (
         <label className="field-group">
-          <span className="label">Group the board by</span>
+          <span className="label">{tr('Group the board by')}</span>
           <select className="field" value={boardColumn.id} onChange={(e) => onGroupBy(e.target.value)}>
             {filterable.map((c) => (
               <option key={c.id} value={c.id}>
@@ -1167,26 +1195,26 @@ function ColumnsSheet({
   if (adding) {
     return (
       <Sheet
-        title="Add a column"
+        title={tr('Add a column')}
         onBack={backToList}
         onClose={onClose}
         foot={
           <>
             <button type="button" className="text-btn" onClick={backToList}>
-              Cancel
+              {tr('Cancel')}
             </button>
             <button type="button" className="primary-btn" disabled={busy || !name.trim()} onClick={() => void run(() => api.addColumn(workspaceId, tableId, name, type), backToList)}>
-              Add column
+              {tr('Add column')}
             </button>
           </>
         }
       >
         <label className="field-group">
-          <span className="label">Name</span>
-          <input className="field" autoFocus maxLength={60} placeholder="Page, Browser, Priority…" value={name} onChange={(e) => setName(e.target.value)} />
+          <span className="label">{tr('Name')}</span>
+          <input className="field" autoFocus maxLength={60} placeholder={tr('Page, Browser, Priority…')} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        <div className="field-group" role="radiogroup" aria-label="What it holds">
-          <span className="label">What it holds</span>
+        <div className="field-group" role="radiogroup" aria-label={tr('What it holds')}>
+          <span className="label">{tr('What it holds')}</span>
           <div className="type-list">
             {COLUMN_TYPES.map((t) => (
               <button key={t.type} type="button" className="type-row" role="radio" aria-checked={type === t.type} onClick={() => setType(t.type)}>
@@ -1215,7 +1243,7 @@ function ColumnsSheet({
           foot={
             <>
               <button type="button" className="text-btn" onClick={backToList}>
-                Cancel
+                {tr('Cancel')}
               </button>
               <button
                 type="button"
@@ -1223,25 +1251,25 @@ function ColumnsSheet({
                 disabled={busy || !name.trim() || name.trim() === editing.name}
                 onClick={() => void run(() => api.updateColumn(workspaceId, tableId, editing.id, { name }), backToList)}
               >
-                Save
+                {tr('Save')}
               </button>
             </>
           }
         >
           <label className="field-group">
-            <span className="label">Name</span>
+            <span className="label">{tr('Name')}</span>
             <input className="field" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
           </label>
-          <p className="task-meta">Holds: {typeLabel(editing.type)}. This can't change once a column is made.</p>
+          <p className="task-meta">{tr('Holds:')}{' '}{typeLabel(editing.type)}{tr('. This can\'t change once a column is made.')}</p>
           <div className="panel-rows">
             <button type="button" className="more-row" disabled={busy || index === 0} onClick={() => void run(() => api.updateColumn(workspaceId, tableId, editing.id, { position: index - 1 }))}>
-              <span className="person-name">Move earlier</span>
+              <span className="person-name">{tr('Move earlier')}</span>
             </button>
             <button type="button" className="more-row" disabled={busy || index === columns.length - 1} onClick={() => void run(() => api.updateColumn(workspaceId, tableId, editing.id, { position: index + 1 }))}>
-              <span className="person-name">Move later</span>
+              <span className="person-name">{tr('Move later')}</span>
             </button>
             <button type="button" className="more-row danger-row" onClick={() => setRemoving(true)}>
-              <span className="person-name">Remove column</span>
+              <span className="person-name">{tr('Remove column')}</span>
             </button>
           </div>
           {errorLine}
@@ -1250,8 +1278,8 @@ function ColumnsSheet({
           <ConfirmAction
             danger
             icon="trash"
-            title={`Remove ${editing.name}?`}
-            confirmLabel="Remove column"
+            title={tr('Remove {name}?', { name: editing.name })}
+            confirmLabel={tr('Remove column')}
             onCancel={() => setRemoving(false)}
             onConfirm={async () => {
               onChanged(await api.deleteColumn(workspaceId, tableId, editing.id))
@@ -1259,7 +1287,7 @@ function ColumnsSheet({
               backToList()
             }}
           >
-            <p>Everything in this column is lost for everyone. This can't be undone.</p>
+            <p>{tr('Everything in this column is lost for everyone. This can\'t be undone.')}</p>
           </ConfirmAction>
         )}
       </>
@@ -1268,7 +1296,7 @@ function ColumnsSheet({
 
   return (
     <Sheet
-      title="Columns"
+      title={tr('Columns')}
       onClose={onClose}
       foot={
         <>
@@ -1283,10 +1311,10 @@ function ColumnsSheet({
             }}
           >
             <Icon name="plus" />
-            Add a column
+            {tr('Add a column')}
           </button>
           <button type="button" className="primary-btn" onClick={onClose}>
-            Done
+            {tr('Done')}
           </button>
         </>
       }

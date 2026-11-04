@@ -4,8 +4,8 @@ import { Icon } from '../icons'
 import { dueDate, formatTime } from '../time'
 import { formatClock, timeLeft, type TimerState } from '../timer/useTimer'
 import { usePageVisible } from '../visibility'
+import { tr } from '../i18n'
 
-const PRESETS = [1, 5, 10, 15, 25, 45, 60]
 const R = 104
 const CIRCUMFERENCE = 2 * Math.PI * R
 const MINUTE_OPTIONS = Array.from({ length: 181 }, (_, i) => i)
@@ -58,11 +58,11 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
   const linked = openTasks.find((t) => t.id === timer.taskId)
   const label = linked ? timer.label : ''
   const status =
-    timer.status === 'running' ? 'Running' : timer.status === 'paused' ? 'Paused' : timer.status === 'done' ? "Time's up" : 'Ready'
+    timer.status === 'running' ? tr('Running') : timer.status === 'paused' ? tr('Paused') : timer.status === 'done' ? tr('Time\'s up') : tr('Ready')
 
   return (
     <div className="timer-page">
-      <section className="timer-dial-panel" aria-label="Timer">
+      <section className="timer-dial-panel" aria-label={tr('Timer')}>
         <div className={`timer-dial${running ? ' is-running' : ''}${timer.status === 'done' ? ' is-done' : ''}`}>
           <div className="clock-face" />
           <svg viewBox="-150 -150 300 300" aria-hidden="true">
@@ -101,31 +101,31 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
           {setting ? (
             <button className="primary-btn timer-main" onClick={onStart} disabled={timer.duration < 1000}>
               <Icon name="play" />
-              {timer.status === 'done' ? 'Start again' : 'Start'}
+              {timer.status === 'done' ? tr('Start again') : tr('Start')}
             </button>
           ) : running ? (
             <button className="primary-btn timer-main" onClick={onPause}>
               <Icon name="pause" />
-              Pause
+              {tr('Pause')}
             </button>
           ) : (
             <button className="primary-btn timer-main" onClick={onStart}>
               <Icon name="play" />
-              Resume
+              {tr('Resume')}
             </button>
           )}
           {!setting && (
             <>
-              <button className="round-btn" aria-label="Add one minute" onClick={onAddMinute}>
+              <button className="round-btn" aria-label={tr('Add one minute')} onClick={onAddMinute}>
                 +1
               </button>
-              <button className="round-btn" aria-label="Reset timer" onClick={onReset}>
+              <button className="round-btn" aria-label={tr('Reset timer')} onClick={onReset}>
                 <Icon name="undo" />
               </button>
             </>
           )}
           {timer.status === 'done' && (
-            <button className="round-btn" aria-label="Reset timer" onClick={onReset}>
+            <button className="round-btn" aria-label={tr('Reset timer')} onClick={onReset}>
               <Icon name="undo" />
             </button>
           )}
@@ -133,32 +133,12 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
       </section>
 
       <section className={`card glass timer-setup${setting ? '' : ' locked'}`} aria-labelledby="timer-setup-h">
-        <h2 id="timer-setup-h">Set the timer</h2>
-        {!setting && <p className="hint">Pause and reset to change the time.</p>}
+        <h2 id="timer-setup-h">{tr('Set the timer')}</h2>
+        {!setting && <p className="hint">{tr('Pause and reset to change the time.')}</p>}
 
-        <div className="field-group">
-          <span className="label">Quick picks</span>
-          <div className="chips">
-            {PRESETS.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className="chip"
-                disabled={!setting}
-                aria-pressed={timer.duration === m * 60_000}
-                onClick={() => onDuration(m * 60_000)}
-              >
-                {m === 25 ? '25 min · Focus' : m === 60 ? '1 hour' : `${m} min`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="field-group">
-          <span className="label">Exact time</span>
-          <div className="time-wheels">
+        <div className="time-wheels">
             <label className="time-unit">
-              <span className="sr-only">Minutes</span>
+              <span className="sr-only">{tr('Minutes')}</span>
               <select
                 className="time-select"
                 disabled={!setting}
@@ -173,10 +153,10 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
               </select>
             </label>
             <span className="time-colon" aria-hidden="true">
-              min
+              {tr('min')}
             </span>
             <label className="time-unit">
-              <span className="sr-only">Seconds</span>
+              <span className="sr-only">{tr('Seconds')}</span>
               <select
                 className="time-select"
                 disabled={!setting}
@@ -191,13 +171,12 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
               </select>
             </label>
             <span className="time-colon" aria-hidden="true">
-              sec
+              {tr('sec')}
             </span>
-          </div>
         </div>
 
         <label className="field-group">
-          <span className="label">For a task (optional)</span>
+          <span className="sr-only">{tr('For a task (optional)')}</span>
           <select
             className="field timer-task"
             disabled={!setting}
@@ -207,7 +186,7 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
               onTask(task?.id ?? null, task?.title ?? '')
             }}
           >
-            <option value="">No task, just a timer</option>
+            <option value="">{tr('No task, just a timer')}</option>
             {openTasks.map((t) => {
               const due = dueDate(t)
               return (
@@ -218,7 +197,6 @@ export function Timer({ timer, tasks, onDuration, onTask, onStart, onPause, onRe
               )
             })}
           </select>
-          <span className="hint">When time's up you can mark it done in one tap.</span>
         </label>
       </section>
     </div>

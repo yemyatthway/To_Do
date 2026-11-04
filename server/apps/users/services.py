@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied, ValidationError
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
-from .models import EmailCode, TrustedDevice, User
+from .models import EmailCode, RotatedRefresh, TrustedDevice, User
 
 MAX_FAILED_LOGINS = 5
 LOCKOUT_DURATION = timedelta(minutes=15)
@@ -72,8 +72,7 @@ def ban_user(*, user, by, reason=""):
     user.ban_reason = reason.strip()[:255]
     user.save(update_fields=["is_active", "banned_at", "ban_reason"])
     # Refresh tokens die now; access tokens stop working on the next request (inactive users are rejected).
-    for token in OutstandingToken.objects.filter(user=user):
-        BlacklistedToken.objects.get_or_create(token=token)
+    _end_sessions(user)
     return user
 
 
@@ -88,6 +87,7 @@ def unban_user(*, user):
 
 
 def _end_sessions(user):
+    RotatedRefresh.objects.filter(user=user).delete()
     for token in OutstandingToken.objects.filter(user=user):
         BlacklistedToken.objects.get_or_create(token=token)
 

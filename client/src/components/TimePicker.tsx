@@ -1,3 +1,4 @@
+import { tr } from '../i18n'
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1)
 const MINUTES = Array.from({ length: 60 }, (_, i) => i)
 
@@ -21,9 +22,9 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (valu
 
   return (
     <div className="time-picker">
-      <div className="time-wheels" role="group" aria-label="Time">
+      <div className="time-wheels" role="group" aria-label={tr('Time')}>
         <label className="time-unit">
-          <span className="sr-only">Hour</span>
+          <span className="sr-only">{tr('Hour')}</span>
           <select className="time-select" value={hour} onChange={(e) => onChange(join(Number(e.target.value), minute, pm))}>
             {HOURS.map((h) => (
               <option key={h} value={h}>
@@ -36,7 +37,7 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (valu
           :
         </span>
         <label className="time-unit">
-          <span className="sr-only">Minute</span>
+          <span className="sr-only">{tr('Minute')}</span>
           <select className="time-select" value={minute} onChange={(e) => onChange(join(hour, Number(e.target.value), pm))}>
             {MINUTES.map((m) => (
               <option key={m} value={m}>
@@ -45,12 +46,12 @@ export function TimePicker({ value, onChange }: { value: string; onChange: (valu
             ))}
           </select>
         </label>
-        <div className="segmented time-ampm" role="group" aria-label="AM or PM">
+        <div className="segmented time-ampm" role="group" aria-label={tr('AM or PM')}>
           <button type="button" aria-pressed={!pm} onClick={() => onChange(join(hour, minute, false))}>
-            AM
+            {tr('AM')}
           </button>
           <button type="button" aria-pressed={pm} onClick={() => onChange(join(hour, minute, true))}>
-            PM
+            {tr('PM')}
           </button>
         </div>
       </div>

@@ -14,7 +14,10 @@ from django.utils import timezone
 from apps.tasks.models import Task
 
 from .models import PushSubscription, ReminderRun
+from apps.users.language import tr
+
 from .push import send_push
+from apps.chat.services import send_due_scheduled
 from apps.workspaces.digest import send_due_emails
 
 from .reminders import send_due_reminders
@@ -72,7 +75,7 @@ class TestPushView(APIView):
         subscription = serializer.save(request.user)
 
         try:
-            send_push(subscription, "It works!", "This push came from your Django server.")
+            send_push(subscription, tr(request.user, "It works!"), tr(request.user, "This push came from your Django server."))
         except WebPushException as exc:
             detail = exc.response.text if exc.response is not None else str(exc)
             return Response({"detail": f"Push failed: {detail}"}, status=status.HTTP_502_BAD_GATEWAY)
@@ -138,4 +141,4 @@ class SendDueRemindersView(APIView):
         given = request.headers.get("X-Cron-Secret", "")
         if not secret or not hmac.compare_digest(given, secret):
             return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
-        return Response({"sent": send_due_reminders(), "emails": send_due_emails()})
+        return Response({"sent": send_due_reminders(), "emails": send_due_emails(), "messages": send_due_scheduled()})

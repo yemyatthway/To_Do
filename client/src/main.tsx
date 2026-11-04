@@ -3,10 +3,13 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { language } from './i18n'
 import { watchKeyboard } from './keyboard'
 import { listenForPushes } from './live'
 import { startMonitoring } from './monitoring'
 import { registerServiceWorker } from './push'
+
+document.documentElement.lang = language
 
 registerServiceWorker()
 watchKeyboard()

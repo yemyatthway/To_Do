@@ -1,5 +1,6 @@
 const paths = {
   plus: 'M12 5v14M5 12h14',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5',
   attach: 'M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.500 3.500 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8',
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   file: 'M6 3h9l4 4v14H6zM15 3v4h4',
@@ -21,6 +22,7 @@ const paths = {
   timer: 'M10 2h4M12 14l3-3M12 6a8 8 0 1 0 0 16 8 8 0 0 0 0-16z',
   play: 'M7 4.5v15l12-7.5z',
   pause: 'M8 5v14M16 5v14',
+  digits: 'M3 6h18v12H3zM7 10v4M11.500 10h.01M11.500 14h.01M15 10h3v4h-3z',
   clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
   chart: 'M4 20V14M10 20V8M16 20V11M22 20H2',
   moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',

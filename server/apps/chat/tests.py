@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+from datetime import timedelta
 from unittest import mock
 
 from django.db import connection
@@ -8,10 +9,12 @@ from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from apps.notifications.models import PushSubscription
 from apps.social.models import Friendship
 from apps.users.models import User
 
-from .models import Conversation, Message, MessageReaction
+from . import services
+from .models import Conversation, Message, MessageReaction, ScheduledMessage
 
 PASSWORD = "Sunny-Clock-2026"
 KEY = "appid.keyname:topsecret"
@@ -312,3 +315,105 @@ class RepliesAndReactionsTests(APITestCase):
         self.react(theirs)
         self.assertEqual(send_push.call_count, 1)
         self.assertIn("Reacted ❤️ to your message", send_push.call_args.args)
+
+
+@override_settings(PUSH_SEND_ASYNC=False, LIVE_SEND_ASYNC=False)
+@mock.patch("apps.social.services.send_push")
+class ScheduledMessageTests(APITestCase):
+    def setUp(self):
+        now = timezone.now()
+        self.mia = User.objects.create_user("mia@example.com", PASSWORD, full_name="Mia", email_verified_at=now, reminders_enabled=True)
+        self.aung = User.objects.create_user("aung@example.com", PASSWORD, full_name="Ko Aung", email_verified_at=now, reminders_enabled=True)
+        self.sara = User.objects.create_user("sara@example.com", PASSWORD, full_name="Sara", email_verified_at=now)
+        Friendship.objects.create(requester=self.mia, addressee=self.aung, status=Friendship.Status.ACCEPTED)
+        self.client.force_authenticate(self.mia)
+        PushSubscription.objects.create(user=self.aung, endpoint="https://push.example.com/aung", p256dh="k", auth="a")
+        self.chat = self.client.post(f"/api/chat/with/{self.aung.id}/").data["id"]
+        self.url = f"/api/chat/{self.chat}/scheduled/"
+
+    def later(self, **delta):
+        return (timezone.now() + timedelta(**(delta or {"hours": 1}))).isoformat()
+
+    def add(self, text="Happy birthday", **more):
+        return self.client.post(self.url, {"text": text, "send_at": self.later(), **more}, format="json")
+
+    def messages(self):
+        return self.client.get(f"/api/chat/{self.chat}/messages/").data["messages"]
+
+    def test_it_waits_for_its_time_then_sends_like_a_normal_message(self, send_push):
+        made = self.add()
+        self.assertEqual(made.status_code, 201)
+        self.assertEqual(made.data["status"], "pending")
+        self.assertEqual(self.messages(), [])
+        self.assertEqual(services.send_due_scheduled(), 0)
+        self.assertEqual(services.send_due_scheduled(timezone.now() + timedelta(hours=2)), 1)
+        message = self.messages()[0]
+        self.assertEqual((message["text"], message["sender"]), ("Happy birthday", self.mia.id))
+        self.assertEqual(self.client.get(self.url).data, [])
+        self.assertEqual(send_push.call_count, 1)
+        self.assertEqual(services.send_due_scheduled(timezone.now() + timedelta(hours=2)), 0)
+
+    def test_the_words_are_stored_encrypted(self, send_push):
+        self.add("Secret plan")
+        self.assertNotIn("Secret plan", ScheduledMessage.objects.get().body)
+
+    def test_the_time_must_make_sense(self, send_push):
+        for bad in ("nope", None, 5, "2026-11-04T10:00:00", self.later(hours=-1), self.later(days=400), "2026-13-45T10:00:00Z"):
+            self.assertEqual(self.client.post(self.url, {"text": "Hi", "send_at": bad}, format="json").status_code, 400, bad)
+        self.assertEqual(self.client.post(self.url, {"text": "  ", "send_at": self.later()}, format="json").status_code, 400)
+
+    def test_only_you_see_or_change_yours(self, send_push):
+        item = self.add().data["id"]
+        self.client.force_authenticate(self.aung)
+        self.assertEqual(self.client.get(self.url).data, [])
+        self.assertEqual(self.client.delete(f"{self.url}{item}/").status_code, 404)
+        self.assertEqual(self.client.patch(f"{self.url}{item}/", {"text": "Hacked"}, format="json").status_code, 404)
+        self.assertEqual(self.client.post(f"{self.url}{item}/").status_code, 404)
+        self.client.force_authenticate(self.sara)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+        self.assertEqual(self.client.post(self.url, {"text": "x", "send_at": self.later()}, format="json").status_code, 404)
+
+    def test_change_delete_and_send_now(self, send_push):
+        item = self.add().data["id"]
+        changed = self.client.patch(f"{self.url}{item}/", {"text": "New words", "send_at": self.later(hours=3)}, format="json").data
+        self.assertEqual(changed["text"], "New words")
+        self.assertEqual(self.client.post(f"{self.url}{item}/").status_code, 201)
+        self.assertEqual(self.messages()[0]["text"], "New words")
+        self.assertEqual(self.client.get(self.url).data, [])
+        other = self.add().data["id"]
+        self.assertEqual(self.client.delete(f"{self.url}{other}/").status_code, 204)
+        self.assertEqual(self.client.delete(f"{self.url}{other}/").status_code, 404)
+
+    def test_no_longer_friends_means_it_fails_and_you_are_told(self, send_push):
+        PushSubscription.objects.create(user=self.mia, endpoint="https://push.example.com/mia", p256dh="k", auth="a")
+        self.add()
+        Friendship.objects.all().delete()
+        self.assertEqual(services.send_due_scheduled(timezone.now() + timedelta(hours=2)), 0)
+        item = self.client.get(self.url).data[0]
+        self.assertEqual(item["status"], "failed")
+        self.assertIn("no longer friends", item["error"])
+        self.assertEqual(self.messages(), [])
+        self.assertIn("A scheduled message wasn't sent", send_push.call_args.args)
+        self.assertEqual(self.add().status_code, 403)
+
+    def test_a_crashed_run_is_retried_without_posting_twice(self, send_push):
+        self.add()
+        now = timezone.now() + timedelta(hours=2)
+        item = ScheduledMessage.objects.get()
+        services.send(self.mia, Conversation.objects.get(pk=self.chat), item.text, client_id=item.client_id)
+        ScheduledMessage.objects.update(status="sending", claimed_at=now - timedelta(minutes=6))
+        self.assertEqual(services.send_due_scheduled(now), 1)
+        self.assertEqual(len(self.messages()), 1)
+        self.assertFalse(ScheduledMessage.objects.exists())
+
+    def test_one_being_sent_right_now_cannot_be_changed(self, send_push):
+        item = self.add().data["id"]
+        ScheduledMessage.objects.update(status="sending", claimed_at=timezone.now())
+        self.assertEqual(self.client.delete(f"{self.url}{item}/").status_code, 404)
+        ScheduledMessage.objects.update(send_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(services.send_due_scheduled(), 0)
+
+    def test_there_is_a_limit(self, send_push):
+        with mock.patch("apps.chat.services.MAX_SCHEDULED", 1):
+            self.assertEqual(self.add().status_code, 201)
+            self.assertEqual(self.add().status_code, 400)

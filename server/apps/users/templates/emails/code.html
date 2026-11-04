@@ -1,4 +1,5 @@
 {% extends "emails/base.html" %}
+{% load email_text %}
 
 {% block hero %}
 <p style="margin:26px 0 0;font:600 12px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#255fc0;" class="hero-eyebrow">{{ eyebrow }}</p>
@@ -22,7 +23,7 @@
       <table role="presentation" cellpadding="0" cellspacing="0" border="0">
         <tr>
           <td valign="middle" style="padding-right:8px;"><img src="{{ icons }}timer.png" width="16" height="16" alt="" style="display:block;border:0;"></td>
-          <td valign="middle" class="text" style="font-size:13px;line-height:1;color:#4b5b78;white-space:nowrap;">Expires in <strong class="strong" style="color:#14213d;">{{ minutes }} minutes</strong></td>
+          <td valign="middle" class="text" style="font-size:13px;line-height:1;color:#4b5b78;white-space:nowrap;">{% say "Expires in" %} <strong class="strong" style="color:#14213d;">{% say "{minutes} minutes" minutes=minutes %}</strong></td>
         </tr>
       </table>
     </td>
@@ -37,8 +38,8 @@
         <tr>
           <td valign="top" style="padding:2px 12px 0 0;"><img src="{{ icons }}shield.png" width="20" height="20" alt="" style="display:block;border:0;"></td>
           <td valign="top" class="alert" style="font-size:14px;line-height:1.6;color:#6b5428;">
-            <strong>Signing in from:</strong> {{ device }}<br>
-            Wasn't you? Don't share this code, and change your password in the app.
+            <strong>{% say "Signing in from:" %}</strong> {{ device }}<br>
+            {% say "Wasn't you? Don't share this code, and change your password in the app." %}
           </td>
         </tr>
       </table>
@@ -50,5 +51,5 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:30px;">
   <tr><td class="rule" style="border-top:1px solid #edf1f7;font-size:0;line-height:0;">&nbsp;</td></tr>
 </table>
-<p class="muted" style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;">Only the newest code works. Didn't ask for this? You can ignore this email. We'll never ask for this code by phone, message or email.</p>
+<p class="muted" style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#8a97ad;">{% say "Only the newest code works. Didn't ask for this? You can ignore this email. We'll never ask for this code by phone, message or email." %}</p>
 {% endblock %}

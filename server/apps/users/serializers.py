@@ -52,7 +52,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id", "email", "email_verified", "code_expires_at", "full_name", "username", "username_confirmed", "timezone",
-            "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "workspace_emails", "is_staff", "date_joined",
+            "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "workspace_emails", "language", "is_staff", "date_joined",
         ]
         read_only_fields = ["id", "email_verified", "is_staff", "date_joined"]
         # validate_username gives the friendlier "taken" message (and allows keeping your own).
@@ -103,6 +103,7 @@ class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=160)
     password = serializers.CharField(trim_whitespace=False, write_only=True)
     timezone = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    language = serializers.ChoiceField(choices=["en", "my"], required=False)
 
     def validate_full_name(self, value):
         value = value.strip()

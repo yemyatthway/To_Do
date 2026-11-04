@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { Task } from '../api'
+import { useHourPress } from '../hourPress'
 import { gsap } from '../motion'
-import { usePageVisible } from '../visibility'
+import { useTicker } from '../useTicker'
+import { tr } from '../i18n'
 
-const LONG_PRESS_MS = 550
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1)
 
 function point(deg: number, r: number) {
@@ -16,23 +17,6 @@ function wedgePath(hour: number) {
   const [x0, y0] = point((hour - 0.5) * 30, r)
   const [x1, y1] = point((hour + 0.5) * 30, r)
   return `M0 0 L${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1} Z`
-}
-
-/** Re-renders every `ms` while the tab is visible. */
-function useTicker(ms: number) {
-  const [now, setNow] = useState(() => new Date())
-  const visible = usePageVisible()
-  useEffect(() => {
-    if (!visible) return
-    const tick = () => setNow(new Date())
-    const catchUp = setTimeout(tick, 0) // right away after the tab was hidden
-    const id = setInterval(tick, ms)
-    return () => {
-      clearTimeout(catchUp)
-      clearInterval(id)
-    }
-  }, [ms, visible])
-  return now
 }
 
 interface ClockProps {
@@ -48,8 +32,7 @@ interface ClockProps {
 export function Clock({ tasks, showHands, selectedHour, freshTaskId, onSelectHour, onLongPressHour }: ClockProps) {
   // Today: a ticking second hand. Other days: faded hands showing the time now, updated each half minute.
   const now = useTicker(showHands ? 1000 : 30_000)
-  const timer = useRef<number | undefined>(undefined)
-  const longPressed = useRef(false)
+  const press = useHourPress(onSelectHour, onLongPressHour)
   const secondHand = useRef<SVGLineElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const ticked = useRef(false)
@@ -84,27 +67,6 @@ export function Clock({ tasks, showHands, selectedHour, freshTaskId, onSelectHou
     countByHour.set(h, (countByHour.get(h) ?? 0) + 1)
   }
 
-  function startPress(hour: number) {
-    longPressed.current = false
-    window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => {
-      longPressed.current = true
-      onLongPressHour(hour)
-    }, LONG_PRESS_MS)
-  }
-
-  const cancelPress = () => window.clearTimeout(timer.current)
-
-  function click(hour: number) {
-    cancelPress()
-    // The click that ends a long-press shouldn't also filter.
-    if (longPressed.current) {
-      longPressed.current = false
-      return
-    }
-    onSelectHour(hour)
-  }
-
   const s = now.getSeconds()
   const m = now.getMinutes() + s / 60
   const h = (now.getHours() % 12) + m / 60
@@ -112,7 +74,7 @@ export function Clock({ tasks, showHands, selectedHour, freshTaskId, onSelectHou
   return (
     <div className="clock" data-tour="clock">
       <div className="clock-face" />
-      <svg ref={svgRef} viewBox="-150 -150 300 300" role="group" aria-label="Clock showing the next 12 hours. Tap an hour to see its tasks, press and hold to add one.">
+      <svg ref={svgRef} viewBox="-150 -150 300 300" role="group" aria-label={tr('Clock showing the next 12 hours. Tap an hour to see its tasks, press and hold to add one.')}>
         {selectedHour && <path d={wedgePath(selectedHour)} fill="var(--wedge)" />}
 
         {HOURS.map((hour) => {
@@ -158,18 +120,8 @@ export function Clock({ tasks, showHands, selectedHour, freshTaskId, onSelectHou
               role="button"
               tabIndex={0}
               aria-pressed={selectedHour === hour}
-              aria-label={`${hour} o'clock, ${count} ${count === 1 ? 'task' : 'tasks'}`}
-              onPointerDown={() => startPress(hour)}
-              onPointerUp={cancelPress}
-              onPointerLeave={cancelPress}
-              onClick={() => click(hour)}
-              onContextMenu={(e) => e.preventDefault()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  onSelectHour(hour)
-                }
-              }}
+              aria-label={tr('{hour} o\'clock, {count} {value}', { hour, count, value: count === 1 ? 'task' : 'tasks' })}
+              {...press(hour)}
             >
               <circle cx={x} cy={y} r="17" fill="transparent" />
               <text x={x} y={y} textAnchor="middle" dominantBaseline="central">

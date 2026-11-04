@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatReply, Task, TaskInput } from './api'
+import { tr } from './i18n'
 
 /**
  * Update first, sync after. A change shows on screen at once and waits here (on the device, so it
@@ -310,7 +311,7 @@ export class Outbox {
       this.events.onTaskGone?.(op.taskId)
       return
     }
-    const message = err.message || "This couldn't be saved."
+    const message = err.message || tr('This couldn\'t be saved.')
     if (op.kind === 'task.delete') this.remove(op) // the task simply comes back
     else this.mutate((ops) => ops.map((o) => (o.key === op.key ? { ...o, failed: message } : o)))
     this.events.onFailed?.(op, message)

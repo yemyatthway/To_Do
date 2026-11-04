@@ -3,11 +3,12 @@ import type { Task } from '../api'
 import type { ShownTask } from '../outbox'
 import { Icon } from '../icons'
 import { dueDate, formatShortDay, formatTime, relativeLabel, sameDay } from '../time'
+import { tr } from '../i18n'
 
 const REVEAL = 92
-const CATEGORY_LABEL = { work: 'Work', personal: 'Personal', health: 'Health' } as const
+const CATEGORY_LABEL = { work: tr('Work'), personal: tr('Personal'), health: tr('Health') } as const
 
-const SYNC_LABEL = { saving: 'Saving…', waiting: 'Waiting for network', failed: 'Not saved · tap to fix' } as const
+const SYNC_LABEL = { saving: tr('Saving…'), waiting: tr('Waiting for network'), failed: tr('Not saved · tap to fix') } as const
 
 interface TaskRowProps {
   task: Task & Pick<ShownTask, 'sync'>
@@ -27,12 +28,12 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }
 
   const due = dueDate(task)
   // From another day (an overdue task), say which day too.
-  const when = due ? (sameDay(due, now) ? formatTime(due) : `${formatShortDay(due)}, ${formatTime(due)}`) : 'Anytime'
+  const when = due ? (sameDay(due, now) ? formatTime(due) : `${formatShortDay(due)}, ${formatTime(due)}`) : tr('Anytime')
   // "Remind a friend": who put it in your list, or who you added yours for.
   const people = task.added_by_name
-    ? `from ${task.added_by_name.split(' ')[0]}`
+    ? tr('from {value}', { value: task.added_by_name.split(' ')[0] })
     : task.shared_with?.length
-      ? `with ${task.shared_with.join(', ')}`
+      ? tr('with {value}', { value: task.shared_with.join(', ') })
       : ''
   const meta = [when, CATEGORY_LABEL[task.category], people].filter(Boolean).join(' · ')
   const relative = relativeLabel(task, now)
@@ -82,7 +83,7 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }
       {offset < 0 && (
         <button className="swipe-delete" onClick={onDelete} tabIndex={revealed ? 0 : -1}>
           <Icon name="trash" />
-          Delete
+          {tr('Delete')}
         </button>
       )}
       <div
@@ -97,25 +98,25 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }
           className={`check${task.done ? ' on' : ''}`}
           role="checkbox"
           aria-checked={task.done}
-          aria-label={`Mark ${task.title} ${task.done ? 'not done' : 'done'}`}
+          aria-label={tr('Mark {title} {value}', { title: task.title, value: task.done ? tr('not done') : tr('done') })}
           onClick={onToggle}
         >
           {task.done && <Icon name="check" />}
         </button>
-        <button className="task-main" onClick={onOpen} aria-label={`Edit ${task.title}, ${meta}`}>
+        <button className="task-main" onClick={onOpen} aria-label={tr('Edit {title}, {meta}', { title: task.title, meta })}>
           <span className="task-title">{task.title}</span>
           <span className="task-meta">
             {meta}
             {task.sync && <span className={`task-sync ${task.sync}`}> · {SYNC_LABEL[task.sync]}</span>}
           </span>
         </button>
-        {fresh && <span className="badge badge-new">New</span>}
+        {fresh && <span className="badge badge-new">{tr('New')}</span>}
         {!fresh && relative && (
-          <span className={`badge ${relative === 'Overdue' ? 'badge-late' : 'badge-soon'}`}>{relative}</span>
+          <span className={`badge ${relative === tr('Overdue') ? 'badge-late' : 'badge-soon'}`}>{relative}</span>
         )}
-        {!fresh && !relative && task.priority === 'high' && !task.done && <span className="badge badge-high">High</span>}
+        {!fresh && !relative && task.priority === 'high' && !task.done && <span className="badge badge-high">{tr('High')}</span>}
         {action}
-        <button className="row-trash" aria-label={`Delete ${task.title}`} onClick={onDelete}>
+        <button className="row-trash" aria-label={tr('Delete {title}', { title: task.title })} onClick={onDelete}>
           <Icon name="trash" />
         </button>
       </div>

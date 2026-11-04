@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { tr } from './i18n'
 
 export type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace' | 'notifications'
 
@@ -6,13 +7,13 @@ export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles' | 'acti
 export type WorkspaceChild = WorkspaceSection | 'page' | 'table'
 
 export const SETTINGS_SECTIONS = {
-  personal: 'Personal info',
-  preferences: 'Preferences',
-  password: 'Change password',
-  devices: 'Trusted devices',
-  deleted: 'Recently deleted',
-  help: 'Help and account',
-  delete: 'Delete account',
+  personal: tr('Personal info'),
+  preferences: tr('Preferences'),
+  password: tr('Change password'),
+  devices: tr('Trusted devices'),
+  deleted: tr('Recently deleted'),
+  help: tr('Help and account'),
+  delete: tr('Delete account'),
 } as const
 
 export type SettingsSection = keyof typeof SETTINGS_SECTIONS

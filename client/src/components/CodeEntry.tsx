@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons'
+import { tr } from '../i18n'
 
 export interface CodeSent {
   /** Seconds until "Send again" works. */
@@ -80,7 +81,7 @@ export function CodeEntry({
       setExpiresAt(sent.expires_at ? new Date(sent.expires_at).getTime() : null)
       submitted.current = ''
       setCode('')
-      setInfo('New code sent. Check your inbox (and spam folder).')
+      setInfo(tr('New code sent. Check your inbox (and spam folder).'))
       inputRef.current?.focus()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -93,7 +94,7 @@ export function CodeEntry({
     <div className="code-entry">
       <div className="field-group">
         <label className="label" htmlFor="code-input">
-          6-digit code
+          {tr('6-digit code')}
         </label>
         <input
           id="code-input"
@@ -124,7 +125,7 @@ export function CodeEntry({
         {left !== null && (
           <span className={`code-expiry${expired ? ' expired' : left <= 60 ? ' soon' : ''}`} aria-live={left <= 60 ? 'polite' : 'off'}>
             <Icon name="timer" />
-            {expired ? 'This code has expired. Send a new one below.' : <>Code expires in <strong>{mmss(left)}</strong></>}
+            {expired ? tr('This code has expired. Send a new one below.') : <>{tr('Code expires in')}{' '}<strong>{mmss(left)}</strong></>}
           </span>
         )}
         {error && (
@@ -136,13 +137,12 @@ export function CodeEntry({
       </div>
 
       <button type="button" className="primary-btn" disabled={busy || code.length !== 6 || expired} style={{ height: 52 }} onClick={() => void submit()}>
-        {busy ? 'Checking…' : submitLabel}
+        {busy ? tr('Checking…') : submitLabel}
       </button>
 
       <p className="list-sub" style={{ margin: 0, textAlign: 'center' }}>
-        Didn't get it?{' '}
-        <button type="button" className="link-btn" disabled={wait > 0} onClick={() => void resend()}>
-          {wait > 0 ? `Send again in ${wait}s` : 'Send again'}
+        {tr('Didn\'t get it?')}{' '}<button type="button" className="link-btn" disabled={wait > 0} onClick={() => void resend()}>
+          {wait > 0 ? tr('Send again in {wait}s', { wait }) : tr('Send again')}
         </button>
       </p>
     </div>

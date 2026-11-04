@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { gsap, useGsap } from '../motion'
+import { tr } from '../i18n'
 
 export interface TourStep {
   /** Matches a data-tour="…" attribute. The first visible match is used (mobile and desktop differ). */
@@ -134,8 +135,7 @@ export function Tour({ steps, onClose }: { steps: TourStep[]; onClose: (finished
 
       <div ref={cardRef} className="tour-card glass" style={cardStyle}>
         <span className="tour-step">
-          Step {index + 1} of {steps.length}
-        </span>
+          {tr('Step {value} of {length}', { value: index + 1, length: steps.length })}</span>
         <h2 id="tour-title">{step.title}</h2>
         <p id="tour-body">{step.body}</p>
         <div className="tour-dots" aria-hidden="true">
@@ -145,16 +145,16 @@ export function Tour({ steps, onClose }: { steps: TourStep[]; onClose: (finished
         </div>
         <div className="tour-actions">
           <button type="button" className="link-btn" onClick={() => onClose(false)}>
-            Skip tour
+            {tr('Skip tour')}
           </button>
           <span style={{ display: 'flex', gap: 8 }}>
             {index > 0 && (
               <button type="button" className="text-btn" onClick={back}>
-                Back
+                {tr('Back')}
               </button>
             )}
             <button ref={nextRef} type="button" className="primary-btn tour-next" onClick={next}>
-              {last ? 'Finish' : 'Next'}
+              {last ? tr('Finish') : tr('Next')}
             </button>
           </span>
         </div>
@@ -178,13 +178,13 @@ export function WelcomeDialog({ name, onAnswer }: { name: string; onAnswer: (fir
             <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2" />
           </svg>
         </span>
-        <h2 id="welcome-title">Welcome{name ? `, ${name.split(' ')[0]}` : ''}!</h2>
-        <p id="welcome-body">Is this your first time using Todo Clock? We can show you around in about a minute.</p>
+        <h2 id="welcome-title">{tr('Welcome')}{name ? `, ${name.split(' ')[0]}` : ''}!</h2>
+        <p id="welcome-body">{tr('Is this your first time using Todo Clock? We can show you around in about a minute.')}</p>
         <button ref={yesRef} type="button" className="primary-btn" onClick={() => onAnswer(true)}>
-          Yes, show me around
+          {tr('Yes, show me around')}
         </button>
         <button type="button" className="text-btn" onClick={() => onAnswer(false)}>
-          No, I've used it before
+          {tr('No, I\'ve used it before')}
         </button>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useLoadingStage } from './loadingStage'
+import { tr } from '../i18n'
 
 /**
  * What to show while something loads: nothing under a second, then `skeleton` (the shape of what's
@@ -9,11 +10,11 @@ export function Loading({ active = true, skeleton, onRetry, quiet }: { active?: 
   const { stage, restart } = useLoadingStage(active)
   if (stage === 'hidden') return null
   return (
-    <div className="loading" role="status" aria-busy="true" aria-label="Loading">
+    <div className="loading" role="status" aria-busy="true" aria-label={tr('Loading')}>
       <div aria-hidden="true">{skeleton}</div>
       {stage === 'slow' && !quiet && (
         <div className="still-working">
-          <span>Still working…</span>
+          <span>{tr('Still working…')}</span>
           {onRetry && (
             <button
               type="button"
@@ -23,7 +24,7 @@ export function Loading({ active = true, skeleton, onRetry, quiet }: { active?: 
                 onRetry()
               }}
             >
-              Try again
+              {tr('Try again')}
             </button>
           )}
         </div>

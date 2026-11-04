@@ -6,6 +6,7 @@ import { gsap, useGsap } from '../motion'
 import { dueDate, formatShortDay, formatTime } from '../time'
 import { initials } from '../user'
 import { Loading, SkeletonRows } from './Loading'
+import { tr } from '../i18n'
 
 interface SendTasksDialogProps {
   /** Your own tasks to choose from. */
@@ -73,29 +74,29 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const friend = friends?.find((f) => f.id === friendId)
-    if (!friend) return setError('Pick a friend to send to.')
-    if (selected.size === 0) return setError('Pick at least one task.')
+    if (!friend) return setError(tr('Pick a friend to send to.'))
+    if (selected.size === 0) return setError(tr('Pick at least one task.'))
     setBusy(true)
     const name = nameOf(friend)
-    const plural = (n: number) => `${n} task${n === 1 ? '' : 's'}`
+    const plural = (n: number) => tr('{n} task{value}', { n, value: n === 1 ? '' : 's' })
     try {
       if (mode === 'copy') {
         await social.send(friend.id, [...selected], message.trim())
-        onSent(`Sent ${plural(selected.size)}`, `${name} can add them to their list.`)
+        onSent(tr('Sent {value}', { value: plural(selected.size) }), tr('{name} can add them to their list.', { name }))
         return
       }
       const result = await social.remind(friend.id, [...selected])
       if (result.mode === 'inbox') {
-        onSent(`Sent to ${name}'s inbox`, `${name} adds tasks from friends themself, so they'll choose to add it.`)
+        onSent(tr('Sent to {name}\'s inbox', { name }), tr('{name} adds tasks from friends themself, so they\'ll choose to add it.', { name }))
         return
       }
       const notes = [
-        result.already ? `${plural(result.already)} they already had` : '',
-        result.past ? `${plural(result.past)} already over, skipped` : '',
+        result.already ? tr('{value} they already had', { value: plural(result.already) }) : '',
+        result.past ? tr('{value} already over, skipped', { value: plural(result.past) }) : '',
       ].filter(Boolean)
       onSent(
-        result.added ? `Added ${plural(result.added)} for ${name}` : `Nothing new for ${name}`,
-        [result.added ? "They'll get a reminder, and your changes reach them too." : '', ...notes].filter(Boolean).join(' · '),
+        result.added ? tr('Added {value} for {name}', { value: plural(result.added), name }) : tr('Nothing new for {name}', { name }),
+        [result.added ? tr('They\'ll get a reminder, and your changes reach them too.') : '', ...notes].filter(Boolean).join(' · '),
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -107,34 +108,33 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
     <div className="scrim center" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <form ref={cardRef} className="send-card glass" role="dialog" aria-modal="true" aria-labelledby="send-h" onSubmit={submit} noValidate>
         <div className="sheet-head">
-          <h2 id="send-h">Share with a friend</h2>
-          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+          <h2 id="send-h">{tr('Share with a friend')}</h2>
+          <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={onClose}>
             <Icon name="x" />
           </button>
         </div>
-        <div className="segmented" role="group" aria-label="How to share">
+        <div className="segmented" role="group" aria-label={tr('How to share')}>
           <button type="button" aria-pressed={mode === 'remind'} onClick={() => setMode('remind')}>
-            Add &amp; remind
+            {tr('Add & remind')}
           </button>
           <button type="button" aria-pressed={mode === 'copy'} onClick={() => setMode('copy')}>
-            Send a copy
+            {tr('Send a copy')}
           </button>
         </div>
         <p className="list-sub" style={{ margin: 0 }}>
           {mode === 'remind'
-            ? "It goes straight into their list with a reminder, as a shared plan: changes either of you make reach the other, with a notification."
-            : 'They get a copy in their inbox and choose whether to add it. Later changes stay separate.'}{' '}
-          They never see the rest of your tasks.
+            ? tr('It goes straight into their list with a reminder, as a shared plan: changes either of you make reach the other, with a notification.')
+            : tr('They get a copy in their inbox and choose whether to add it. Later changes stay separate.')}{' '}{tr('They never see the rest of your tasks.')}
         </p>
 
         <div className="field-group">
-          <span className="label">To</span>
+          <span className="label">{tr('To')}</span>
           {friends === null ? (
             <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} />
           ) : friends.length === 0 ? (
-            <p className="hint">You don't have any friends here yet. Add some on the Friends screen first.</p>
+            <p className="hint">{tr('You don\'t have any friends here yet. Add some on the Friends screen first.')}</p>
           ) : (
-            <div className="chips" role="radiogroup" aria-label="Friend">
+            <div className="chips" role="radiogroup" aria-label={tr('Friend')}>
               {friends.map((f) => (
                 <button
                   key={f.id}
@@ -163,7 +163,7 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
         <fieldset className="field-group send-tasks">
           <div className="send-tasks-head">
             <legend className="label">
-              Tasks <span className="hint">({selected.size} of {choices.length} selected)</span>
+              {tr('Tasks')}{' '}<span className="hint">{tr('({size} of {length} selected)', { size: selected.size, length: choices.length })}</span>
             </legend>
             {choices.length > 1 && (
               <button
@@ -174,12 +174,12 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
                   setError('')
                 }}
               >
-                {allSelected ? 'Clear' : 'Select all'}
+                {allSelected ? tr('Clear') : tr('Select all')}
               </button>
             )}
           </div>
           {choices.length === 0 ? (
-            <p className="hint">You have no open tasks to send.</p>
+            <p className="hint">{tr('You have no open tasks to send.')}</p>
           ) : (
             <ul>
               {choices.map((t) => {
@@ -194,7 +194,7 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
                       </span>
                       <span className="person-main">
                         <span className="task-title">{t.title}</span>
-                        <span className="task-meta">{due ? `${formatShortDay(due)} · ${formatTime(due)}` : 'Anytime'}</span>
+                        <span className="task-meta">{due ? `${formatShortDay(due)} · ${formatTime(due)}` : tr('Anytime')}</span>
                       </span>
                     </label>
                   </li>
@@ -206,8 +206,8 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
 
         {mode === 'copy' && (
           <label className="field-group">
-            <span className="label">Note (optional)</span>
-            <textarea className="field" rows={2} maxLength={280} placeholder="Want to join me?" value={message} onChange={(e) => setMessage(e.target.value)} />
+            <span className="label">{tr('Note (optional)')}</span>
+            <textarea className="field" rows={2} maxLength={280} placeholder={tr('Want to join me?')} value={message} onChange={(e) => setMessage(e.target.value)} />
           </label>
         )}
 
@@ -219,8 +219,8 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
         <button type="submit" className="primary-btn" disabled={busy || !friends?.length}>
           <Icon name={mode === 'remind' ? 'bell' : 'send'} />
           {busy
-            ? 'Sending…'
-            : `${mode === 'remind' ? 'Add & remind' : 'Send'}${selected.size ? ` ${selected.size} task${selected.size === 1 ? '' : 's'}` : ''}`}
+            ? tr('Sending…')
+            : `${mode === 'remind' ? tr('Add & remind') : tr('Send')}${selected.size ? tr(' {size} task{value}', { size: selected.size, value: selected.size === 1 ? '' : 's' }) : ''}`}
         </button>
       </form>
     </div>,

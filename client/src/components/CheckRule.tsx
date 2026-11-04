@@ -1,4 +1,5 @@
 import { Icon } from '../icons'
+import { tr } from '../i18n'
 
 export type RuleState = 'ok' | 'bad' | 'wait' | 'checking'
 
@@ -8,8 +9,8 @@ export function Rule({ state, label }: { state: RuleState; label: string }) {
     <li className={state === 'ok' ? 'ok' : state === 'bad' ? 'bad' : ''}>
       <Icon name={state === 'ok' ? 'check' : state === 'bad' ? 'x' : 'circle'} />
       {label}
-      {state === 'checking' && <span className="rule-note"> · checking…</span>}
-      <span className="sr-only">{state === 'ok' ? ' (passed)' : state === 'bad' ? ' (failed)' : ' (not checked yet)'}</span>
+      {state === 'checking' && <span className="rule-note"> {tr('· checking…')}</span>}
+      <span className="sr-only">{state === 'ok' ? tr(' (passed)') : state === 'bad' ? tr(' (failed)') : tr(' (not checked yet)')}</span>
     </li>
   )
 }

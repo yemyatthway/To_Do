@@ -44,7 +44,7 @@ def issue_code(user, purpose, challenge="", device=""):
         code_hash=_hash(f"{user.pk}:{purpose}:{challenge}:{code}"),
         expires_at=now + timedelta(minutes=settings.OTP_TTL_MINUTES),
     )
-    mail.send_code(to=user.email, purpose=purpose, code=code, device=device)
+    mail.send_code(to=user.email, purpose=purpose, code=code, device=device, language=user.language)
     return settings.OTP_RESEND_SECONDS
 
 

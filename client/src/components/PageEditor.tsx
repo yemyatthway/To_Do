@@ -10,6 +10,7 @@ import { ConfirmAction } from './ConfirmAction'
 import { FileView } from './Files'
 import { Loading, SkeletonRows } from './Loading'
 import { OptionsMenu } from './OptionsMenu'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -51,12 +52,12 @@ export function PageEditor(props: PageEditorProps) {
 
   if (!page) {
     return (
-      <section className="card glass panel" aria-label="Page">
+      <section className="card glass panel" aria-label={tr('Page')}>
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button className="text-btn" onClick={() => void load()}>
-              Retry
+              {tr('Retry')}
             </button>
           </div>
         )}
@@ -68,18 +69,18 @@ export function PageEditor(props: PageEditorProps) {
 }
 
 function statusText(status: SaveStatus, canEdit: boolean) {
-  if (!canEdit) return "You can read this page. Your role doesn't allow editing."
+  if (!canEdit) return tr('You can read this page. Your role doesn\'t allow editing.')
   switch (status.state) {
     case 'saved':
-      return 'Saved'
+      return tr('Saved')
     case 'saving':
-      return 'Saving…'
+      return tr('Saving…')
     case 'waiting':
-      return "Can't reach the server. It's safe on this device and will save automatically."
+      return tr('Can\'t reach the server. It\'s safe on this device and will save automatically.')
     case 'conflict':
-      return 'Not saved yet'
+      return tr('Not saved yet')
     case 'refused':
-      return `Not saved. ${status.message}`
+      return tr('Not saved. {message}', { message: status.message })
   }
 }
 
@@ -193,16 +194,16 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
   }
 
   const addOptions: { type: Exclude<BlockType, 'file'>; label: string; icon: 'text' | 'heading' | 'check' }[] = [
-    { type: 'p', label: 'Text', icon: 'text' },
-    { type: 'h', label: 'Heading', icon: 'heading' },
-    { type: 'todo', label: 'Checklist', icon: 'check' },
+    { type: 'p', label: tr('Text'), icon: 'text' },
+    { type: 'h', label: tr('Heading'), icon: 'heading' },
+    { type: 'todo', label: tr('Checklist'), icon: 'check' },
   ]
 
   return (
     <>
     <section
       className={`card glass panel page-editor${dropping ? ' is-dropping' : ''}`}
-      aria-label={title || 'Untitled'}
+      aria-label={title || tr('Untitled')}
       onDragOver={(e) => {
         if (!canEdit || !e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
@@ -221,8 +222,8 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
       {canEdit ? (
         <input
           className="page-title"
-          aria-label="Page name"
-          placeholder="Untitled"
+          aria-label={tr('Page name')}
+          placeholder={tr('Untitled')}
           maxLength={120}
           value={title}
           onChange={(e) => {
@@ -241,20 +242,20 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
         {canEdit && (
           <>
             <OptionsMenu
-              label="Add to this page"
+              label={tr('Add to this page')}
               triggerClass="text-btn"
               trigger={
                 <>
                   <Icon name="plus" />
-                  Add
+                  {tr('Add')}
                 </>
               }
               options={[
                 ...addOptions.map(({ type, label, icon }) => ({ icon, label, run: () => apply(insertBlock(blocks, activeId, type)) })),
-                { icon: 'attach' as const, label: 'Screenshot or file', run: () => pickFiles((files) => void addFiles(files)) },
+                { icon: 'attach' as const, label: tr('Screenshot or file'), run: () => pickFiles((files) => void addFiles(files)) },
               ]}
             />
-            <OptionsMenu label="Page options" options={[{ icon: 'trash', label: 'Delete page', danger: true, run: () => setDeleting(true) }]} />
+            <OptionsMenu label={tr('Page options')} options={[{ icon: 'trash', label: tr('Delete page'), danger: true, run: () => setDeleting(true) }]} />
           </>
         )}
       </div>
@@ -263,13 +264,13 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
         <div className="device-banner" role="alert">
           <Icon name="users" />
           <span>
-            <strong>{status.theirs.updated_by ?? 'Someone'} changed this page while you were editing.</strong> Which version do you want to keep?
+            <strong>{tr('{value} changed this page while you were editing.', { value: status.theirs.updated_by ?? tr('Someone') })}</strong> {tr('Which version do you want to keep?')}
           </span>
           <button type="button" className="text-btn" onClick={() => show(saver.useTheirs())}>
-            Use theirs
+            {tr('Use theirs')}
           </button>
           <button type="button" className="primary-btn small" onClick={() => saver.keepMine()}>
-            Keep mine
+            {tr('Keep mine')}
           </button>
         </div>
       )}
@@ -294,7 +295,7 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
                   className={`check${block.done ? ' on' : ''}`}
                   role="checkbox"
                   aria-checked={Boolean(block.done)}
-                  aria-label={`${block.done ? 'Mark not done' : 'Mark done'}: ${block.text || 'empty item'}`}
+                  aria-label={`${block.done ? tr('Mark not done') : tr('Mark done')}: ${block.text || 'empty item'}`}
                   onClick={() => change(blocks.map((b) => (b.id === block.id ? { ...b, done: !b.done } : b)))}
                 >
                   {block.done && <Icon name="check" />}
@@ -305,8 +306,8 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
                   if (el) inputs.current.set(block.id, el)
                   else inputs.current.delete(block.id)
                 }}
-                label={block.type === 'h' ? 'Heading' : block.type === 'todo' ? 'Checklist item' : 'Text'}
-                placeholder={index === 0 && blocks.length === 1 ? 'Start writing. Type # for a heading or [] for a checklist.' : ''}
+                label={block.type === 'h' ? tr('Heading') : block.type === 'todo' ? tr('Checklist item') : tr('Text')}
+                placeholder={index === 0 && blocks.length === 1 ? tr('Start writing. Type # for a heading or [] for a checklist.') : ''}
                 value={block.text}
                 onFocus={() => setActiveId(block.id)}
                 onChange={(text) => change(blocks.map((b) => (b.id === block.id ? applyShortcut(b, text) : b)))}
@@ -336,8 +337,8 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
         <ConfirmAction
           danger
           icon="trash"
-          title={`Delete ${title.trim() || 'this page'}?`}
-          confirmLabel="Delete page"
+          title={tr('Delete {value}?', { value: title.trim() || 'this page' })}
+          confirmLabel={tr('Delete page')}
           onCancel={() => setDeleting(false)}
           onConfirm={async () => {
             await api.deletePage(workspaceId, page.id)
@@ -346,14 +347,14 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
             onDeleted(page)
           }}
         >
-          <p>Everyone in the workspace loses it. You can undo this right after.</p>
+          <p>{tr('Everyone in the workspace loses it. You can undo this right after.')}</p>
         </ConfirmAction>
       )}
     </section>
 
-    <aside className="card glass page-side" aria-label="Comments and history">
+    <aside className="card glass page-side" aria-label={tr('Comments and history')}>
       <button type="button" className="flat-row page-side-toggle" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((v) => !v)}>
-        <span className="row-main person-name">Comments and history</span>
+        <span className="row-main person-name">{tr('Comments and history')}</span>
         <Icon name="chevron" className="more-go" />
       </button>
       <div className={`page-side-body${commentsOpen ? ' open' : ''}`}>
@@ -370,7 +371,7 @@ function ReadOnlyBlock({ block }: { block: Block }) {
   if (block.type === 'todo') {
     return (
       <div className={`page-block is-todo${block.done ? ' done' : ''}`} style={{ ['--cat' as string]: 'var(--work)' }}>
-        <span className={`check${block.done ? ' on' : ''}`} role="img" aria-label={block.done ? 'Done' : 'Not done'}>
+        <span className={`check${block.done ? ' on' : ''}`} role="img" aria-label={block.done ? tr('Done') : tr('Not done')}>
           {block.done && <Icon name="check" />}
         </span>
         <p className="page-read">{block.text}</p>

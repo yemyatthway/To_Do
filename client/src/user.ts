@@ -1,12 +1,13 @@
 import type { User } from './api'
+import { formatDate, tr } from './i18n'
 
 /** Mirrors the server's validators (same rule as afm_sys) so people see what's missing as they type. */
 export const PASSWORD_RULES = [
-  { label: '12+ characters', test: (p: string) => p.length >= 12 },
-  { label: 'Uppercase letter', test: (p: string) => /[A-Z]/.test(p) },
-  { label: 'Lowercase letter', test: (p: string) => /[a-z]/.test(p) },
-  { label: 'Number', test: (p: string) => /\d/.test(p) },
-  { label: 'Symbol', test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+  { label: tr('12+ characters'), test: (p: string) => p.length >= 12 },
+  { label: tr('Uppercase letter'), test: (p: string) => /[A-Z]/.test(p) },
+  { label: tr('Lowercase letter'), test: (p: string) => /[a-z]/.test(p) },
+  { label: tr('Number'), test: (p: string) => /\d/.test(p) },
+  { label: tr('Symbol'), test: (p: string) => /[^A-Za-z0-9]/.test(p) },
 ]
 
 /** name@domain.tld: one @, no spaces, a dot in the domain and a 2+ letter ending. */
@@ -20,29 +21,29 @@ export function initials(user: Pick<User, 'full_name' | 'email'>) {
 
 /** "just now", "5 min ago", "3 h ago", "2 days ago", then the date. */
 export function timeAgo(iso: string | null, now = new Date()) {
-  if (!iso) return 'Never'
+  if (!iso) return tr('Never')
   const then = new Date(iso)
   const minutes = Math.round((now.getTime() - then.getTime()) / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes} min ago`
+  if (minutes < 1) return tr('Just now')
+  if (minutes < 60) return tr('{minutes} min ago', { minutes })
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} h ago`
+  if (hours < 24) return tr('{hours} h ago', { hours })
   const days = Math.round(hours / 24)
-  if (days < 7) return `${days} ${days === 1 ? 'day' : 'days'} ago`
-  return then.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+  if (days < 7) return tr('{days} {value} ago', { days, value: days === 1 ? 'day' : 'days' })
+  return formatDate(then, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 export const formatDateTime = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  formatDate(new Date(iso), { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 /** Mirrors the server's username rules (usernames.py); the server also checks it's free. */
 export const normalizeUsername = (value: string) => value.trim().replace(/^@+/, '').toLowerCase()
 
 export function usernameProblem(value: string) {
-  if (value.length < 3) return 'Use at least 3 characters.'
-  if (value.length > 20) return 'Use at most 20 characters.'
-  if (!/^[a-z0-9](?:[a-z0-9._]*[a-z0-9])?$/.test(value)) return 'Use lowercase letters, numbers, dots and underscores, starting and ending with a letter or number.'
-  if (value.includes('..')) return 'No two dots in a row.'
+  if (value.length < 3) return tr('Use at least 3 characters.')
+  if (value.length > 20) return tr('Use at most 20 characters.')
+  if (!/^[a-z0-9](?:[a-z0-9._]*[a-z0-9])?$/.test(value)) return tr('Use lowercase letters, numbers, dots and underscores, starting and ending with a letter or number.')
+  if (value.includes('..')) return tr('No two dots in a row.')
   return null
 }
 

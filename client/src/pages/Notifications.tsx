@@ -3,6 +3,7 @@ import { workspaces as api, type WorkspaceNotification } from '../api'
 import { Loading, SkeletonRows } from '../components/Loading'
 import { useLiveRefresh } from '../live'
 import { timeAgo } from '../user'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -61,7 +62,7 @@ export function Notifications({ now, notify, onOpen, onUnread }: NotificationsPr
       setItems((list) => list?.map((n) => ({ ...n, read: true })) ?? null)
       onUnread(0)
     } catch (err) {
-      notify("Couldn't mark them as read", errorMessage(err))
+      notify(tr('Couldn\'t mark them as read'), errorMessage(err))
     }
   }
 
@@ -73,7 +74,7 @@ export function Notifications({ now, notify, onOpen, onUnread }: NotificationsPr
       setItems([...items, ...next.items])
       setMore(next.more)
     } catch (err) {
-      notify("Couldn't load more", errorMessage(err))
+      notify(tr('Couldn\'t load more'), errorMessage(err))
     } finally {
       setLoadingMore(false)
     }
@@ -85,22 +86,22 @@ export function Notifications({ now, notify, onOpen, onUnread }: NotificationsPr
         <div className="error-banner" role="alert">
           <span>{error}</span>
           <button className="text-btn" onClick={() => void load()}>
-            Retry
+            {tr('Retry')}
           </button>
         </div>
       )}
-      <section className="card glass panel" aria-label="Notifications">
+      <section className="card glass panel" aria-label={tr('Notifications')}>
         {unread > 0 && (
           <div className="notice-top">
-            <span className="task-meta">{unread} unread</span>
+            <span className="task-meta">{tr('{unread} unread', { unread })}</span>
             <button type="button" className="text-btn" onClick={() => void readAll()}>
-              Mark all as read
+              {tr('Mark all as read')}
             </button>
           </div>
         )}
         <div className="panel-scroll">
           {items === null && <Loading active={!error} skeleton={<SkeletonRows count={4} />} onRetry={() => void load()} />}
-          {items?.length === 0 && <p className="empty">Nothing yet. You'll see it here when someone adds work, finishes it, mentions you or comments.</p>}
+          {items?.length === 0 && <p className="empty">{tr('Nothing yet. You\'ll see it here when someone adds work, finishes it, mentions you or comments.')}</p>}
           <ul className="notice-list">
             {items?.map((item) => (
               <li key={item.id}>
@@ -109,7 +110,7 @@ export function Notifications({ now, notify, onOpen, onUnread }: NotificationsPr
                   <span className="person-main">
                     <span className="notice-title">
                       {item.title}
-                      {!item.read && <span className="sr-only"> (unread)</span>}
+                      {!item.read && <span className="sr-only"> {tr('(unread)')}</span>}
                     </span>
                     {item.body && <span className="notice-body">{item.body}</span>}
                     <span className="task-meta">{timeAgo(item.created_at, now)}</span>
@@ -120,7 +121,7 @@ export function Notifications({ now, notify, onOpen, onUnread }: NotificationsPr
           </ul>
           {more && (
             <button type="button" className="text-btn activity-more" disabled={loadingMore} onClick={() => void showMore()}>
-              {loadingMore ? 'Loading…' : 'Show more'}
+              {loadingMore ? tr('Loading…') : tr('Show more')}
             </button>
           )}
         </div>

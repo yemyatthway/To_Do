@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
+import { tr } from '../i18n'
 
 export interface ToastData {
   id: number
@@ -43,7 +44,7 @@ export function Toast({ toast, onDismiss }: { toast: ToastData; onDismiss: () =>
             leave()
           }}
         >
-          {toast.action.label === 'Undo' && <Icon name="undo" />}
+          {toast.action.label === tr('Undo') && <Icon name="undo" />}
           {toast.action.label}
         </button>
       )}

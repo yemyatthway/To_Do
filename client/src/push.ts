@@ -1,4 +1,5 @@
 import { api } from './api'
+import { tr } from './i18n'
 
 export function isPushSupported() {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
@@ -56,7 +57,7 @@ export function canAskForNotifications() {
 /** Asks for permission (if needed), subscribes this browser and registers it with the server. */
 export async function subscribeThisDevice() {
   if (!isPushSupported()) {
-    throw new Error("This browser can't show push notifications. On iPhone, add the app to your Home Screen first.")
+    throw new Error(tr('This browser can\'t show push notifications. On iPhone, add the app to your Home Screen first.'))
   }
 
   // Must be the first await so it still counts as a response to the click.
@@ -64,8 +65,8 @@ export async function subscribeThisDevice() {
   if (permission !== 'granted') {
     throw new Error(
       permission === 'denied'
-        ? 'Notifications are blocked for this site. Allow them in your browser settings, then try again.'
-        : 'Notification permission was dismissed.',
+        ? tr('Notifications are blocked for this site. Allow them in your browser settings, then try again.')
+        : tr('Notification permission was dismissed.'),
     )
   }
 
@@ -92,7 +93,7 @@ export async function unsubscribeThisDevice() {
 /** Pushes "It works!" to this browser through the real server, to check the whole path. */
 export async function sendTestNotification() {
   const subscription = await currentSubscription()
-  if (!subscription) throw new Error('Reminders are not set up on this device yet.')
+  if (!subscription) throw new Error(tr('Reminders are not set up on this device yet.'))
   await api.testPush(subscription.toJSON())
 }
 

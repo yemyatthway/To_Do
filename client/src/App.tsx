@@ -35,6 +35,7 @@ import {
   startOfDay,
   startOfWeek,
 } from './time'
+import { chooseLanguage, hasChosenLanguage, language, tr } from './i18n'
 
 // Phone: screens reached through More, which get a back button.
 const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace', 'notifications']
@@ -94,59 +95,59 @@ const errorMessage = (err: unknown) => (err instanceof Error ? err.message : Str
 const TOUR_STEPS: TourStep[] = [
   {
     target: 'clock',
-    title: 'Your day on a clock',
-    body: 'Each dot is a task, colored by category. The clock always shows the next 12 hours, so AM and PM are picked for you.',
+    title: tr('Your day on a clock'),
+    body: tr('Each dot is a task, colored by category. The clock always shows the next 12 hours, so AM and PM are picked for you.'),
   },
   {
     target: 'clock-hour',
-    title: 'Tap or hold an hour',
-    body: "Tap an hour to see what's due then. Press and hold an hour to add a task at that time.",
+    title: tr('Tap or hold an hour'),
+    body: tr('Tap an hour to see what\'s due then. Press and hold an hour to add a task at that time.'),
     gesture: 'hold',
   },
-  { target: 'day-strip', title: 'Plan ahead', body: 'Switch between today and the next few days.', gesture: 'tap' },
-  { target: 'new-task', title: 'Add a task', body: 'Add a task with a time, category, priority and reminder.', gesture: 'tap' },
+  { target: 'day-strip', title: tr('Plan ahead'), body: tr('Switch between today and the next few days.'), gesture: 'tap' },
+  { target: 'new-task', title: tr('Add a task'), body: tr('Add a task with a time, category, priority and reminder.'), gesture: 'tap' },
   {
     target: 'task-list',
-    title: 'Your list',
-    body: "Tick the circle when you're done and tap a task to edit it. Swipe left, or use the trash icon, to delete. You always get an Undo.",
+    title: tr('Your list'),
+    body: tr('Tick the circle when you\'re done and tap a task to edit it. Swipe left, or use the trash icon, to delete. You always get an Undo.'),
     gesture: 'swipe',
   },
-  { target: 'day-progress', title: 'Daily progress', body: 'One block per task. Filled blocks are done.' },
-  { target: 'progress', title: 'Your week', body: 'See how your day, week and categories are going.', gesture: 'tap' },
+  { target: 'day-progress', title: tr('Daily progress'), body: tr('One block per task. Filled blocks are done.') },
+  { target: 'progress', title: tr('Your week'), body: tr('See how your day, week and categories are going.'), gesture: 'tap' },
   {
     target: 'friends',
-    title: 'Friends',
-    body: 'Find people, add them as friends, and send them copies of your tasks. Tasks they send you wait here until you add them. Nobody can see your list.',
+    title: tr('Friends'),
+    body: tr('Find people, add them as friends, and send them copies of your tasks. Tasks they send you wait here until you add them. Nobody can see your list.'),
     gesture: 'tap',
   },
   {
     target: 'chats',
-    title: 'Chats',
-    body: "Message your friends. You see when they're online, typing, and when they've seen your message.",
+    title: tr('Chats'),
+    body: tr('Message your friends. You see when they\'re online, typing, and when they\'ve seen your message.'),
     gesture: 'tap',
   },
   {
     target: 'workspaces',
-    title: 'Workspaces',
-    body: 'Make a shared space for a team and invite people with a role that decides what they can do. Your own tasks stay private.',
+    title: tr('Workspaces'),
+    body: tr('Make a shared space for a team and invite people with a role that decides what they can do. Your own tasks stay private.'),
     gesture: 'tap',
   },
   {
     target: 'reminders',
-    title: 'Reminders',
-    body: 'Turn reminders on to get a notification before your tasks (10 minutes by default; pick another time on any task). Tap again to turn them off.',
+    title: tr('Reminders'),
+    body: tr('Turn reminders on to get a notification before your tasks (10 minutes by default; pick another time on any task). Tap again to turn them off.'),
     gesture: 'tap',
   },
   {
     target: 'timer',
-    title: 'Timer',
-    body: 'Start a countdown, like a 25-minute focus session, optionally for a task. It keeps running on every screen and chimes when time is up.',
+    title: tr('Timer'),
+    body: tr('Start a countdown, like a 25-minute focus session, optionally for a task. It keeps running on every screen and chimes when time is up.'),
     gesture: 'tap',
   },
   {
     target: 'profile',
-    title: 'Your profile',
-    body: "Change your name, email, password or light/dark theme, and replay this tutorial whenever you like. That's it, enjoy!",
+    title: tr('Your profile'),
+    body: tr('Change your name, email, password or light/dark theme, and replay this tutorial whenever you like. That\'s it, enjoy!'),
     gesture: 'tap',
   },
 ]
@@ -169,9 +170,9 @@ function useNow(intervalMs: number) {
 
 function describeDue(task: Task) {
   const due = dueDate(task)
-  if (!due) return 'Anytime'
+  if (!due) return tr('Anytime')
   const today = startOfDay(new Date())
-  const day = sameDay(due, today) ? 'Today' : sameDay(due, addDays(today, 1)) ? 'Tomorrow' : formatShortDay(due)
+  const day = sameDay(due, today) ? tr('Today') : sameDay(due, addDays(today, 1)) ? tr('Tomorrow') : formatShortDay(due)
   return `${day} · ${formatTime(due)}`
 }
 
@@ -184,12 +185,20 @@ export default function App() {
   useTheme()
   const [booting, setBooting] = useState(true)
   const [user, setUser] = useState<User | null>(null)
+
+  // A new device takes the account's language; after that, each choice is saved to the account.
+  const accountLanguage = user?.language
+  useEffect(() => {
+    if (!accountLanguage || accountLanguage === language) return
+    if (hasChosenLanguage()) void auth.updateMe({ language }).catch(() => undefined)
+    else chooseLanguage(accountLanguage)
+  }, [accountLanguage])
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
     setSessionExpiredHandler(() => {
       setUser(null)
-      setNotice('Your session expired. Log in again.')
+      setNotice(tr('Your session expired. Log in again.'))
     })
     ;(async () => {
       if (await refreshSession()) {
@@ -327,18 +336,18 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     (finished: TimerState) => {
       const task = finished.taskId ? tasksRef.current.find((t) => t.id === finished.taskId && !t.done) : undefined
       showToast({
-        title: "Time's up",
-        detail: finished.label || 'Your timer finished.',
+        title: tr('Time\'s up'),
+        detail: finished.label || tr('Your timer finished.'),
         action: task
           ? {
-              label: 'Mark done',
+              label: tr('Mark done'),
               onClick: () => outbox.updateTask(task, { done: true }),
             }
           : undefined,
       })
       if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         navigator.serviceWorker?.ready
-          .then((reg) => reg.showNotification("Time's up", { body: finished.label || 'Your timer finished.', icon: '/icon.svg', tag: 'timer' }))
+          .then((reg) => reg.showNotification("Time's up", { body: finished.label || tr('Your timer finished.'), icon: '/icon.svg', tag: 'timer' }))
           .catch(() => undefined)
       }
     },
@@ -428,24 +437,24 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       onTaskDeleted: (id) => setTasks((list) => list.filter((t) => t.id !== id)),
       onTaskGone: (id) => {
         setTasks((list) => list.filter((t) => t.id !== id))
-        notify('That task was deleted somewhere else')
+        notify(tr('That task was deleted somewhere else'))
       },
       onConflict: (op, current) => {
         setTasks((list) => list.map((t) => (t.id === current.id ? current : t)))
         showToast({
-          title: 'Changed somewhere else',
-          detail: `"${current.title}" was updated on another device or by a friend, so your edit wasn't applied.`,
-          action: { label: 'Keep mine', onClick: () => outbox.updateTask(current, op.patch, { announce: 'Changes saved' }) },
+          title: tr('Changed somewhere else'),
+          detail: tr('"{title}" was updated on another device or by a friend, so your edit wasn\'t applied.', { title: current.title }),
+          action: { label: tr('Keep mine'), onClick: () => outbox.updateTask(current, op.patch, { announce: tr('Changes saved') }) },
         })
       },
       onFailed: (op, message) => {
         if (op.kind === 'chat.send') return // the chat shows it on the message itself
         if (op.kind === 'task.delete') {
-          notify("Couldn't delete the task", message)
+          notify(tr('Couldn\'t delete the task'), message)
           return
         }
-        const title = op.kind === 'task.create' ? op.input.title : (tasksRef.current.find((t) => t.id === op.taskId)?.title ?? 'your task')
-        showToast({ title: `Couldn't save "${title}"`, detail: `${message} Tap the task to fix it.`, action: { label: 'Discard', onClick: () => outbox.discard(op.key) } })
+        const title = op.kind === 'task.create' ? op.input.title : (tasksRef.current.find((t) => t.id === op.taskId)?.title ?? tr('your task'))
+        showToast({ title: tr('Couldn\'t save "{title}"', { title }), detail: tr('{message} Tap the task to fix it.', { message }), action: { label: tr('Discard'), onClick: () => outbox.discard(op.key) } })
       },
       onDrained: () => void load(),
       onExternalChange: () => void load(),
@@ -491,7 +500,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     if (editing) {
       const patch = changedFields(editing, input)
       // Saving a refused change again without edits just tries again.
-      if (Object.keys(patch).length) outbox.updateTask(editing, patch, { announce: 'Changes saved' })
+      if (Object.keys(patch).length) outbox.updateTask(editing, patch, { announce: tr('Changes saved') })
       else outbox.retryTask(editing.id)
       return
     }
@@ -499,10 +508,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     setFreshId(created.id)
     setTimeout(() => setFreshId((id) => (id === created.id || id === outbox.resolve(created.id) ? null : id)), 8000)
     showToast({
-      title: 'Task added',
+      title: tr('Task added'),
       detail: `${created.title} · ${describeDue(created)}`,
       action: {
-        label: 'Undo',
+        label: tr('Undo'),
         onClick: () => outbox.deleteTask(created.id),
       },
     })
@@ -523,7 +532,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       sameTime.setHours(was.getHours(), was.getMinutes(), 0, 0)
       outbox.updateTask(task, { due_at: (sameTime > now ? sameTime : nextHour).toISOString() })
     }
-    showToast({ title: list.length === 1 ? 'Moved to today' : `${list.length} tasks moved to today`, detail: list.length === 1 ? list[0].title : undefined })
+    showToast({ title: list.length === 1 ? tr('Moved to today') : tr('{length} tasks moved to today', { length: list.length }), detail: list.length === 1 ? list[0].title : undefined })
   }
 
   function remove(task: Task) {
@@ -536,10 +545,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     }, UNDO_MS)
     pendingDeletes.current.set(task.id, timer)
     showToast({
-      title: 'Task deleted',
-      detail: `${task.title} · in Profile → Recently deleted for 7 days`,
+      title: tr('Task deleted'),
+      detail: tr('{title} · in Profile → Recently deleted for 7 days', { title: task.title }),
       action: {
-        label: 'Undo',
+        label: tr('Undo'),
         onClick: () => {
           clearTimeout(timer)
           pendingDeletes.current.delete(task.id)
@@ -561,10 +570,10 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       await subscribeThisDevice()
       onUserChange(await auth.updateMe({ reminders_enabled: true }))
       setDeviceState(deviceReminderState())
-      notify('Reminders on', 'You get a notification before timed tasks (10 min by default, changeable per task).')
+      notify(tr('Reminders on'), tr('You get a notification before timed tasks (10 min by default, changeable per task).'))
       return true
     } catch (err) {
-      notify("Couldn't turn reminders on", errorMessage(err))
+      notify(tr('Couldn\'t turn reminders on'), errorMessage(err))
       setRemindersGuide(true)
       return false
     } finally {
@@ -582,9 +591,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     try {
       onUserChange(await auth.updateMe({ reminders_enabled: false }))
       await unsubscribeThisDevice()
-      notify('Reminders off', "You won't get task notifications.")
+      notify(tr('Reminders off'), tr('You won\'t get task notifications.'))
     } catch (err) {
-      notify("Couldn't turn reminders off", errorMessage(err))
+      notify(tr('Couldn\'t turn reminders off'), errorMessage(err))
     } finally {
       setRemindersBusy(false)
     }
@@ -596,9 +605,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     const unsaved = await outbox.settle()
     if (unsaved && !anyway) {
       showToast({
-        title: `${unsaved} ${unsaved === 1 ? "change hasn't" : "changes haven't"} saved yet`,
-        detail: 'Stay logged in and they save by themselves when the connection is back.',
-        action: { label: 'Log out anyway', onClick: () => void logout(true) },
+        title: tr('{unsaved} {value} saved yet', { unsaved, value: unsaved === 1 ? "change hasn't" : "changes haven't" }),
+        detail: tr('Stay logged in and they save by themselves when the connection is back.'),
+        action: { label: tr('Log out anyway'), onClick: () => void logout(true) },
       })
       return
     }
@@ -608,7 +617,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     await auth.logout()
     clearSavedTimer()
     window.history.replaceState(null, '', '/')
-    onLoggedOut("You've logged out.")
+    onLoggedOut(tr('You\'ve logged out.'))
   }
 
   async function deleteAccount(password: string) {
@@ -621,7 +630,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     clearLeftoverRows(user.id, pageStorage())
     clearSavedTimer()
     window.history.replaceState(null, '', '/')
-    onLoggedOut('Your account was deleted. Changed your mind? Log in within 30 days to restore it.')
+    onLoggedOut(tr('Your account was deleted. Changed your mind? Log in within 30 days to restore it.'))
   }
 
   function startTour() {
@@ -770,28 +779,28 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const remindersOn = user.reminders_enabled
   const inMore = MORE_VIEWS.includes(view)
   const inviteBadge = workspaceList?.invitations.length ?? 0
-  const workspaceName = workspaceList?.workspaces.find((w) => w.id === workspaceId)?.name ?? 'Workspace'
+  const workspaceName = workspaceList?.workspaces.find((w) => w.id === workspaceId)?.name ?? tr('Workspace')
   const headings: Record<View, [string, string]> = {
     home: [formatLongDate(now), greeting(now)],
-    progress: ['This week', 'Your progress'],
-    profile: route.view === 'profile' && route.section ? ['Settings', SETTINGS_SECTIONS[route.section]] : ['Account', 'Settings'],
-    timer: ['Focus', 'Timer'],
-    admin: ['Staff only', 'Admin dashboard'],
-    friends: route.view === 'friends' && route.username ? ['Friends', friendName ?? `@${route.username}`] : ['People', 'Friends'],
-    chats: ['Messages', 'Chats'],
-    more: ['Everything else', 'More'],
-    workspaces: ['Teams', 'Workspaces'],
-    notifications: ['For you', 'Notifications'],
+    progress: [tr('This week'), tr('Your progress')],
+    profile: route.view === 'profile' && route.section ? [tr('Settings'), SETTINGS_SECTIONS[route.section]] : [tr('Account'), tr('Settings')],
+    timer: [tr('Focus'), tr('Timer')],
+    admin: [tr('Staff only'), tr('Admin dashboard')],
+    friends: route.view === 'friends' && route.username ? [tr('Friends'), friendName ?? `@${route.username}`] : [tr('People'), tr('Friends')],
+    chats: [tr('Messages'), tr('Chats')],
+    more: [tr('Everything else'), tr('More')],
+    workspaces: [tr('Teams'), tr('Workspaces')],
+    notifications: [tr('For you'), tr('Notifications')],
     workspace:
       route.view !== 'workspace' || route.section === 'home' || route.section === 'page' || route.section === 'table'
-        ? ['Workspaces', workspaceName]
+        ? [tr('Workspaces'), workspaceName]
         : route.section === 'members'
-          ? [workspaceName, 'Members']
+          ? [workspaceName, tr('Members')]
           : route.section === 'activity'
-            ? [workspaceName, 'Activity']
+            ? [workspaceName, tr('Activity')]
             : route.section === 'settings'
-              ? [workspaceName, 'Settings']
-              : [`${workspaceName} / Settings`, 'What each role can do'],
+              ? [workspaceName, tr('Settings')]
+              : [`${workspaceName} / Settings`, tr('What each role can do')],
   }
 
   const bell = (className: string) => (
@@ -800,7 +809,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       data-tour="reminders"
       role="switch"
       aria-checked={remindersOn}
-      aria-label="Task reminders"
+      aria-label={tr('Task reminders')}
       disabled={remindersBusy}
       onClick={toggleReminders}
     >
@@ -839,7 +848,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         <header className="header">
           <div className="header-start">
             {(isChildPage(route) || (inMore && view !== 'more')) && (
-              <button type="button" className={`round-btn${isChildPage(route) ? '' : ' mobile-only'}`} aria-label="Back" onClick={goBack}>
+              <button type="button" className={`round-btn${isChildPage(route) ? '' : ' mobile-only'}`} aria-label={tr('Back')} onClick={goBack}>
                 <Icon name="back" />
               </button>
             )}
@@ -850,7 +859,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           </div>
           <div className={`header-actions${isChildPage(route) ? ' on-child' : ''}`}>
             <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => go('timer')} />
-            <button className="round-btn" aria-label={inviteBadge + unreadNotices ? `Workspaces, ${inviteBadge + unreadNotices} new` : 'Workspaces'} aria-pressed={view === 'workspaces' || view === 'workspace'} onClick={() => go('workspaces')}>
+            <button className="round-btn" aria-label={inviteBadge + unreadNotices ? tr('Workspaces, {value} new', { value: inviteBadge + unreadNotices }) : tr('Workspaces')} aria-pressed={view === 'workspaces' || view === 'workspace'} onClick={() => go('workspaces')}>
               <Icon name="team" />
               {inviteBadge + unreadNotices > 0 && (
                 <span className="nav-badge" aria-hidden="true">
@@ -861,7 +870,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             {bell(`round-btn${remindersOn ? ' on' : ''}`)}
             <button className="primary-btn desktop-only" data-tour="new-task" onClick={() => openCreate(day)}>
               <Icon name="plus" />
-              New task
+              {tr('New task')}
             </button>
           </div>
         </header>
@@ -871,12 +880,12 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           <div className="device-banner" role="status">
             <Icon name="bellOff" />
             <span>
-              <strong>Reminders are on, but not on this device.</strong>{' '}
+              <strong>{tr('Reminders are on, but not on this device.')}</strong>{' '}
               {deviceState === 'needs-permission'
-                ? 'Allow notifications here to get them.'
+                ? tr('Allow notifications here to get them.')
                 : deviceState === 'blocked'
-                  ? 'Notifications are blocked for this site in your settings.'
-                  : 'This browser can\'t show them. On iPhone, open Todo Clock from your Home Screen.'}
+                  ? tr('Notifications are blocked for this site in your settings.')
+                  : tr('This browser can\'t show them. On iPhone, open Todo Clock from your Home Screen.')}
             </span>
             {deviceState === 'needs-permission' ? (
               <button
@@ -886,14 +895,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                   if (await enableReminders()) setDeviceState(deviceReminderState())
                 }}
               >
-                Turn on
+                {tr('Turn on')}
               </button>
             ) : (
               <button type="button" className="text-btn" onClick={() => setRemindersGuide(true)}>
-                How to fix
+                {tr('How to fix')}
               </button>
             )}
-            <button type="button" className="icon-btn" aria-label="Hide for now" onClick={() => setHideDeviceBanner(true)}>
+            <button type="button" className="icon-btn" aria-label={tr('Hide for now')} onClick={() => setHideDeviceBanner(true)}>
               <Icon name="x" />
             </button>
           </div>
@@ -903,8 +912,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           <div className="device-banner" role="status">
             <Icon name="clock" />
             <span>
-              <strong>Can't reach the server.</strong> {sync.ops.length} {sync.ops.length === 1 ? 'change is' : 'changes are'} safe on this device and will save
-              automatically.
+              <strong>{tr('Can\'t reach the server.')}</strong> {sync.ops.length} {sync.ops.length === 1 ? tr('change is') : tr('changes are')} {tr('safe on this device and will save automatically.')}
             </span>
           </div>
         )}
@@ -913,7 +921,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           <div className="error-banner" role="alert">
             <span>{loadError}</span>
             <button className="text-btn" onClick={load}>
-              Retry
+              {tr('Retry')}
             </button>
           </div>
         )}
@@ -1047,39 +1055,39 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       </div>
       </div>
 
-      <nav className="bottom-nav glass mobile-only" aria-label="Main">
+      <nav className="bottom-nav glass mobile-only" aria-label={tr('Main')}>
         <button className="nav-btn" aria-current={view === 'home' ? 'page' : undefined} onClick={() => go('home')}>
           <Icon name="clock" />
-          <span className="nav-label">Today</span>
+          <span className="nav-label">{tr('Today')}</span>
         </button>
         <button
           className="nav-btn"
           data-tour="chats"
-          aria-label={chatBadge ? `Chats, ${chatBadge} unread` : 'Chats'}
+          aria-label={chatBadge ? tr('Chats, {chatBadge} unread', { chatBadge }) : tr('Chats')}
           aria-current={view === 'chats' ? 'page' : undefined}
           onClick={() => go('chats')}
         >
           <Icon name="chat" />
-          <span className="nav-label">Chats</span>
+          <span className="nav-label">{tr('Chats')}</span>
           {chatBadge > 0 && <span className="nav-badge" aria-hidden="true">{chatBadge}</span>}
         </button>
-        <button className="fab" data-tour="new-task" aria-label="New task" onClick={() => openCreate(day)}>
+        <button className="fab" data-tour="new-task" aria-label={tr('New task')} onClick={() => openCreate(day)}>
           <Icon name="plus" />
         </button>
         <button
           className="nav-btn"
           data-tour="friends"
-          aria-label={socialBadge ? `Friends, ${socialBadge} new` : 'Friends'}
+          aria-label={socialBadge ? tr('Friends, {socialBadge} new', { socialBadge }) : tr('Friends')}
           aria-current={view === 'friends' ? 'page' : undefined}
           onClick={() => go('friends')}
         >
           <Icon name="users" />
-          <span className="nav-label">Friends</span>
+          <span className="nav-label">{tr('Friends')}</span>
           {socialBadge > 0 && <span className="nav-badge" aria-hidden="true">{socialBadge}</span>}
         </button>
-        <button className="nav-btn" data-tour="progress profile workspaces timer" aria-label={inviteBadge + unreadNotices ? `More, ${inviteBadge + unreadNotices} new` : 'More'} aria-current={inMore ? 'page' : undefined} onClick={() => go('more')}>
+        <button className="nav-btn" data-tour="progress profile workspaces timer" aria-label={inviteBadge + unreadNotices ? tr('More, {value} new', { value: inviteBadge + unreadNotices }) : tr('More')} aria-current={inMore ? 'page' : undefined} onClick={() => go('more')}>
           <Icon name="menu" />
-          <span className="nav-label">More</span>
+          <span className="nav-label">{tr('More')}</span>
           {inviteBadge + unreadNotices > 0 && <span className="nav-badge" aria-hidden="true">{inviteBadge + unreadNotices}</span>}
         </button>
       </nav>
@@ -1096,7 +1104,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           onSend={(task) => {
             const id = outbox.resolve(task.id)
             if (id < 0) {
-              notify('Still saving this task', 'You can send it to a friend once it has saved.')
+              notify(tr('Still saving this task'), tr('You can send it to a friend once it has saved.'))
               return
             }
             setSheet(null)

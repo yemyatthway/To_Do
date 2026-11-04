@@ -12,6 +12,7 @@ import { useLiveRefresh } from '../live'
 import { useEnterOnChange } from '../motion'
 import type { WorkspaceSection } from '../routes'
 import { initials, timeAgo } from '../user'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const fieldError = (err: unknown, field: string) => (err instanceof ApiError && err.fields[field]?.join(' ')) || errorMessage(err)
@@ -40,14 +41,14 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
     try {
       if (accept) {
         const joined = await api.accept(id)
-        notify(`You joined ${joined.name}`)
+        notify(tr('You joined {name}', { name: joined.name }))
         onOpen(joined.id)
       } else {
         await api.decline(id)
       }
       onChanged()
     } catch (err) {
-      notify("That didn't work", errorMessage(err))
+      notify(tr('That didn\'t work'), errorMessage(err))
       onChanged()
     } finally {
       setBusy(null)
@@ -64,17 +65,17 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
         <div className="error-banner" role="alert">
           <span>{error}</span>
           <button className="text-btn" onClick={onRetry}>
-            Retry
+            {tr('Retry')}
           </button>
         </div>
       )}
 
-      <section className="card glass panel" aria-label="Workspaces">
+      <section className="card glass panel" aria-label={tr('Workspaces')}>
         <div className="panel-top">
-          <SearchField label="Search workspaces" placeholder="Search workspaces" value={query} onChange={setQuery} />
+          <SearchField label={tr('Search workspaces')} placeholder={tr('Search workspaces')} value={query} onChange={setQuery} />
           <button
             className="primary-btn icon-only"
-            aria-label="New workspace"
+            aria-label={tr('New workspace')}
             onClick={() => {
               setName('')
               setCreating(true)
@@ -87,22 +88,22 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
         <div className="panel-scroll">
           {invitations.length > 0 && (
             <>
-              <h3 className="section-label">Invitations</h3>
+              <h3 className="section-label">{tr('Invitations')}</h3>
               <ul className="people">
                 {invitations.map((invite) => (
                   <li key={invite.id} className="person">
                     <span className="person-main">
                       <span className="person-name">{invite.workspace}</span>
                       <span className="task-meta">
-                        {invite.invited_by} invited you as {label(invite.role)}
+                        {tr('{invited_by} invited you as', { invited_by: invite.invited_by })}{' '}{label(invite.role)}
                       </span>
                     </span>
                     <span className="person-actions">
                       <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => answer(invite.id, true)}>
-                        Accept
+                        {tr('Accept')}
                       </button>
                       <button className="text-btn" disabled={busy !== null} onClick={() => answer(invite.id, false)}>
-                        Decline
+                        {tr('Decline')}
                       </button>
                     </span>
                   </li>
@@ -114,12 +115,12 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
           {data === null ? (
             <Loading active={!error} skeleton={<SkeletonRows count={3} />} onRetry={onRetry} />
           ) : data.workspaces.length === 0 ? (
-            <p className="empty">No workspaces yet. Make one for your team, then invite people.</p>
+            <p className="empty">{tr('No workspaces yet. Make one for your team, then invite people.')}</p>
           ) : list.length === 0 ? (
-            invitations.length === 0 && <p className="empty">No workspaces match.</p>
+            invitations.length === 0 && <p className="empty">{tr('No workspaces match.')}</p>
           ) : (
             <>
-              <h3 className="section-label">Your workspaces</h3>
+              <h3 className="section-label">{tr('Your workspaces')}</h3>
               <ul className="people">
                 {list.map((w) => (
                   <li key={w.id}>
@@ -132,7 +133,7 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
                         </span>
                       </span>
                       {w.unread > 0 && (
-                        <span className="nav-badge" aria-label={`${w.unread} new`}>
+                        <span className="nav-badge" aria-label={tr('{unread} new', { unread: w.unread })}>
                           {w.unread}
                         </span>
                       )}
@@ -149,8 +150,8 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
       {creating && (
         <ConfirmAction
           icon={null}
-          title="New workspace"
-          confirmLabel="Create"
+          title={tr('New workspace')}
+          confirmLabel={tr('Create')}
           confirmDisabled={!name.trim()}
           onCancel={() => setCreating(false)}
           onConfirm={async () => {
@@ -165,8 +166,8 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
           }}
         >
           <label className="field-group" style={leftField}>
-            <span className="label">Name</span>
-            <input data-autofocus className="field" maxLength={80} autoComplete="off" value={name} placeholder="Dev Team" onChange={(e) => setName(e.target.value)} />
+            <span className="label">{tr('Name')}</span>
+            <input data-autofocus className="field" maxLength={80} autoComplete="off" value={name} placeholder={tr('Dev Team')} onChange={(e) => setName(e.target.value)} />
           </label>
         </ConfirmAction>
       )}
@@ -175,11 +176,11 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
 }
 
 const ROLE_RULES: { action: string; allowed: Role[] }[] = [
-  { action: 'Read everything', allowed: ['owner', 'admin', 'editor', 'commenter', 'viewer'] },
-  { action: 'Comment', allowed: ['owner', 'admin', 'editor', 'commenter'] },
-  { action: 'Create and edit', allowed: ['owner', 'admin', 'editor'] },
-  { action: 'Invite people, change roles', allowed: ['owner', 'admin'] },
-  { action: 'Delete the workspace', allowed: ['owner'] },
+  { action: tr('Read everything'), allowed: ['owner', 'admin', 'editor', 'commenter', 'viewer'] },
+  { action: tr('Comment'), allowed: ['owner', 'admin', 'editor', 'commenter'] },
+  { action: tr('Create and edit'), allowed: ['owner', 'admin', 'editor'] },
+  { action: tr('Invite people, change roles'), allowed: ['owner', 'admin'] },
+  { action: tr('Delete the workspace'), allowed: ['owner'] },
 ]
 const ALL_ROLES: Role[] = ['owner', 'admin', 'editor', 'commenter', 'viewer']
 
@@ -276,7 +277,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
   }, [tableId, onRowClosed])
 
   const tableGone = useCallback(() => {
-    notify('That table was deleted')
+    notify(tr('That table was deleted'))
     onOpenSection('home', { replace: true })
     void load()
   }, [notify, onOpenSection, load])
@@ -286,14 +287,14 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       setItems((list) => list?.filter((i) => i.kind !== 'table' || i.id !== table.id) ?? null)
       onOpenSection('home', { replace: true })
       showToast({
-        title: 'Table deleted',
+        title: tr('Table deleted'),
         detail: table.title,
         action: {
-          label: 'Undo',
+          label: tr('Undo'),
           onClick: () => {
             api.restoreTable(id, table.id).then(
               () => void load(),
-              (err: unknown) => notify("Couldn't bring it back", errorMessage(err)),
+              (err: unknown) => notify(tr('Couldn\'t bring it back'), errorMessage(err)),
             )
           },
         },
@@ -303,7 +304,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
   )
 
   const pageGone = useCallback(() => {
-    notify('That page was deleted')
+    notify(tr('That page was deleted'))
     onOpenSection('home', { replace: true })
     void load()
   }, [notify, onOpenSection, load])
@@ -313,14 +314,14 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       setItems((list) => list?.filter((i) => i.kind !== 'page' || i.id !== page.id) ?? null)
       onOpenSection('home', { replace: true })
       showToast({
-        title: 'Page deleted',
+        title: tr('Page deleted'),
         detail: page.title,
         action: {
-          label: 'Undo',
+          label: tr('Undo'),
           onClick: () => {
             api.restorePage(id, page.id).then(
               () => void load(),
-              (err: unknown) => notify("Couldn't bring it back", errorMessage(err)),
+              (err: unknown) => notify(tr('Couldn\'t bring it back'), errorMessage(err)),
             )
           },
         },
@@ -333,7 +334,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
     try {
       setData(await api.setRole(id, member.id, next))
     } catch (err) {
-      notify("Couldn't change their role", errorMessage(err))
+      notify(tr('Couldn\'t change their role'), errorMessage(err))
       void load()
     }
   }
@@ -343,7 +344,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       await api.cancelInvitation(id, invitationId)
       await load()
     } catch (err) {
-      notify("Couldn't cancel it", errorMessage(err))
+      notify(tr('Couldn\'t cancel it'), errorMessage(err))
     }
   }
 
@@ -354,7 +355,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button className="text-btn" onClick={() => void load()}>
-              Retry
+              {tr('Retry')}
             </button>
           </div>
         )}
@@ -384,11 +385,11 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
   const itemsPanel = (
     <section className="card glass panel items-panel" aria-label={data.name}>
       <div className="panel-top">
-        <SearchField label="Search this workspace" placeholder="Search" value={itemQuery} onChange={setItemQuery} />
+        <SearchField label={tr('Search this workspace')} placeholder={tr('Search')} value={itemQuery} onChange={setItemQuery} />
         {data.can.edit && (
           <button
             className="primary-btn icon-only"
-            aria-label="New page or table"
+            aria-label={tr('New page or table')}
             onClick={() => {
               setText('')
               setNewKind('table')
@@ -400,8 +401,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
         )}
       </div>
       <div className="panel-scroll">
-        {items?.length === 0 && <p className="empty">{data.can.edit ? 'Nothing here yet. Press + and name your first table or page.' : 'Nothing here yet.'}</p>}
-        {Boolean(items?.length) && shownItems.length === 0 && <p className="empty">Nothing matches.</p>}
+        {items?.length === 0 && <p className="empty">{data.can.edit ? tr('Nothing here yet. Press + and name your first table or page.') : tr('Nothing here yet.')}</p>}
+        {Boolean(items?.length) && shownItems.length === 0 && <p className="empty">{tr('Nothing matches.')}</p>}
         <ul className="row-list">
           {shownItems.map((item) => (
             <li key={`${item.kind}-${item.id}`}>
@@ -412,15 +413,15 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                 <span className="row-main">
                   <span className="person-name">{item.title}</span>
                   <span className="row-sub">
-                    {item.kind === 'page' ? 'Page' : 'Table'} · edited {timeAgo(item.updated_at, now).toLowerCase()}
-                    {item.updated_by && ` by ${item.updated_by}`}
+                    {item.kind === 'page' ? tr('Page') : tr('Table')} {tr('· edited')}{' '}{timeAgo(item.updated_at, now).toLowerCase()}
+                    {item.updated_by && tr(' by {updated_by}', { updated_by: item.updated_by })}
                   </span>
                 </span>
               </button>
             </li>
           ))}
         </ul>
-        <h3 className="section-label">Team</h3>
+        <h3 className="section-label">{tr('Team')}</h3>
         <ul className="row-list">
           <li>
             <button className="flat-row" onClick={() => onOpenSection('members')}>
@@ -428,8 +429,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                 <Icon name="users" />
               </span>
               <span className="row-main">
-                <span className="person-name">Members</span>
-                <span className="row-sub">{data.members.length} in this workspace</span>
+                <span className="person-name">{tr('Members')}</span>
+                <span className="row-sub">{tr('{length} in this workspace', { length: data.members.length })}</span>
               </span>
               <Icon name="chevron" className="more-go" />
             </button>
@@ -439,7 +440,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
               <span className="well quiet">
                 <Icon name="list" />
               </span>
-              <span className="row-main person-name">Activity</span>
+              <span className="row-main person-name">{tr('Activity')}</span>
               <Icon name="chevron" className="more-go" />
             </button>
           </li>
@@ -449,8 +450,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                 <Icon name="menu" />
               </span>
               <span className="row-main">
-                <span className="person-name">Workspace settings</span>
-                <span className="row-sub">You: {label(data.role)}</span>
+                <span className="person-name">{tr('Workspace settings')}</span>
+                <span className="row-sub">{tr('You:')}{' '}{label(data.role)}</span>
               </span>
               <Icon name="chevron" className="more-go" />
             </button>
@@ -469,7 +470,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       )}
 
       {section === 'activity' && (
-        <section className="card glass panel" aria-label="Activity">
+        <section className="card glass panel" aria-label={tr('Activity')}>
           <div className="panel-scroll">
             <ActivityList workspaceId={id} now={now} onOpen={onOpenUrl} />
           </div>
@@ -509,29 +510,29 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       )}
 
       {section === 'members' && (
-        <section className="card glass panel" aria-label="Members">
+        <section className="card glass panel" aria-label={tr('Members')}>
           <div className="panel-top">
-            <SearchField label="Search members" placeholder="Search members" value={query} onChange={setQuery} />
+            <SearchField label={tr('Search members')} placeholder={tr('Search members')} value={query} onChange={setQuery} />
             {manage && (
               <button className="primary-btn" onClick={openInvite}>
-                Invite
+                {tr('Invite')}
               </button>
             )}
           </div>
           <div className="panel-scroll">
             {manage && data.invitations.length > 0 && (
               <>
-                <h3 className="section-label">Waiting to accept</h3>
+                <h3 className="section-label">{tr('Waiting to accept')}</h3>
                 <ul className="people">
                   {data.invitations.map((i) => (
                     <li key={i.id} className="person">
                       <span className="person-main">
                         <span className="person-name">{i.label}</span>
-                        <span className="task-meta">Invited as {label(i.role)}</span>
+                        <span className="task-meta">{tr('Invited as')}{' '}{label(i.role)}</span>
                       </span>
                       <span className="person-actions">
                         <button className="text-btn" onClick={() => void cancelInvite(i.id)}>
-                          Cancel
+                          {tr('Cancel')}
                         </button>
                       </span>
                     </li>
@@ -539,8 +540,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                 </ul>
               </>
             )}
-            <h3 className="section-label">Members</h3>
-            {members.length === 0 && <p className="empty">No members match.</p>}
+            <h3 className="section-label">{tr('Members')}</h3>
+            {members.length === 0 && <p className="empty">{tr('No members match.')}</p>}
             <ul className="people member-rows">
               {members.map((m) => (
                 <li key={m.id} className="person">
@@ -550,13 +551,13 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                   <span className="person-main">
                     <span className="person-name">
                       {nameOf(m)}
-                      {m.id === myId && ' (you)'}
+                      {m.id === myId && tr(' (you)')}
                     </span>
                     <span className="task-meta">@{m.username}</span>
                   </span>
                   <span className="person-actions">
                     {canChange(m) ? (
-                      <select className="field small role-select" aria-label={`Role for ${nameOf(m)}`} value={m.role} onChange={(e) => void changeRole(m, e.target.value as Role)}>
+                      <select className="field small role-select" aria-label={tr('Role for {value}', { value: nameOf(m) })} value={m.role} onChange={(e) => void changeRole(m, e.target.value as Role)}>
                         {choices(m.role).map((r) => (
                           <option key={r} value={r}>
                             {label(r)}
@@ -567,7 +568,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                       <span className="role-pill">{label(m.role)}</span>
                     )}
                     {canChange(m) && m.id !== myId && (
-                      <button className="icon-btn" aria-label={`Remove ${nameOf(m)}`} onClick={() => setDialog({ kind: 'remove', member: m })}>
+                      <button className="icon-btn" aria-label={tr('Remove {value}', { value: nameOf(m) })} onClick={() => setDialog({ kind: 'remove', member: m })}>
                         <Icon name="x" />
                       </button>
                     )}
@@ -580,7 +581,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       )}
 
       {section === 'settings' && (
-        <section className="card glass" aria-label="Workspace settings">
+        <section className="card glass" aria-label={tr('Workspace settings')}>
           <div className="panel-rows">
             {data.can.rename && (
               <button
@@ -590,13 +591,13 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                   setDialog({ kind: 'rename' })
                 }}
               >
-                <span className="person-name">Name</span>
+                <span className="person-name">{tr('Name')}</span>
                 <span className="row-value">{data.name}</span>
                 <Icon name="chevron" className="more-go" />
               </button>
             )}
             <button className="more-row" onClick={() => onOpenSection('roles')}>
-              <span className="person-name">What each role can do</span>
+              <span className="person-name">{tr('What each role can do')}</span>
               <Icon name="chevron" className="more-go" />
             </button>
             {data.can.transfer && others.length > 0 && (
@@ -607,17 +608,17 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                   setDialog({ kind: 'transfer' })
                 }}
               >
-                <span className="person-name">Transfer ownership</span>
+                <span className="person-name">{tr('Transfer ownership')}</span>
                 <Icon name="chevron" className="more-go" />
               </button>
             )}
             {iAmOwner ? (
               <button className="more-row danger-row" onClick={() => setDialog({ kind: 'delete' })}>
-                <span className="person-name">Delete workspace</span>
+                <span className="person-name">{tr('Delete workspace')}</span>
               </button>
             ) : (
               <button className="more-row danger-row" onClick={() => setDialog({ kind: 'leave' })}>
-                <span className="person-name">Leave workspace</span>
+                <span className="person-name">{tr('Leave workspace')}</span>
               </button>
             )}
           </div>
@@ -625,12 +626,12 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       )}
 
       {section === 'roles' && (
-        <section className="card glass" aria-label="What each role can do">
+        <section className="card glass" aria-label={tr('What each role can do')}>
           <div className="role-table-box">
             <table className="role-table">
               <thead>
                 <tr>
-                  <th scope="col">Action</th>
+                  <th scope="col">{tr('Action')}</th>
                   {ALL_ROLES.map((r) => (
                     <th key={r} scope="col" className={r === data.role ? 'mine' : undefined}>
                       {label(r)}
@@ -644,8 +645,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                     <th scope="row">{rule.action}</th>
                     {ALL_ROLES.map((r) => (
                       <td key={r} className={r === data.role ? 'mine' : undefined}>
-                        {rule.allowed.includes(r) ? <Icon name="check" /> : <span className="sr-only">No</span>}
-                        {rule.allowed.includes(r) && <span className="sr-only">Yes</span>}
+                        {rule.allowed.includes(r) ? <Icon name="check" /> : <span className="sr-only">{tr('No')}</span>}
+                        {rule.allowed.includes(r) && <span className="sr-only">{tr('Yes')}</span>}
                       </td>
                     ))}
                   </tr>
@@ -659,8 +660,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       {dialog?.kind === 'new-item' && (
         <ConfirmAction
           icon={null}
-          title={`New in ${data.name}`}
-          confirmLabel="Create"
+          title={tr('New in {name}', { name: data.name })}
+          confirmLabel={tr('Create')}
           confirmDisabled={!text.trim()}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
@@ -681,31 +682,31 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             }
           }}
         >
-          <div className="chips" role="group" aria-label="What to make" style={{ justifyContent: 'center' }}>
+          <div className="chips" role="group" aria-label={tr('What to make')} style={{ justifyContent: 'center' }}>
             <button type="button" className="chip" aria-pressed={newKind === 'table'} onClick={() => setNewKind('table')}>
-              Table
+              {tr('Table')}
             </button>
             <button type="button" className="chip" aria-pressed={newKind === 'page'} onClick={() => setNewKind('page')}>
-              Page
+              {tr('Page')}
             </button>
           </div>
           <label className="field-group" style={leftField}>
-            <span className="label">Title</span>
-            <input data-autofocus className="field" maxLength={120} autoComplete="off" value={text} placeholder={newKind === 'table' ? 'Sprint 12 testing' : 'Release plan'} onChange={(e) => setText(e.target.value)} />
+            <span className="label">{tr('Title')}</span>
+            <input data-autofocus className="field" maxLength={120} autoComplete="off" value={text} placeholder={newKind === 'table' ? tr('Sprint 12 testing') : tr('Release plan')} onChange={(e) => setText(e.target.value)} />
           </label>
         </ConfirmAction>
       )}
       {dialog?.kind === 'invite' && (
         <ConfirmAction
           icon={null}
-          title="Invite someone"
-          confirmLabel="Send invitation"
+          title={tr('Invite someone')}
+          confirmLabel={tr('Send invitation')}
           confirmDisabled={!text.trim()}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
             try {
               setData(await api.invite(id, text, role))
-              notify('Invitation sent', text.trim())
+              notify(tr('Invitation sent'), text.trim())
               setDialog(null)
             } catch (err) {
               throw new Error(fieldError(err, 'invitee'), { cause: err })
@@ -713,11 +714,11 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
           }}
         >
           <label className="field-group" style={leftField}>
-            <span className="label">@username or email</span>
+            <span className="label">{tr('@username or email')}</span>
             <input data-autofocus className="field" value={text} placeholder="@username" autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </label>
           <label className="field-group" style={leftField}>
-            <span className="label">Role</span>
+            <span className="label">{tr('Role')}</span>
             <select className="field" value={role} onChange={(e) => setRole(e.target.value as Role)}>
               {choices().map((r) => (
                 <option key={r} value={r}>
@@ -731,8 +732,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       {dialog?.kind === 'rename' && (
         <ConfirmAction
           icon={null}
-          title="Rename workspace"
-          confirmLabel="Save"
+          title={tr('Rename workspace')}
+          confirmLabel={tr('Save')}
           confirmDisabled={!text.trim()}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
@@ -746,7 +747,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
           }}
         >
           <label className="field-group" style={leftField}>
-            <span className="label">Name</span>
+            <span className="label">{tr('Name')}</span>
             <input data-autofocus className="field" maxLength={80} autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} />
           </label>
         </ConfirmAction>
@@ -755,8 +756,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
         <ConfirmAction
           danger
           icon="users"
-          title={`Remove ${nameOf(dialog.member)}?`}
-          confirmLabel="Remove"
+          title={tr('Remove {value}?', { value: nameOf(dialog.member) })}
+          confirmLabel={tr('Remove')}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
             await api.removeMember(id, dialog.member.id)
@@ -765,14 +766,14 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             onChanged()
           }}
         >
-          <p>They'll lose access to {data.name}. You can invite them again later.</p>
+          <p>{tr('They\'ll lose access to {name}. You can invite them again later.', { name: data.name })}</p>
         </ConfirmAction>
       )}
       {dialog?.kind === 'transfer' && (
         <ConfirmAction
           icon="shield"
-          title="Transfer ownership?"
-          confirmLabel="Transfer ownership"
+          title={tr('Transfer ownership?')}
+          confirmLabel={tr('Transfer ownership')}
           confirmDisabled={!newOwner}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
@@ -781,11 +782,11 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             onChanged()
           }}
         >
-          <p>They'll be able to delete this workspace. You'll become an admin, and only they could make you owner again.</p>
+          <p>{tr('They\'ll be able to delete this workspace. You\'ll become an admin, and only they could make you owner again.')}</p>
           <label className="field-group" style={leftField}>
-            <span className="label">New owner</span>
+            <span className="label">{tr('New owner')}</span>
             <select data-autofocus className="field" value={newOwner} onChange={(e) => setNewOwner(e.target.value)}>
-              <option value="">Choose a member…</option>
+              <option value="">{tr('Choose a member…')}</option>
               {others.map((m) => (
                 <option key={m.id} value={m.id}>
                   {nameOf(m)} (@{m.username})
@@ -799,8 +800,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
         <ConfirmAction
           danger
           icon="logout"
-          title={`Leave ${data.name}?`}
-          confirmLabel="Leave"
+          title={tr('Leave {name}?', { name: data.name })}
+          confirmLabel={tr('Leave')}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
             await api.removeMember(id, myId)
@@ -809,15 +810,15 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             onGone()
           }}
         >
-          <p>You'll lose access until someone invites you again.</p>
+          <p>{tr('You\'ll lose access until someone invites you again.')}</p>
         </ConfirmAction>
       )}
       {dialog?.kind === 'delete' && (
         <ConfirmAction
           danger
           icon="trash"
-          title={`Delete ${data.name}?`}
-          confirmLabel="Delete workspace"
+          title={tr('Delete {name}?', { name: data.name })}
+          confirmLabel={tr('Delete workspace')}
           typeToConfirm={data.name}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
@@ -827,7 +828,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             onGone()
           }}
         >
-          <p>All {data.members.length} members lose access right away.</p>
+          <p>{tr('All {length} members lose access right away.', { length: data.members.length })}</p>
         </ConfirmAction>
       )}
     </div>

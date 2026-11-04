@@ -1,3 +1,6 @@
+from datetime import timedelta
+from unittest import mock
+
 from django.utils import timezone
 from django.conf import settings
 from django.core.cache import cache
@@ -78,7 +81,9 @@ class AuthTests(APITestCase):
         old = self.client.cookies[settings.REFRESH_COOKIE_NAME].value
         self.client.post("/api/auth/refresh/")
         self.client.cookies[settings.REFRESH_COOKIE_NAME] = old
-        self.assertEqual(self.client.post("/api/auth/refresh/").status_code, 401)
+        later = timezone.now() + timedelta(seconds=settings.REFRESH_REUSE_SECONDS + 1)
+        with mock.patch("django.utils.timezone.now", return_value=later):
+            self.assertEqual(self.client.post("/api/auth/refresh/").status_code, 401)
 
     def test_refresh_for_deleted_account_is_a_clean_401(self):
         self.login()

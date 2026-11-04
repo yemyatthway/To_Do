@@ -1,5 +1,6 @@
 import type { PreparedUpload, UploadMeta, UploadTarget } from './uploads'
 import { Outbox } from './outbox'
+import { tr } from './i18n'
 
 export type Category = 'work' | 'personal' | 'health'
 export type Priority = 'low' | 'medium' | 'high'
@@ -48,6 +49,7 @@ export interface User {
   /** Friends may put tasks straight into your list. */
   friends_can_add_tasks: boolean
   workspace_emails: boolean
+  language: 'en' | 'my'
   is_staff: boolean
   date_joined: string
 }
@@ -107,7 +109,7 @@ export interface Page<T> {
   results: T[]
 }
 
-export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'username' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks' | 'workspace_emails'>>
+export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'username' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks' | 'workspace_emails' | 'language'>>
 
 interface Session {
   access: string
@@ -196,14 +198,14 @@ async function rawFetch(path: string, init: RequestInit = {}, withAuth = true) {
   try {
     return await fetch(API_BASE + path, { ...init, headers, credentials: 'include', signal: timeout.signal })
   } catch {
-    throw new ApiError("Couldn't reach the server. Check your connection and try again.", 0)
+    throw new ApiError(tr('Couldn\'t reach the server. Check your connection and try again.'), 0)
   } finally {
     clearTimeout(timer)
   }
 }
 
 async function toError(response: Response) {
-  let message = `Something went wrong (${response.status}).`
+  let message = tr('Something went wrong ({status}).', { status: response.status })
   let fields: Record<string, string[]> = {}
   let data: unknown
   try {
@@ -212,17 +214,17 @@ async function toError(response: Response) {
     if (typeof body.detail === 'string') {
       message = body.detail
     } else {
-      fields = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, Array.isArray(v) ? v.map(String) : [String(v)]]))
+      fields = Object.fromEntries(Object.entries(body).map(([k, v]) => [k, Array.isArray(v) ? v.map((one) => tr(String(one))) : [tr(String(v))]]))
       message = Object.values(fields).flat().join(' ') || message
     }
   } catch {
     // Not JSON; keep the generic message.
   }
   // The dev proxy (or a host in front of Django) answers 502–504 when the server is down or waking up.
-  if (response.status >= 502 && response.status <= 504) message = "Couldn't reach the server. Check your connection and try again."
+  if (response.status >= 502 && response.status <= 504) message = tr('Couldn\'t reach the server. Check your connection and try again.')
   // DRF's own throttle text is vague; our code limits explain themselves.
-  if (response.status === 429 && (!message || message.startsWith('Request was throttled'))) message = 'Too many attempts. Wait a minute and try again.'
-  return new ApiError(message, response.status, fields, data)
+  if (response.status === 429 && (!message || message.startsWith('Request was throttled'))) message = tr('Too many attempts. Wait a minute and try again.')
+  return new ApiError(tr(message), response.status, fields, data)
 }
 
 let refreshing: Promise<boolean> | null = null
@@ -286,7 +288,7 @@ export const auth = {
   login: (email: string, password: string, restore = false) => startSession('/api/auth/login/', { email, password, restore }),
   verifyLogin: (challenge: string, code: string) => startSession('/api/auth/login/verify/', { challenge, code }) as Promise<User>,
   resendLogin: (challenge: string) => postPublic<{ resend_in: number; expires_at: string | null }>('/api/auth/login/resend/', { challenge }),
-  register: (input: { full_name: string; username: string; email: string; password: string; timezone: string }) =>
+  register: (input: { full_name: string; username: string; email: string; password: string; timezone: string; language: 'en' | 'my' }) =>
     startSession('/api/auth/register/', input) as Promise<User>,
   checkEmail: (email: string) => postPublic<EmailCheck>('/api/auth/check-email/', { email }),
   /** Signed in, your own current username counts as free. */
@@ -472,7 +474,20 @@ export interface Chat {
   friend_read_at: string | null
 }
 
+export interface ScheduledMessage {
+  id: number
+  text: string
+  send_at: string
+  status: 'pending' | 'sending' | 'failed'
+  error: string
+}
+
 export const chat = {
+  scheduled: (id: number) => request<ScheduledMessage[]>(`/api/chat/${id}/scheduled/`),
+  schedule: (id: number, text: string, sendAt: string) => request<ScheduledMessage>(`/api/chat/${id}/scheduled/`, json('POST', { text, send_at: sendAt })),
+  updateScheduled: (id: number, itemId: number, text: string, sendAt: string) => request<ScheduledMessage>(`/api/chat/${id}/scheduled/${itemId}/`, json('PATCH', { text, send_at: sendAt })),
+  sendScheduledNow: (id: number, itemId: number) => request<ChatMessage>(`/api/chat/${id}/scheduled/${itemId}/`, json('POST', {})),
+  deleteScheduled: (id: number, itemId: number) => request<void>(`/api/chat/${id}/scheduled/${itemId}/`, { method: 'DELETE' }),
   list: () => request<{ chats: Chat[]; unread: number }>('/api/chat/'),
   open: (userId: number) => request<Chat>(`/api/chat/with/${userId}/`, json('POST', {})),
   messages: (id: number, before?: number) =>
@@ -721,9 +736,9 @@ export function putFile(target: UploadTarget, blob: Blob, onProgress: (loaded: n
     Object.entries(target.headers).forEach(([name, value]) => xhr.setRequestHeader(name, value))
     xhr.upload.onprogress = (e) => onProgress(e.loaded)
     // 409: it already arrived on an earlier try.
-    xhr.onload = () => (xhr.status < 300 || xhr.status === 409 ? resolve() : reject(new Error(xhr.status === 413 ? 'That file is too big.' : "The upload didn't finish. Try again.")))
-    xhr.onerror = () => reject(new Error("Can't reach the file storage. Check your connection and try again."))
-    xhr.onabort = () => reject(new Error('Cancelled'))
+    xhr.onload = () => (xhr.status < 300 || xhr.status === 409 ? resolve() : reject(new Error(xhr.status === 413 ? tr('That file is too big.') : tr('The upload didn\'t finish. Try again.'))))
+    xhr.onerror = () => reject(new Error(tr('Can\'t reach the file storage. Check your connection and try again.')))
+    xhr.onabort = () => reject(new Error(tr('Cancelled')))
     signal.addEventListener('abort', () => xhr.abort())
     xhr.send(blob)
   })

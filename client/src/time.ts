@@ -1,4 +1,5 @@
 import type { Task } from './api'
+import { formatDate, tr } from './i18n'
 
 export function startOfDay(date: Date) {
   const d = new Date(date)
@@ -27,21 +28,21 @@ export const REMINDER_LEADS = [0, 5, 10, 15, 30, 60, 120, 1440] as const
 
 /** 0 -> 'At the time', 30 -> '30 min before', 60 -> '1 hour before', 1440 -> '1 day before'. */
 export function formatLead(minutes: number) {
-  if (minutes === 0) return 'At the time'
-  if (minutes % 1440 === 0) return `${minutes / 1440} day${minutes === 1440 ? '' : 's'} before`
-  if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? '' : 's'} before`
-  return `${minutes} min before`
+  if (minutes === 0) return tr('At the time')
+  if (minutes % 1440 === 0) return tr('{value} day{value2} before', { value: minutes / 1440, value2: minutes === 1440 ? '' : 's' })
+  if (minutes % 60 === 0) return tr('{value} hour{value2} before', { value: minutes / 60, value2: minutes === 60 ? '' : 's' })
+  return tr('{minutes} min before', { minutes })
 }
 
-export const formatTime = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-export const formatLongDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
-export const formatShortDay = (d: Date) => `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.getDate()}`
+export const formatTime = (d: Date) => formatDate(d, { hour: 'numeric', minute: '2-digit' })
+export const formatLongDate = (d: Date) => formatDate(d, { weekday: 'long', day: 'numeric', month: 'long' })
+export const formatShortDay = (d: Date) => `${formatDate(d, { weekday: 'short' })} ${d.getDate()}`
 
 export function greeting(now: Date) {
   const h = now.getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 18) return 'Good afternoon'
-  return 'Good evening'
+  if (h < 12) return tr('Good morning')
+  if (h < 18) return tr('Good afternoon')
+  return tr('Good evening')
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -60,7 +61,7 @@ export const dueDate = (task: Task) => (task.due_at ? new Date(task.due_at) : nu
 /** The device's IANA time zone, e.g. "Asia/Yangon". Dates on screen always use it. */
 export const deviceTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
 
-export const formatHour = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric' })
+export const formatHour = (d: Date) => formatDate(d, { hour: 'numeric' })
 
 /**
  * The 12 hours the clock face shows. Today: starting at the current hour (so "2" always means
@@ -91,9 +92,9 @@ export function relativeLabel(task: Task, now: Date) {
   const due = dueDate(task)
   if (!due || task.done) return null
   const minutes = Math.round((due.getTime() - now.getTime()) / 60000)
-  if (minutes < -1) return sameDay(due, now) ? 'Overdue' : null
-  if (minutes <= 0) return 'Now'
-  if (minutes <= 60) return `in ${minutes} min`
+  if (minutes < -1) return sameDay(due, now) ? tr('Overdue') : null
+  if (minutes <= 0) return tr('Now')
+  if (minutes <= 60) return tr('in {minutes} min', { minutes })
   return null
 }
 

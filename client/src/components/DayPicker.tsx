@@ -4,6 +4,7 @@ import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { addDays, monthGrid, sameDay, startOfDay, toDateInput } from '../time'
 import { Calendar } from './Calendar'
+import { formatDate, tr } from '../i18n'
 
 interface DayPickerProps {
   day: Date
@@ -12,7 +13,7 @@ interface DayPickerProps {
   onAddTask: (day: Date) => void
 }
 
-const longDay = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+const longDay = (d: Date) => formatDate(d, { weekday: 'short', day: 'numeric', month: 'short' })
 
 /** "Today" and a calendar button. The calendar opens below it; past days can't be picked. */
 export function DayPicker({ day, now, onChange, onAddTask }: DayPickerProps) {
@@ -59,9 +60,9 @@ export function DayPicker({ day, now, onChange, onAddTask }: DayPickerProps) {
 
   return (
     <div className="day-picker" ref={wrapRef} data-tour="day-strip">
-      <div className="day-strip" role="group" aria-label="Day">
+      <div className="day-strip" role="group" aria-label={tr('Day')}>
         <button aria-pressed={isToday} onClick={() => onChange(today)}>
-          Today
+          {tr('Today')}
         </button>
         <button
           ref={buttonRef}
@@ -72,20 +73,20 @@ export function DayPicker({ day, now, onChange, onAddTask }: DayPickerProps) {
           onClick={() => setOpen(!open)}
         >
           <Icon name="calendar" />
-          {isToday ? 'Calendar' : longDay(day)}
+          {isToday ? tr('Calendar') : longDay(day)}
         </button>
       </div>
 
       {open && (
-        <div ref={popRef} className="calendar-pop glass" role="dialog" aria-label="Pick a day">
+        <div ref={popRef} className="calendar-pop glass" role="dialog" aria-label={tr('Pick a day')}>
           <Calendar value={day} minDate={today} marked={marked} onMonthChange={loadMarks} onChange={onChange} />
           <div className="calendar-foot">
             <span className="list-sub">
-              {sameDay(day, today) ? 'Today' : sameDay(day, addDays(today, 1)) ? 'Tomorrow' : longDay(day)}
+              {sameDay(day, today) ? tr('Today') : sameDay(day, addDays(today, 1)) ? tr('Tomorrow') : longDay(day)}
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="text-btn" onClick={() => setOpen(false)}>
-                Done
+                {tr('Done')}
               </button>
               <button
                 type="button"
@@ -96,7 +97,7 @@ export function DayPicker({ day, now, onChange, onAddTask }: DayPickerProps) {
                 }}
               >
                 <Icon name="plus" />
-                Add task
+                {tr('Add task')}
               </button>
             </div>
           </div>

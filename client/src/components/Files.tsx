@@ -6,7 +6,9 @@ import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { fileSizeText, timeLeftText, uploadTiming } from '../uploadProgress'
 import type { UploadItem } from '../uploads'
+import { ConfirmAction } from './ConfirmAction'
 import { Bone } from './Loading'
+import { tr } from '../i18n'
 
 /** Real progress, once the upload has taken more than a moment. */
 function UploadBar({ item }: { item: UploadItem }) {
@@ -22,14 +24,14 @@ function UploadBar({ item }: { item: UploadItem }) {
       <div className="upload-status failed" role="alert">
         <span className="upload-text">{item.error}</span>
         <button type="button" className="text-btn" onClick={() => void uploads.retry(item.fileId)}>
-          Try again
+          {tr('Try again')}
         </button>
       </div>
     )
   }
-  const label = item.state === 'finishing' ? 'Finishing…' : item.state === 'waiting' ? 'Waiting…' : timing.showProgress ? `${timing.percent}%${timing.secondsLeft !== null ? ` · ${timeLeftText(timing.secondsLeft)}` : ''}` : 'Uploading…'
+  const label = item.state === 'finishing' ? tr('Finishing…') : item.state === 'waiting' ? tr('Waiting…') : timing.showProgress ? `${timing.percent}%${timing.secondsLeft !== null ? ` · ${timeLeftText(timing.secondsLeft)}` : ''}` : tr('Uploading…')
   return (
-    <div className="upload-status" role="status" aria-label={`Uploading ${item.name}: ${label}`}>
+    <div className="upload-status" role="status" aria-label={tr('Uploading {name}: {label}', { name: item.name, label })}>
       <span className="upload-track" aria-hidden="true">
         <span style={{ width: `${timing.showProgress || item.state === 'finishing' ? (item.state === 'finishing' ? 100 : timing.percent) : 0}%` }} />
       </span>
@@ -57,11 +59,11 @@ function ImageViewer({ file, onClose }: { file: TeamFile; onClose: () => void })
       <div className="viewer-bar">
         <span className="viewer-name">{file.name}</span>
         {file.download_url && (
-          <a className="round-btn" href={file.download_url} aria-label={`Download ${file.name}`}>
+          <a className="round-btn" href={file.download_url} aria-label={tr('Download {name}', { name: file.name })}>
             <Icon name="download" />
           </a>
         )}
-        <button type="button" className="round-btn" aria-label="Close" onClick={onClose}>
+        <button type="button" className="round-btn" aria-label={tr('Close')} onClick={onClose}>
           <Icon name="x" />
         </button>
       </div>
@@ -85,20 +87,39 @@ export function FileView({ workspaceId, id, compact, onRemove }: FileViewProps) 
   const items = useUploads()
   const upload = items.get(id)
   const [viewing, setViewing] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const imageRef = useRef<HTMLImageElement>(null)
 
   const remove = onRemove && (
     <button
       type="button"
       className="file-remove"
-      aria-label={upload ? 'Cancel this upload' : 'Remove this file'}
+      aria-label={upload ? tr('Cancel this upload') : tr('Remove this file')}
       onClick={() => {
-        if (upload) void uploads.cancel(id)
-        onRemove()
+        // Stopping an upload loses nothing. Removing something already shared asks first.
+        if (upload) {
+          void uploads.cancel(id)
+          onRemove()
+        } else setRemoving(true)
       }}
     >
       <Icon name="x" />
     </button>
+  )
+  const removeDialog = removing && onRemove && (
+    <ConfirmAction
+      danger
+      icon="trash"
+      title={tr('Remove this file?')}
+      confirmLabel={tr('Remove')}
+      onCancel={() => setRemoving(false)}
+      onConfirm={async () => {
+        onRemove()
+        setRemoving(false)
+      }}
+    >
+      <p>{tr('It\'s taken off here for everyone.')}</p>
+    </ConfirmAction>
   )
 
   if (upload) {
@@ -124,15 +145,16 @@ export function FileView({ workspaceId, id, compact, onRemove }: FileViewProps) 
     return (
       <div className={`file-card missing${compact ? ' compact' : ''}`}>
         <Icon name="file" />
-        <span className="row-sub">{file === 'gone' ? "This file isn't available any more." : `${file.name} is still uploading, or the upload didn't finish.`}</span>
+        <span className="row-sub">{file === 'gone' ? tr('This file isn\'t available any more.') : tr('{name} is still uploading, or the upload didn\'t finish.', { name: file.name })}</span>
         {remove}
+        {removeDialog}
       </div>
     )
   }
   if (file.is_image && file.url) {
     return (
       <div className={`file-image-wrap${compact ? ' compact' : ''}`}>
-        <button type="button" className="file-image" aria-label={`Open ${file.name}`} onClick={() => setViewing(true)}>
+        <button type="button" className="file-image" aria-label={tr('Open {name}', { name: file.name })} onClick={() => setViewing(true)}>
           <img
             ref={imageRef}
             src={(compact ? file.thumb_url : file.url) ?? file.url}
@@ -144,6 +166,7 @@ export function FileView({ workspaceId, id, compact, onRemove }: FileViewProps) 
           />
         </button>
         {remove}
+        {removeDialog}
         {viewing && <ImageViewer file={file} onClose={() => setViewing(false)} />}
       </div>
     )
@@ -158,20 +181,36 @@ export function FileView({ workspaceId, id, compact, onRemove }: FileViewProps) 
         <span className="row-sub">{fileSizeText(file.size)}</span>
       </span>
       {file.download_url && (
-        <a className="icon-btn" href={file.download_url} aria-label={`Download ${file.name}`}>
+        <a className="icon-btn" href={file.download_url} aria-label={tr('Download {name}', { name: file.name })}>
           <Icon name="download" />
         </a>
       )}
       {remove}
+      {removeDialog}
     </div>
   )
 }
 
 /** Small squares for a table cell. */
-export function FileThumbs({ workspaceId, ids, limit = 3, still }: { workspaceId: number; ids: number[]; limit?: number; still?: boolean }) {
+export function FileThumbs({ workspaceId, ids, limit = 3, still, onRemove }: { workspaceId: number; ids: number[]; limit?: number; still?: boolean; onRemove?: (id: number) => void }) {
   const files = useTeamFiles(workspaceId, ids.slice(0, limit))
   const items = useUploads()
   const [viewing, setViewing] = useState<TeamFile | null>(null)
+  const [removing, setRemoving] = useState<number | null>(null)
+  const removeKey = (id: number) =>
+    onRemove && (
+      <button
+        type="button"
+        className="thumb-remove"
+        aria-label={tr('Remove this file')}
+        onClick={(e) => {
+          e.stopPropagation()
+          setRemoving(id)
+        }}
+      >
+        <Icon name="x" />
+      </button>
+    )
   return (
     <span className="file-thumbs">
       {files.map((file, index) => {
@@ -179,7 +218,7 @@ export function FileThumbs({ workspaceId, ids, limit = 3, still }: { workspaceId
         if (items.has(id)) {
           const item = items.get(id)!
           return (
-            <span key={id} className={`file-thumb busy${item.state === 'failed' ? ' failed' : ''}`} role="img" aria-label={item.state === 'failed' ? `${item.name} didn't upload` : `Uploading ${item.name}`}>
+            <span key={id} className={`file-thumb busy${item.state === 'failed' ? ' failed' : ''}`} role="img" aria-label={item.state === 'failed' ? tr('{name} didn\'t upload', { name: item.name }) : tr('Uploading {name}', { name: item.name })}>
               {item.previewUrl ? <img src={item.previewUrl} alt="" /> : <Icon name="file" />}
             </span>
           )
@@ -193,28 +232,58 @@ export function FileThumbs({ workspaceId, ids, limit = 3, still }: { workspaceId
             )
           }
           return (
-            <button
-              key={id}
-              type="button"
-              className="file-thumb"
-              aria-label={`Open ${file.name}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                setViewing(file)
-              }}
-            >
-              <img src={file.thumb_url ?? ''} alt="" loading="lazy" />
-            </button>
+            <span key={id} className="thumb-wrap">
+              <button
+                type="button"
+                className="file-thumb"
+                aria-label={tr('Open {name}', { name: file.name })}
+                title={file.name}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setViewing(file)
+                }}
+              >
+                <img src={file.thumb_url ?? ''} alt="" loading="lazy" />
+                <span className="thumb-open" aria-hidden="true">
+                  <Icon name="search" />
+                </span>
+              </button>
+              {removeKey(id)}
+            </span>
           )
         }
         return (
-          <span key={id} className="file-thumb" role="img" aria-label={file && file !== 'gone' ? file.name : 'File'}>
-            <Icon name="file" />
+          <span key={id} className="thumb-wrap">
+            {file && file !== 'gone' && file.download_url && !still ? (
+              <a className="file-thumb" href={file.download_url} aria-label={tr('Download {name}', { name: file.name })} title={file.name}>
+                <Icon name="file" />
+              </a>
+            ) : (
+              <span className="file-thumb" role="img" aria-label={file && file !== 'gone' ? file.name : tr('File')}>
+                <Icon name="file" />
+              </span>
+            )}
+            {removeKey(id)}
           </span>
         )
       })}
       {ids.length > limit && <span className="file-more">+{ids.length - limit}</span>}
       {viewing && <ImageViewer file={viewing} onClose={() => setViewing(null)} />}
+      {removing !== null && (
+        <ConfirmAction
+          danger
+          icon="trash"
+          title={tr('Remove this file?')}
+          confirmLabel={tr('Remove')}
+          onCancel={() => setRemoving(null)}
+          onConfirm={async () => {
+            onRemove?.(removing)
+            setRemoving(null)
+          }}
+        >
+          <p>{tr('It\'s taken off this row for everyone.')}</p>
+        </ConfirmAction>
+      )}
     </span>
   )
 }

@@ -6,19 +6,20 @@ import { STATUS_LABEL } from './labels'
 import { FilterSelect, Pager, SearchBox, SortHeader, TableError } from './table'
 import { useLiveRefresh } from '../../live'
 import { useServerTable } from './useServerTable'
+import { formatDate, tr } from '../../i18n'
 
 const STATUS_OPTIONS = [
-  ['', 'All statuses'],
-  ['active', 'Active'],
-  ['banned', 'Banned'],
-  ['inactive', 'Inactive'],
-  ['deleted', 'Deleted'],
+  ['', tr('All statuses')],
+  ['active', tr('Active')],
+  ['banned', tr('Banned')],
+  ['inactive', tr('Inactive')],
+  ['deleted', tr('Deleted')],
 ] as const
 
 const VERIFIED_OPTIONS = [
-  ['', 'Any email'],
-  ['yes', 'Verified'],
-  ['no', 'Not verified'],
+  ['', tr('Any email')],
+  ['yes', tr('Verified')],
+  ['no', tr('Not verified')],
 ] as const
 
 interface UsersTableProps {
@@ -43,10 +44,10 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
   return (
     <section className="card glass admin-table-card" aria-labelledby="users-h">
       <div className="admin-toolbar">
-        <h2 id="users-h">Users</h2>
-        <SearchBox label="Search name or email" value={table.search} onChange={table.setSearch} />
-        <FilterSelect label="Status" value={table.filters.status} options={STATUS_OPTIONS} onChange={(v) => table.setFilter('status', v)} />
-        <FilterSelect label="Email" value={table.filters.verified} options={VERIFIED_OPTIONS} onChange={(v) => table.setFilter('verified', v)} />
+        <h2 id="users-h">{tr('Users')}</h2>
+        <SearchBox label={tr('Search name or email')} value={table.search} onChange={table.setSearch} />
+        <FilterSelect label={tr('Status')} value={table.filters.status} options={STATUS_OPTIONS} onChange={(v) => table.setFilter('status', v)} />
+        <FilterSelect label={tr('Email')} value={table.filters.verified} options={VERIFIED_OPTIONS} onChange={(v) => table.setFilter('verified', v)} />
       </div>
 
       {table.error && <TableError message={table.error} onRetry={table.reload} />}
@@ -56,18 +57,18 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
           <thead>
             <tr>
               <SortHeader table={table} field="name">
-                User
+                {tr('User')}
               </SortHeader>
-              <th scope="col">Status</th>
-              <th scope="col">Email</th>
+              <th scope="col">{tr('Status')}</th>
+              <th scope="col">{tr('Email')}</th>
               <SortHeader table={table} field="tasks" descFirst className="num">
-                Tasks
+                {tr('Tasks')}
               </SortHeader>
               <SortHeader table={table} field="joined" descFirst>
-                Joined
+                {tr('Joined')}
               </SortHeader>
               <SortHeader table={table} field="last_login" descFirst>
-                Last login
+                {tr('Last login')}
               </SortHeader>
             </tr>
           </thead>
@@ -77,7 +78,7 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
                 key={u.id}
                 className={`clickable${selectedId === u.id ? ' selected' : ''}`}
                 tabIndex={0}
-                aria-label={`Open ${u.full_name || u.email}`}
+                aria-label={tr('Open {value}', { value: u.full_name || u.email })}
                 onClick={() => onOpen(u.id)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
@@ -92,8 +93,8 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
                   </span>
                   <span className="cell-user-text">
                     <span className="cell-strong">
-                      {u.full_name || 'No name'}
-                      {u.is_staff && <span className="badge badge-staff">Admin</span>}
+                      {u.full_name || tr('No name')}
+                      {u.is_staff && <span className="badge badge-staff">{tr('Admin')}</span>}
                     </span>
                     <span className="task-meta">
                       @{u.username} · {u.email}
@@ -104,13 +105,13 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
                   <span className={`badge badge-${u.status}`}>{STATUS_LABEL[u.status]}</span>
                 </td>
                 <td data-label="Email">
-                  <span className={`badge ${u.email_verified ? 'badge-active' : 'badge-inactive'}`}>{u.email_verified ? 'Verified' : 'Not verified'}</span>
+                  <span className={`badge ${u.email_verified ? 'badge-active' : 'badge-inactive'}`}>{u.email_verified ? tr('Verified') : tr('Not verified')}</span>
                 </td>
                 <td data-label="Tasks" className="num">
                   {u.task_count}
                 </td>
                 <td data-label="Joined" title={formatDateTime(u.date_joined)}>
-                  {new Date(u.date_joined).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {formatDate(new Date(u.date_joined), { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>
                 <td data-label="Last login" title={u.last_login_at ? formatDateTime(u.last_login_at) : undefined}>
                   {timeAgo(u.last_login_at, now)}
@@ -120,7 +121,7 @@ export function UsersTable({ now, selectedId, onOpen, changed }: UsersTableProps
           </tbody>
         </table>
         {table.firstLoad && <Loading active={!table.error} skeleton={<SkeletonRows count={5} avatar />} onRetry={table.reload} />}
-        {!table.loading && !table.error && table.rows.length === 0 && <p className="empty">{filtered ? 'No users match these filters.' : 'No users yet.'}</p>}
+        {!table.loading && !table.error && table.rows.length === 0 && <p className="empty">{filtered ? tr('No users match these filters.') : tr('No users yet.')}</p>}
       </div>
 
       <Pager table={table} noun="users" />

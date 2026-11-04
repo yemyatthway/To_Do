@@ -1,4 +1,5 @@
 import type { CellValue, Member, TableColumn, TableRowData } from './api'
+import { formatDate as localDate, tr } from './i18n'
 
 /** Reading a table: what a cell says, and which rows a search or filter keeps. No screen here, so it can be tested. */
 
@@ -19,7 +20,7 @@ export const memberName = (member: Members[number]) => member.full_name || `@${m
 export function personName(id: CellValue | undefined, members: Members) {
   if (id === null || id === undefined) return ''
   const member = members.find((m) => m.id === id)
-  return member ? memberName(member) : 'Former member'
+  return member ? memberName(member) : tr('Former member')
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -42,7 +43,7 @@ export function formatDate(value: CellValue | undefined) {
   if (typeof value !== 'string' || !value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return localDate(date, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 /** What a cell reads as. */
@@ -53,7 +54,7 @@ export function displayValue(column: TableColumn, value: CellValue | undefined, 
     case 'date':
       return formatDate(value)
     case 'checkbox':
-      return value ? 'Yes' : 'No'
+      return value ? tr('Yes') : tr('No')
     case 'file': {
       const count = Array.isArray(value) ? value.length : 0
       return count ? `${count} ${count === 1 ? 'file' : 'files'}` : ''
@@ -71,7 +72,7 @@ export function rowTitle(row: TableRowData, columns: TableColumn[]) {
     const value = row.values[column.id]
     if (column.type === 'text' && typeof value === 'string' && value.trim()) return value.trim()
   }
-  return `Row ${row.no}`
+  return tr('Row {no}', { no: row.no })
 }
 
 /** A select column's choices are simply what the team has typed into it so far. */
@@ -138,18 +139,18 @@ export function boardGroups(rows: TableRowData[], column: TableColumn, members: 
   const groups: BoardGroup[] =
     column.type === 'checkbox'
       ? [
-          { key: 'no', label: `Not ${column.name.toLowerCase()}`, rows: [] },
+          { key: 'no', label: tr('Not {value}', { value: column.name.toLowerCase() }), rows: [] },
           { key: 'yes', label: column.name, rows: [] },
         ]
       : column.type === 'person'
-        ? [{ key: NONE, label: 'Nobody', rows: [] }, ...members.map((m) => ({ key: String(m.id), label: memberName(m), rows: [] }))]
-        : [{ key: NONE, label: 'No value', rows: [] }, ...optionsFor(rows, column).map((option) => ({ key: option, label: option, rows: [] }))]
+        ? [{ key: NONE, label: tr('Nobody'), rows: [] }, ...members.map((m) => ({ key: String(m.id), label: memberName(m), rows: [] }))]
+        : [{ key: NONE, label: tr('No value'), rows: [] }, ...optionsFor(rows, column).map((option) => ({ key: option, label: option, rows: [] }))]
   for (const row of rows) {
     const value = row.values[column.id]
     const key = column.type === 'checkbox' ? (value ? 'yes' : 'no') : value === null || value === undefined || value === '' ? NONE : String(value)
     const group = groups.find((g) => g.key === key)
     if (group) group.rows.push(row)
-    else groups.push({ key, label: column.type === 'person' ? 'Former member' : key, rows: [row] })
+    else groups.push({ key, label: column.type === 'person' ? tr('Former member') : key, rows: [row] })
   }
   return groups
 }

@@ -1,6 +1,7 @@
 import type { User } from '../api'
 import { Icon, type IconName } from '../icons'
 import { initials } from '../user'
+import { tr } from '../i18n'
 
 interface MoreProps {
   user: User
@@ -29,17 +30,17 @@ export function More({ user, inviteBadge, noticeBadge, onGo }: MoreProps) {
             {initials(user)}
           </span>
           <span className="person-main">
-            <span className="person-name">{user.full_name || 'Your profile'}</span>
+            <span className="person-name">{user.full_name || tr('Your profile')}</span>
             <span className="task-meta">@{user.username}</span>
           </span>
           <Icon name="chevron" className="more-go" />
         </button>
       </li>
-      {row('notifications', 'Notifications', 'inbox', noticeBadge)}
-      {row('workspaces', 'Workspaces', 'team', inviteBadge)}
-      {row('progress', 'Progress', 'chart')}
-      {row('timer', 'Timer', 'timer')}
-      {user.is_staff && row('admin', 'Admin', 'shield')}
+      {row('notifications', tr('Notifications'), 'inbox', noticeBadge)}
+      {row('workspaces', tr('Workspaces'), 'team', inviteBadge)}
+      {row('progress', tr('Progress'), 'chart')}
+      {row('timer', tr('Timer'), 'timer')}
+      {user.is_staff && row('admin', tr('Admin'), 'shield')}
     </ul>
   )
 }

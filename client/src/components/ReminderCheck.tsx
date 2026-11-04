@@ -4,6 +4,7 @@ import { Icon } from '../icons'
 import { currentEndpoint, isPushSupported } from '../push'
 import { formatTime } from '../time'
 import { timeAgo } from '../user'
+import { tr } from '../i18n'
 
 type State = 'ok' | 'bad' | 'warn'
 
@@ -51,7 +52,7 @@ export function ReminderCheck() {
   }, [check])
 
   if (error) return <div className="error-banner">{error}</div>
-  if (!status) return <p className="list-sub">Checking reminders…</p>
+  if (!status) return <p className="list-sub">{tr('Checking reminders…')}</p>
 
   const now = checkedAt
   const device = status.devices.find((d) => d.this_device)
@@ -62,57 +63,57 @@ export function ReminderCheck() {
     <section className="reminder-check" aria-labelledby="check-h">
       <div className="history-head">
         <h3 id="check-h" className="section-label">
-          Check reminders
+          {tr('Check reminders')}
         </h3>
         <button type="button" className="text-btn" disabled={checking} onClick={() => void check()}>
-          {checking ? 'Checking…' : 'Check again'}
+          {checking ? tr('Checking…') : tr('Check again')}
         </button>
       </div>
       <ul className="check-list">
         <Check
           state={status.service.running ? 'ok' : 'bad'}
-          title="Reminder service"
+          title={tr('Reminder service')}
           detail={
             status.service.running
-              ? `Running · last check ${timeAgo(status.service.last_run_at, now).toLowerCase()}`
+              ? tr('Running · last check {value}', { value: timeAgo(status.service.last_run_at, now).toLowerCase() })
               : status.service.last_run_at
-                ? `Stopped · last check ${timeAgo(status.service.last_run_at, now).toLowerCase()}. The every-minute job isn't calling the server.`
-                : "Never ran. The every-minute job (cron-job.org) isn't calling the server."
+                ? tr('Stopped · last check {value}. The every-minute job isn\'t calling the server.', { value: timeAgo(status.service.last_run_at, now).toLowerCase() })
+                : tr('Never ran. The every-minute job (cron-job.org) isn\'t calling the server.')
           }
         />
         <Check
           state={status.reminders_enabled ? 'ok' : 'bad'}
-          title="Reminders on for your account"
-          detail={status.reminders_enabled ? 'On' : 'Off. Tap the bell to turn them on.'}
+          title={tr('Reminders on for your account')}
+          detail={status.reminders_enabled ? tr('On') : tr('Off. Tap the bell to turn them on.')}
         />
         <Check
           state={!isPushSupported() ? 'bad' : !device ? 'bad' : device.last_error ? 'bad' : 'ok'}
-          title="This device can receive them"
+          title={tr('This device can receive them')}
           detail={
             !isPushSupported()
-              ? "This browser can't receive notifications (on iPhone, open Todo Clock from the Home Screen)."
+              ? tr('This browser can\'t receive notifications (on iPhone, open Todo Clock from the Home Screen).')
               : !device
-                ? 'Not registered yet. Turn reminders off and on again here, then Allow.'
+                ? tr('Not registered yet. Turn reminders off and on again here, then Allow.')
                 : device.last_error
-                  ? `Last push failed: ${device.last_error}`
+                  ? tr('Last push failed: {last_error}', { last_error: device.last_error })
                   : device.last_success_at
-                    ? `Registered · last notification delivered ${timeAgo(device.last_success_at, now).toLowerCase()}`
-                    : 'Registered · nothing sent yet. Try "Send a test notification".'
+                    ? tr('Registered · last notification delivered {value}', { value: timeAgo(device.last_success_at, now).toLowerCase() })
+                    : tr('Registered · nothing sent yet. Try "Send a test notification".')
           }
         />
         <Check
           state={next ? 'ok' : 'warn'}
-          title="Next reminder"
+          title={tr('Next reminder')}
           detail={
             next
-              ? `${next.title} at ${formatTime(new Date(next.due_at))} → reminder at ${formatTime(new Date(next.remind_at!))}`
+              ? tr('{title} at {value} → reminder at {value2}', { title: next.title, value: formatTime(new Date(next.due_at)), value2: formatTime(new Date(next.remind_at!)) })
               : lastSent
-                ? `Already sent for "${lastSent.title}". No other reminder in the next 2 days.`
-                : 'No upcoming task has a time and "Remind me" on.'
+                ? tr('Already sent for "{title}". No other reminder in the next 2 days.', { title: lastSent.title })
+                : tr('No upcoming task has a time and "Remind me" on.')
           }
         />
       </ul>
-      {status.devices.length > 1 && <p className="hint">{status.devices.length} devices get your reminders.</p>}
+      {status.devices.length > 1 && <p className="hint">{tr('{length} devices get your reminders.', { length: status.devices.length })}</p>}
     </section>
   )
 }

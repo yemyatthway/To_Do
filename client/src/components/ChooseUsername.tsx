@@ -4,6 +4,7 @@ import { gsap, useGsap } from '../motion'
 import { normalizeUsername } from '../user'
 import { UsernameField } from './UsernameField'
 import { usernameBlocks, useUsernameCheck } from './usernameCheck'
+import { tr } from '../i18n'
 
 /**
  * Once, for accounts from before usernames: they were given one from their name, and choose to
@@ -27,7 +28,7 @@ export function ChooseUsername({ user, onDone }: { user: User; onDone: (user: Us
   async function save(e: React.FormEvent) {
     e.preventDefault()
     const next: Record<string, string> = {}
-    if (needsName && !fullName.trim()) next.full_name = 'Enter your name.'
+    if (needsName && !fullName.trim()) next.full_name = tr('Enter your name.')
     if (usernameBlocks(status)) next.username = status.message
     setErrors(next)
     if (Object.keys(next).length) return
@@ -55,16 +56,16 @@ export function ChooseUsername({ user, onDone }: { user: User; onDone: (user: Us
         onSubmit={save}
         noValidate
       >
-        <h2 id="choose-username-title">Choose your username</h2>
-        <p>Friends find you by it, and it tells you apart from anyone with the same name. You can change it later in your profile.</p>
+        <h2 id="choose-username-title">{tr('Choose your username')}</h2>
+        <p>{tr('Friends find you by it, and it tells you apart from anyone with the same name. You can change it later in your profile.')}</p>
         {needsName && (
           <label className="field-group">
-            <span className="label">Name</span>
+            <span className="label">{tr('Name')}</span>
             <input
               className="field"
               autoComplete="name"
               value={fullName}
-              placeholder="Mia Thompson"
+              placeholder={tr('Mia Thompson')}
               onChange={(e) => {
                 setFullName(e.target.value)
                 setErrors((p) => ({ ...p, full_name: '' }))
@@ -83,7 +84,7 @@ export function ChooseUsername({ user, onDone }: { user: User; onDone: (user: Us
           }}
         />
         <button type="submit" className="primary-btn" disabled={busy}>
-          {busy ? 'Saving…' : keeping ? `Keep @${user.username}` : 'Save username'}
+          {busy ? tr('Saving…') : keeping ? tr('Keep @{username}', { username: user.username }) : tr('Save username')}
         </button>
       </form>
     </div>

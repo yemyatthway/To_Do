@@ -6,6 +6,7 @@ import { Icon } from '../../icons'
 import { gsap, useGsap } from '../../motion'
 import { formatDateTime, initials, timeAgo } from '../../user'
 import { EVENT_ICON, EVENT_LABEL, STATUS_LABEL } from './labels'
+import { tr } from '../../i18n'
 
 interface UserPanelProps {
   me: User
@@ -46,19 +47,19 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
 
   const self = detail?.id === me.id
   const banBlocked = self
-    ? "You can't ban your own account."
+    ? tr('You can\'t ban your own account.')
     : detail?.is_staff
-      ? "Admin accounts can't be banned here."
+      ? tr('Admin accounts can\'t be banned here.')
       : detail?.status === 'deleted'
-        ? 'The owner deleted this account; it can only be restored by them.'
+        ? tr('The owner deleted this account; it can only be restored by them.')
         : ''
 
   const panel = (
     <div className="admin-detail-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <aside ref={ref} className="card glass admin-detail" aria-label="Account details" aria-busy={loading}>
+      <aside ref={ref} className="card glass admin-detail" aria-label={tr('Account details')} aria-busy={loading}>
         <div className="admin-detail-head">
-          <h2>Account</h2>
-          <button type="button" className="icon-btn" aria-label="Close details" onClick={onClose}>
+          <h2>{tr('Account')}</h2>
+          <button type="button" className="icon-btn" aria-label={tr('Close details')} onClick={onClose}>
             <Icon name="x" />
           </button>
         </div>
@@ -72,52 +73,52 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
                 {initials(detail)}
               </span>
               <div style={{ minWidth: 0 }}>
-                <p className="profile-name">{detail.full_name || 'No name'}</p>
+                <p className="profile-name">{detail.full_name || tr('No name')}</p>
                 <p className="list-sub profile-handle">@{detail.username}</p>
                 <p className="list-sub profile-email">{detail.email}</p>
                 <span className={`badge badge-${detail.status}`}>{STATUS_LABEL[detail.status]}</span>
-                {detail.is_staff && <span className="badge badge-staff">Admin</span>}
+                {detail.is_staff && <span className="badge badge-staff">{tr('Admin')}</span>}
               </div>
             </div>
 
             {detail.status === 'deleted' && detail.erase_after && (
               <div className="ban-note" role="note">
-                <strong>Deleted by its owner {detail.deleted_at ? timeAgo(detail.deleted_at, now).toLowerCase() : ''}</strong>
-                <span>Erased for good on {formatDateTime(detail.erase_after)} unless they log in and restore it.</span>
+                <strong>{tr('Deleted by its owner')}{' '}{detail.deleted_at ? timeAgo(detail.deleted_at, now).toLowerCase() : ''}</strong>
+                <span>{tr('Erased for good on')}{' '}{formatDateTime(detail.erase_after)} {tr('unless they log in and restore it.')}</span>
               </div>
             )}
 
             {detail.status === 'banned' && (
               <div className="ban-note" role="note">
-                <strong>Banned {detail.banned_at ? timeAgo(detail.banned_at, now).toLowerCase() : ''}</strong>
-                <span>{detail.ban_reason || 'No reason given.'}</span>
+                <strong>{tr('Banned')}{' '}{detail.banned_at ? timeAgo(detail.banned_at, now).toLowerCase() : ''}</strong>
+                <span>{detail.ban_reason || tr('No reason given.')}</span>
               </div>
             )}
 
             <dl className="admin-facts">
               <div>
-                <dt>Joined</dt>
+                <dt>{tr('Joined')}</dt>
                 <dd>{formatDateTime(detail.date_joined)}</dd>
               </div>
               <div>
-                <dt>Last login</dt>
-                <dd>{detail.last_login_at ? formatDateTime(detail.last_login_at) : 'Never'}</dd>
+                <dt>{tr('Last login')}</dt>
+                <dd>{detail.last_login_at ? formatDateTime(detail.last_login_at) : tr('Never')}</dd>
               </div>
               <div>
-                <dt>Last login IP</dt>
+                <dt>{tr('Last login IP')}</dt>
                 <dd className="mono">{detail.last_login_ip ?? '–'}</dd>
               </div>
               <div>
-                <dt>Tasks</dt>
+                <dt>{tr('Tasks')}</dt>
                 <dd>{detail.task_count}</dd>
               </div>
               <div>
-                <dt>Time zone</dt>
+                <dt>{tr('Time zone')}</dt>
                 <dd>{detail.timezone || '–'}</dd>
               </div>
               <div>
-                <dt>Reminders</dt>
-                <dd>{detail.reminders_enabled ? 'On' : 'Off'}</dd>
+                <dt>{tr('Reminders')}</dt>
+                <dd>{detail.reminders_enabled ? tr('On') : tr('Off')}</dd>
               </div>
             </dl>
 
@@ -125,7 +126,7 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
               {detail.status === 'banned' ? (
                 <button type="button" className="primary-btn admin-action" onClick={onUnban}>
                   <Icon name="undo" />
-                  Unban account
+                  {tr('Unban account')}
                 </button>
               ) : (
                 <button
@@ -136,7 +137,7 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
                   aria-describedby={banBlocked ? 'ban-blocked' : undefined}
                 >
                   <Icon name="ban" />
-                  Ban account
+                  {tr('Ban account')}
                 </button>
               )}
               {banBlocked && detail.status !== 'banned' && (
@@ -149,15 +150,15 @@ export function UserPanel({ me, now, detail, loading, open, onClose, onBan, onUn
             <section aria-labelledby="history-h">
               <div className="history-head">
                 <h3 id="history-h" className="section-label">
-                  Recent activity
+                  {tr('Recent activity')}
                 </h3>
                 <button type="button" className="text-btn" onClick={() => onShowActivity(detail.email)}>
-                  See all in the log
+                  {tr('See all in the log')}
                 </button>
               </div>
               {detail.recent_events.length === 0 ? (
                 <p className="empty" style={{ padding: '8px 0' }}>
-                  No activity recorded yet.
+                  {tr('No activity recorded yet.')}
                 </p>
               ) : (
                 <ol className="history">
@@ -229,28 +230,27 @@ export function ConfirmDialog({ action, user, onCancel, onConfirm }: ConfirmProp
         <span className={`confirm-icon${banning ? ' danger' : ''}`} aria-hidden="true">
           <Icon name={banning ? 'ban' : 'undo'} />
         </span>
-        <h2 id="confirm-h">{banning ? 'Ban this account?' : 'Unban this account?'}</h2>
+        <h2 id="confirm-h">{banning ? tr('Ban this account?') : tr('Unban this account?')}</h2>
         <p id="confirm-body">
           {banning ? (
             <>
-              <strong>{user.email}</strong> will be logged out everywhere right away and won't be able to log in again until you unban them.
-              Their tasks are kept.
+              <strong>{user.email}</strong> {tr('will be logged out everywhere right away and won\'t be able to log in again until you unban them. Their tasks are kept.')}
             </>
           ) : (
             <>
-              <strong>{user.email}</strong> will be able to log in again with their existing password.
+              <strong>{user.email}</strong> {tr('will be able to log in again with their existing password.')}
             </>
           )}
         </p>
         {banning && (
           <label className="field-group" style={{ width: '100%', textAlign: 'left' }}>
-            <span className="label">Reason (shown to admins only)</span>
+            <span className="label">{tr('Reason (shown to admins only)')}</span>
             <textarea
               ref={first}
               className="field"
               rows={2}
               maxLength={255}
-              placeholder="Spam, abuse, requested by the user…"
+              placeholder={tr('Spam, abuse, requested by the user…')}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             />
@@ -258,10 +258,10 @@ export function ConfirmDialog({ action, user, onCancel, onConfirm }: ConfirmProp
         )}
         <div className="confirm-actions">
           <button type="button" className="text-btn" onClick={onCancel} ref={banning ? undefined : first}>
-            Cancel
+            {tr('Cancel')}
           </button>
           <button type="submit" className={banning ? 'danger-btn' : 'primary-btn'} disabled={busy}>
-            {busy ? (banning ? 'Banning…' : 'Restoring…') : banning ? 'Ban account' : 'Unban account'}
+            {busy ? (banning ? tr('Banning…') : tr('Restoring…')) : banning ? tr('Ban account') : tr('Unban account')}
           </button>
         </div>
       </form>

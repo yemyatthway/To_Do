@@ -7,6 +7,7 @@ from django.db import close_old_connections
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from .language import tr
 from .models import EmailLog, User
 
 logger = logging.getLogger("apps.users.mail")
@@ -84,40 +85,44 @@ def send_now(*, to, subject, template, context):
     return _deliver(_build(to, subject, template, context), template)
 
 
-def code_context(purpose, code, device=""):
+def code_context(purpose, code, device="", language="en"):
+    minutes = settings.OTP_TTL_MINUTES
     if purpose == "login":
         return {
-            "eyebrow": "New device sign-in",
-            "heading": "Your sign-in code",
-            "intro": "Someone is signing in to your Todo Clock account from a new device. If it's you, enter this code to finish.",
-            "preheader": f"{code} is your sign-in code. It expires in {settings.OTP_TTL_MINUTES} minutes.",
+            "language": language,
+            "eyebrow": tr(language, "New device sign-in"),
+            "heading": tr(language, "Your sign-in code"),
+            "intro": tr(language, "Someone is signing in to your Todo Clock account from a new device. If it's you, enter this code to finish."),
+            "preheader": tr(language, "{code} is your sign-in code. It expires in {minutes} minutes.", code=code, minutes=minutes),
             "code": code,
-            "minutes": settings.OTP_TTL_MINUTES,
-            "device": device or "a new browser",
+            "minutes": minutes,
+            "device": device or tr(language, "a new browser"),
         }
     return {
-        "eyebrow": "Verify your email",
-        "heading": "Confirm your email",
-        "intro": "Thanks for signing up! Enter this code in the app to confirm it's really your address.",
-        "preheader": f"{code} is your verification code. It expires in {settings.OTP_TTL_MINUTES} minutes.",
+        "language": language,
+        "eyebrow": tr(language, "Verify your email"),
+        "heading": tr(language, "Confirm your email"),
+        "intro": tr(language, "Thanks for signing up! Enter this code in the app to confirm it's really your address."),
+        "preheader": tr(language, "{code} is your verification code. It expires in {minutes} minutes.", code=code, minutes=minutes),
         "code": code,
-        "minutes": settings.OTP_TTL_MINUTES,
+        "minutes": minutes,
         "device": "",
     }
 
 
-def send_code(*, to, purpose, code, device=""):
-    word = "sign-in" if purpose == "login" else "verification"
-    send(to=to, subject=f"{code} is your Todo Clock {word} code", template="code", context=code_context(purpose, code, device))
+def send_code(*, to, purpose, code, device="", language="en"):
+    subject = "{code} is your Todo Clock sign-in code" if purpose == "login" else "{code} is your Todo Clock verification code"
+    send(to=to, subject=tr(language, subject, code=code), template="code", context=code_context(purpose, code, device, language))
 
 
 def welcome_context(user):
     first = (user.full_name or "").split()[0] if user.full_name.strip() else ""
     return {
+        "language": user.language,
         "name": first,
-        "features": WELCOME_FEATURES,
+        "features": [{**feature, "title": tr(user, feature["title"]), "body": tr(user, feature["body"])} for feature in WELCOME_FEATURES],
         "app_url": settings.APP_URL,
-        "preheader": "Your account is ready. Here's how to get the most out of Todo Clock.",
+        "preheader": tr(user, "Your account is ready. Here's how to get the most out of Todo Clock."),
     }
 
 
@@ -128,5 +133,5 @@ def send_welcome_once(user):
         return False
     if not User.all_objects.filter(pk=user.pk, welcomed_at__isnull=True).update(welcomed_at=timezone.now()):
         return False
-    send(to=user.email, subject="Welcome to Todo Clock", template="welcome", context=welcome_context(user))
+    send(to=user.email, subject=tr(user, "Welcome to Todo Clock"), template="welcome", context=welcome_context(user))
     return True

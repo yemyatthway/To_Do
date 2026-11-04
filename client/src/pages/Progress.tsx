@@ -1,11 +1,12 @@
 import type { Category, Task } from '../api'
 import { Segments } from '../components/Segments'
 import { addDays, dueDate, formatTime, sameDay, startOfDay, startOfWeek } from '../time'
+import { formatDate, tr } from '../i18n'
 
 const CATEGORIES: { value: Category; label: string }[] = [
-  { value: 'work', label: 'Work' },
-  { value: 'personal', label: 'Personal' },
-  { value: 'health', label: 'Health' },
+  { value: 'work', label: tr('Work') },
+  { value: 'personal', label: tr('Personal') },
+  { value: 'health', label: tr('Health') },
 ]
 
 const pct = (done: number, total: number) => (total ? Math.round((done / total) * 100) : 0)
@@ -32,17 +33,17 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
     return { date, total: list.length, done: list.filter((t) => t.done).length }
   })
   const weekDone = inWeek.filter((t) => t.done).length
-  const rangeLabel = `${weekStart.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} to ${addDays(weekEnd, -1).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+  const rangeLabel = tr('{value} to {value2}', { value: formatDate(weekStart, { day: 'numeric', month: 'short' }), value2: formatDate(addDays(weekEnd, -1), { day: 'numeric', month: 'short' }) })
 
   return (
     <div className="progress-page">
       <section className="card neu today-card" aria-labelledby="today-h">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <h2 id="today-h" className="label">Today</h2>
+            <h2 id="today-h" className="label">{tr('Today')}</h2>
             <span className="big-number">
               {todayDone.length}
-              <small> / {today.length} done</small>
+              <small> {tr('/ {length} done', { length: today.length })}</small>
             </span>
           </div>
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accT)' }}>{pct(todayDone.length, today.length)}%</span>
@@ -50,7 +51,7 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
         <div
           className="today-track neu-in"
           role="progressbar"
-          aria-label="Tasks done today"
+          aria-label={tr('Tasks done today')}
           aria-valuemin={0}
           aria-valuemax={today.length}
           aria-valuenow={todayDone.length}
@@ -59,28 +60,26 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
         </div>
         <span className="list-sub">
           {today.length === 0
-            ? 'Nothing scheduled today.'
+            ? tr('Nothing scheduled today.')
             : next
-              ? `Next: ${next.title} at ${formatTime(dueDate(next)!)}`
+              ? tr('Next: {title} at {value}', { title: next.title, value: formatTime(dueDate(next)!) })
               : todayDone.length === today.length
-                ? 'Everything done today.'
-                : 'No more tasks coming up today.'}
+                ? tr('Everything done today.')
+                : tr('No more tasks coming up today.')}
         </span>
         {overdue > 0 && (
           <span className="list-sub" style={{ color: 'var(--dIcon)', fontWeight: 600 }}>
-            {overdue} overdue from earlier days, see the top of Today.
+            {tr('{overdue} overdue from earlier days, see the top of Today.', { overdue })}
           </span>
         )}
       </section>
 
       <section className="card glass" aria-labelledby="week-h">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <h2 id="week-h">This week</h2>
+          <h2 id="week-h">{tr('This week')}</h2>
           <span className="list-sub">
             <strong style={{ color: 'var(--text)' }}>
-              {weekDone} of {inWeek.length}
-            </strong>{' '}
-            done · {pct(weekDone, inWeek.length)}%
+              {tr('{weekDone} of {length}', { weekDone, length: inWeek.length })}</strong>{' '}{tr('done ·')}{' '}{pct(weekDone, inWeek.length)}%
           </span>
         </div>
         <span className="list-sub" style={{ marginTop: -8 }}>
@@ -89,12 +88,12 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
         <div className="week">
           {days.map((d) => {
             const isToday = sameDay(d.date, startOfDay(now))
-            const label = d.date.toLocaleDateString(undefined, { weekday: 'narrow' })
+            const label = formatDate(d.date, { weekday: 'narrow' })
             return (
               <div
                 key={d.date.toISOString()}
                 className={`week-day${isToday ? ' today' : ''}`}
-                aria-label={`${d.date.toLocaleDateString(undefined, { weekday: 'long' })}: ${d.done} of ${d.total} done`}
+                aria-label={tr('{value}: {done} of {total} done', { value: formatDate(d.date, { weekday: 'long' }), done: d.done, total: d.total })}
               >
                 <span className="count" aria-hidden="true">
                   {d.done}/{d.total}
@@ -110,7 +109,7 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
       </section>
 
       <section className="card glass" aria-labelledby="cat-h">
-        <h2 id="cat-h">By category this week</h2>
+        <h2 id="cat-h">{tr('By category this week')}</h2>
         {CATEGORIES.map((c) => {
           const list = inWeek.filter((t) => t.category === c.value)
           const done = list.filter((t) => t.done).length
@@ -119,10 +118,9 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 600 }}>
                 <span>{c.label}</span>
                 <span style={{ color: 'var(--sub)' }}>
-                  {done} of {list.length}
-                </span>
+                  {tr('{done} of {length}', { done, length: list.length })}</span>
               </div>
-              <div className="bar" role="progressbar" aria-label={`${c.label} tasks done`} aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={done}>
+              <div className="bar" role="progressbar" aria-label={tr('{label} tasks done', { label: c.label })} aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={done}>
                 <span style={{ width: `${pct(done, list.length)}%`, background: `var(--${c.value})` }} />
               </div>
             </div>
@@ -131,7 +129,7 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
       </section>
 
       <section className="card glass" aria-labelledby="prio-h">
-        <h2 id="prio-h">By priority this week</h2>
+        <h2 id="prio-h">{tr('By priority this week')}</h2>
         {PRIORITIES.map((p) => {
           const list = inWeek.filter((t) => t.priority === p.value)
           const done = list.filter((t) => t.done).length
@@ -140,10 +138,9 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 600 }}>
                 <span>{p.label}</span>
                 <span style={{ color: 'var(--sub)' }}>
-                  {done} of {list.length}
-                </span>
+                  {tr('{done} of {length}', { done, length: list.length })}</span>
               </div>
-              <div className="bar" role="progressbar" aria-label={`${p.label} priority tasks done`} aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={done}>
+              <div className="bar" role="progressbar" aria-label={tr('{label} priority tasks done', { label: p.label })} aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={done}>
                 <span style={{ width: `${pct(done, list.length)}%`, background: p.color }} />
               </div>
             </div>
@@ -155,7 +152,7 @@ export function Progress({ tasks, now }: { tasks: Task[]; now: Date }) {
 }
 
 const PRIORITIES = [
-  { value: 'high', label: 'High', color: 'var(--danger)' },
-  { value: 'medium', label: 'Medium', color: 'var(--acc)' },
-  { value: 'low', label: 'Low', color: 'var(--sub)' },
+  { value: 'high', label: tr('High'), color: 'var(--danger)' },
+  { value: 'medium', label: tr('Medium'), color: 'var(--acc)' },
+  { value: 'low', label: tr('Low'), color: 'var(--sub)' },
 ] as const

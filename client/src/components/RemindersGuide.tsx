@@ -5,102 +5,102 @@ import { Icon } from '../icons'
 import { ReminderCheck } from './ReminderCheck'
 import { gsap, useGsap } from '../motion'
 import { deviceCanReceive, isPushSupported, sendTestNotification } from '../push'
+import { tr } from '../i18n'
 
 type Status = 'needs-install' | 'unsupported' | 'blocked' | 'ready' | 'on'
 
 const STATUS_TEXT: Record<Status, string> = {
-  'needs-install': 'Add Todo Clock to your Home Screen first (steps below).',
-  unsupported: "This browser can't show notifications. Try Safari, Chrome or Edge.",
-  blocked: 'Notifications are blocked for this site. See "Blocked?" below.',
-  ready: 'Ready: turn reminders on below.',
-  on: 'Reminders are on for this device.',
+  'needs-install': tr('Add Todo Clock to your Home Screen first (steps below).'),
+  unsupported: tr('This browser can\'t show notifications. Try Safari, Chrome or Edge.'),
+  blocked: tr('Notifications are blocked for this site. See "Blocked?" below.'),
+  ready: tr('Ready: turn reminders on below.'),
+  on: tr('Reminders are on for this device.'),
 }
 
 const STEPS: Record<Exclude<Platform, 'other'>, { title: string; steps: ReactNode[]; blocked: ReactNode; tip?: ReactNode }> = {
   ios: {
-    title: 'iPhone and iPad',
+    title: tr('iPhone and iPad'),
     steps: [
-      <>Needs iOS 16.4 or newer (Settings → General → About).</>,
-      <>Open this site in <strong>Safari</strong>.</>,
+      <>{tr('Needs iOS 16.4 or newer (Settings → General → About).')}</>,
+      <>{tr('Open this site in')}{' '}<strong>{tr('Safari')}</strong>.</>,
       <>
-        Tap the <strong>Share</strong> button (the square with an arrow).
+        {tr('Tap the')}{' '}<strong>{tr('Share')}</strong> {tr('button (the square with an arrow).')}
       </>,
       <>
-        Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.
+        {tr('Choose')}{' '}<strong>{tr('Add to Home Screen')}</strong>{tr(', then')}{' '}<strong>{tr('Add')}</strong>.
       </>,
       <>
-        Open <strong>Todo Clock from the new Home Screen icon</strong>, not from Safari.
+        {tr('Open')}{' '}<strong>{tr('Todo Clock from the new Home Screen icon')}</strong>{tr(', not from Safari.')}
       </>,
       <>
-        Tap the <strong>bell</strong> and choose <strong>Allow</strong>.
+        {tr('Tap the')}{' '}<strong>{tr('bell')}</strong> {tr('and choose')}{' '}<strong>{tr('Allow')}</strong>.
       </>,
     ],
     blocked: (
       <>
-        Settings → Notifications → <strong>Todo Clock</strong> → turn on Allow Notifications.
+        {tr('Settings → Notifications →')}{' '}<strong>{tr('Todo Clock')}</strong> {tr('→ turn on Allow Notifications.')}
       </>
     ),
-    tip: <>Focus and Do Not Disturb can hide reminders; add Todo Clock to the allowed apps.</>,
+    tip: <>{tr('Focus and Do Not Disturb can hide reminders; add Todo Clock to the allowed apps.')}</>,
   },
   android: {
-    title: 'Android',
+    title: tr('Android'),
     steps: [
       <>
-        Open this site in <strong>Chrome</strong> (Samsung Internet and Edge work too).
+        {tr('Open this site in')}{' '}<strong>{tr('Chrome')}</strong> {tr('(Samsung Internet and Edge work too).')}
       </>,
       <>
-        Tap the <strong>bell</strong> and choose <strong>Allow</strong>.
+        {tr('Tap the')}{' '}<strong>{tr('bell')}</strong> {tr('and choose')}{' '}<strong>{tr('Allow')}</strong>.
       </>,
       <>
-        Optional: menu <strong>⋮</strong> → <strong>Add to Home screen</strong> (or Install app) to open it like an app.
+        {tr('Optional: menu')}{' '}<strong>⋮</strong> → <strong>{tr('Add to Home screen')}</strong> {tr('(or Install app) to open it like an app.')}
       </>,
       <>
-        For on-time reminders: Settings → Apps → Chrome → Battery → <strong>Unrestricted</strong>. Some phones put browsers to sleep.
+        {tr('For on-time reminders: Settings → Apps → Chrome → Battery →')}{' '}<strong>{tr('Unrestricted')}</strong>{tr('. Some phones put browsers to sleep.')}
       </>,
     ],
     blocked: (
       <>
-        Tap the icon left of the address bar → Permissions → <strong>Notifications → Allow</strong>.
+        {tr('Tap the icon left of the address bar → Permissions →')}{' '}<strong>{tr('Notifications → Allow')}</strong>.
       </>
     ),
   },
   mac: {
-    title: 'Mac',
+    title: tr('Mac'),
     steps: [
       <>
-        Click the <strong>bell</strong> and choose <strong>Allow</strong> (Safari, Chrome or Edge).
+        {tr('Click the')}{' '}<strong>{tr('bell')}</strong> {tr('and choose')}{' '}<strong>{tr('Allow')}</strong> {tr('(Safari, Chrome or Edge).')}
       </>,
       <>
-        System Settings → Notifications → your browser (<strong>Safari</strong> or <strong>Google Chrome</strong>) → turn on Allow notifications.
+        {tr('System Settings → Notifications → your browser (')}<strong>{tr('Safari')}</strong> {tr('or')}{' '}<strong>{tr('Google Chrome')}</strong>{tr(') → turn on Allow notifications.')}
       </>,
       <>
-        Optional in Safari: File → <strong>Add to Dock</strong> to use it like an app (then allow notifications there once more).
+        {tr('Optional in Safari: File →')}{' '}<strong>{tr('Add to Dock')}</strong> {tr('to use it like an app (then allow notifications there once more).')}
       </>,
     ],
     blocked: (
       <>
-        Safari: Settings → Websites → Notifications → this site → <strong>Allow</strong>. Chrome: the icon left of the address →{' '}
-        <strong>Notifications → Allow</strong>.
+        {tr('Safari: Settings → Websites → Notifications → this site →')}{' '}<strong>{tr('Allow')}</strong>{tr('. Chrome: the icon left of the address →')}{' '}<strong>{tr('Notifications → Allow')}</strong>.
       </>
     ),
-    tip: <>Safari delivers reminders even when it's closed. Chrome needs to be running (it can be in the background).</>,
+    tip: <>{tr('Safari delivers reminders even when it\'s closed. Chrome needs to be running (it can be in the background).')}</>,
   },
   windows: {
-    title: 'Windows',
+    title: tr('Windows'),
     steps: [
       <>
-        Click the <strong>bell</strong> and choose <strong>Allow</strong> (Chrome or Edge).
+        {tr('Click the')}{' '}<strong>{tr('bell')}</strong> {tr('and choose')}{' '}<strong>{tr('Allow')}</strong> {tr('(Chrome or Edge).')}
       </>,
       <>
-        Windows Settings → System → Notifications → turn on <strong>Chrome</strong> or <strong>Edge</strong>.
+        {tr('Windows Settings → System → Notifications → turn on')}{' '}<strong>{tr('Chrome')}</strong> {tr('or')}{' '}<strong>{tr('Edge')}</strong>.
       </>,
     ],
     blocked: (
       <>
-        The icon left of the address bar → Site settings → <strong>Notifications → Allow</strong>.
+        {tr('The icon left of the address bar → Site settings →')}{' '}<strong>{tr('Notifications → Allow')}</strong>.
       </>
     ),
-    tip: <>The browser needs to be running (it can be in the background). Focus assist can hide reminders.</>,
+    tip: <>{tr('The browser needs to be running (it can be in the background). Focus assist can hide reminders.')}</>,
   },
 }
 
@@ -159,9 +159,9 @@ export function RemindersGuide({
     setTesting(true)
     try {
       await sendTestNotification()
-      notify('Test sent', 'It should pop up in a few seconds.')
+      notify(tr('Test sent'), tr('It should pop up in a few seconds.'))
     } catch (err) {
-      notify("Couldn't send the test", err instanceof Error ? err.message : String(err))
+      notify(tr('Couldn\'t send the test'), err instanceof Error ? err.message : String(err))
     } finally {
       setTesting(false)
     }
@@ -174,8 +174,8 @@ export function RemindersGuide({
     <div className="scrim center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={cardRef} className="send-card glass guide-card" role="dialog" aria-modal="true" aria-labelledby="guide-h">
         <div className="sheet-head">
-          <h2 id="guide-h">Get reminders on your devices</h2>
-          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
+          <h2 id="guide-h">{tr('Get reminders on your devices')}</h2>
+          <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={onClose}>
             <Icon name="x" />
           </button>
         </div>
@@ -184,8 +184,7 @@ export function RemindersGuide({
           <Icon name={status === 'on' ? 'check' : 'bell'} />
           <span>
             <strong>
-              This device: {PLATFORM_LABEL[device.platform]} · {BROWSER_LABEL[device.browser]}
-              {device.installed ? ' (app)' : ''}
+              {tr('This device: {value} · {value2}', { value: PLATFORM_LABEL[device.platform], value2: BROWSER_LABEL[device.browser] })}{device.installed ? tr(' (app)') : ''}
             </strong>
             <br />
             {STATUS_TEXT[status]}
@@ -194,7 +193,7 @@ export function RemindersGuide({
 
         <ReminderCheck />
 
-        <div className="segmented guide-tabs" role="tablist" aria-label="Device">
+        <div className="segmented guide-tabs" role="tablist" aria-label={tr('Device')}>
           {(Object.keys(STEPS) as (keyof typeof STEPS)[]).map((key) => (
             <button key={key} type="button" role="tab" aria-selected={tab === key} aria-pressed={tab === key} onClick={() => setTab(key)}>
               {key === 'ios' ? 'iPhone' : STEPS[key].title}
@@ -214,23 +213,23 @@ export function RemindersGuide({
         </ol>
 
         <div className="guide-note">
-          <strong>Blocked?</strong> {guide.blocked}
+          <strong>{tr('Blocked?')}</strong> {guide.blocked}
         </div>
         {guide.tip && <p className="hint">{guide.tip}</p>}
 
         {thisDevice && status === 'ready' && (
           <button type="button" className="primary-btn" disabled={busy} onClick={() => void enable()}>
-            {busy ? 'Turning on…' : 'Turn on reminders on this device'}
+            {busy ? tr('Turning on…') : tr('Turn on reminders on this device')}
           </button>
         )}
         {thisDevice && status === 'on' && (
           <button type="button" className="task-action send-action" disabled={testing} onClick={() => void test()}>
             <Icon name="bell" />
-            {testing ? 'Sending…' : 'Send a test notification'}
+            {testing ? tr('Sending…') : tr('Send a test notification')}
           </button>
         )}
         <p className="hint" style={{ textAlign: 'center', margin: 0 }}>
-          Each device is set up on its own. Reminders come before timed tasks (you choose how long on each task); high-priority ones stay on screen.
+          {tr('Each device is set up on its own. Reminders come before timed tasks (you choose how long on each task); high-priority ones stay on screen.')}
         </p>
       </div>
     </div>,

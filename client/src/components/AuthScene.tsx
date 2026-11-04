@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react'
+import { tr } from '../i18n'
 
 /** Sample cards that drift behind the login form to show what the app is for. Decorative only, so search results must never quote them. */
 const FLOATERS = [
-  { title: 'Morning run', time: '7:00 AM', cat: 'health', done: true, x: '6%', y: '14%' },
-  { title: 'Team standup', time: '2:00 PM', cat: 'work', done: false, x: '74%', y: '10%' },
-  { title: 'Call mom', time: '6:00 PM', cat: 'personal', done: false, x: '80%', y: '62%' },
-  { title: 'Design review', time: '2:30 PM', cat: 'work', done: true, x: '4%', y: '70%' },
-  { title: 'Pay the bills', time: '4:15 PM', cat: 'personal', done: false, x: '68%', y: '86%', wide: true },
-  { title: 'Read 20 pages', time: '9:00 PM', cat: 'health', done: false, x: '12%', y: '44%', wide: true },
+  { title: tr('Morning run'), time: '7:00 AM', cat: 'health', done: true, x: '6%', y: '14%' },
+  { title: tr('Team standup'), time: '2:00 PM', cat: 'work', done: false, x: '74%', y: '10%' },
+  { title: tr('Call mom'), time: '6:00 PM', cat: 'personal', done: false, x: '80%', y: '62%' },
+  { title: tr('Design review'), time: '2:30 PM', cat: 'work', done: true, x: '4%', y: '70%' },
+  { title: tr('Pay the bills'), time: '4:15 PM', cat: 'personal', done: false, x: '68%', y: '86%', wide: true },
+  { title: tr('Read 20 pages'), time: '9:00 PM', cat: 'health', done: false, x: '12%', y: '44%', wide: true },
 ]
 
 /**

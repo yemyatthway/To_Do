@@ -10,6 +10,7 @@ from pywebpush import WebPushException
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.notifications.push import send_push
+from apps.users.language import tr
 from apps.tasks.models import Task
 from apps.tasks.serializers import user_zone
 from apps.users.models import User
@@ -69,7 +70,7 @@ def send_request(*, me, user_id):
             return accept_request(me=me, friendship_id=existing.pk)
         return existing
     friendship = Friendship.objects.create(requester=me, addressee=other)
-    _notify(other, "New friend request", f"{me.full_name or me.email} wants to be friends.", url="/?view=friends")
+    _notify(other, tr(other, "New friend request"), tr(other, "{name} wants to be friends.", name=me.full_name or me.email), url="/?view=friends")
     return friendship
 
 
@@ -80,7 +81,7 @@ def accept_request(*, me, friendship_id):
     friendship.status = Friendship.Status.ACCEPTED
     friendship.responded_at = timezone.now()
     friendship.save(update_fields=["status", "responded_at"])
-    _notify(friendship.requester, "Friend request accepted", f"{me.full_name or me.email} accepted your friend request.", url="/?view=friends")
+    _notify(friendship.requester, tr(friendship.requester, "Friend request accepted"), tr(friendship.requester, "{name} accepted your friend request.", name=me.full_name or me.email), url="/?view=friends")
     return friendship
 
 
@@ -118,7 +119,7 @@ def share_tasks(*, me, recipient_id, task_ids, message=""):
     count = len(tasks)
     _notify(
         recipient,
-        f"{me.full_name or me.email} sent you {count} task{'s' if count != 1 else ''}",
+        f"{me.full_name or me.email} sent you {count} task{'s' if count != 1 else ''}" if recipient.language != "my" else tr(recipient, "{name} sent you {count} tasks", name=me.full_name or me.email, count=count),
         message.strip() or ", ".join(t.title for t in tasks[:3]),
         url="/?view=friends",
     )

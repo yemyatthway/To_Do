@@ -9,6 +9,7 @@ import { pickFiles, uploads, useUploads } from '../filesClient'
 import { ConfirmAction } from './ConfirmAction'
 import { FileView } from './Files'
 import { Loading, SkeletonRows } from './Loading'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const MAX_COMMENT_FILES = 6
@@ -57,15 +58,15 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
   }
 
   return (
-    <section className="comments" aria-label="Comments">
-      <h3 className="section-label">Comments{comments?.length ? ` · ${comments.length}` : ''}</h3>
+    <section className="comments" aria-label={tr('Comments')}>
+      <h3 className="section-label">{tr('Comments')}{comments?.length ? ` · ${comments.length}` : ''}</h3>
       {error && (
         <span className="field-error" role="alert">
           {error}
         </span>
       )}
       {comments === null && !error && <Loading skeleton={<SkeletonRows count={1} avatar />} quiet />}
-      {comments?.length === 0 && <p className="task-meta">{canComment ? 'No comments yet. Start the conversation.' : 'No comments yet.'}</p>}
+      {comments?.length === 0 && <p className="task-meta">{canComment ? tr('No comments yet. Start the conversation.') : tr('No comments yet.')}</p>}
       {comments?.map((comment) => (
         <article key={comment.id} className="comment">
           <span className="avatar" aria-hidden="true">
@@ -73,10 +74,10 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
           </span>
           <div className="comment-main">
             <div className="comment-head">
-              <span className="person-name">{comment.author?.name ?? 'Someone'}</span>
+              <span className="person-name">{comment.author?.name ?? tr('Someone')}</span>
               <span className="task-meta">{timeAgo(comment.created_at, now)}</span>
               {comment.can_delete && (
-                <button type="button" className="comment-delete" aria-label="Delete this comment" onClick={() => setDeleting(comment)}>
+                <button type="button" className="comment-delete" aria-label={tr('Delete this comment')} onClick={() => setDeleting(comment)}>
                   <Icon name="x" />
                 </button>
               )}
@@ -109,8 +110,8 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
         <ConfirmAction
           danger
           icon="trash"
-          title="Delete this comment?"
-          confirmLabel="Delete comment"
+          title={tr('Delete this comment?')}
+          confirmLabel={tr('Delete comment')}
           onCancel={() => setDeleting(null)}
           onConfirm={async () => {
             await api.deleteComment(workspaceId, deleting.id)
@@ -119,7 +120,7 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
             onChanged?.()
           }}
         >
-          <p>It's removed for everyone.</p>
+          <p>{tr('It\'s removed for everyone.')}</p>
         </ConfirmAction>
       )}
     </section>
@@ -197,7 +198,7 @@ function Composer({ workspaceId, members, onSend }: { workspaceId: number; membe
   return (
     <div className="comment-composer">
       {matches.length > 0 && (
-        <div className="mention-menu glass" role="listbox" aria-label="People in this workspace">
+        <div className="mention-menu glass" role="listbox" aria-label={tr('People in this workspace')}>
           {matches.map((member, index) => (
             <button
               key={member.id}
@@ -222,7 +223,7 @@ function Composer({ workspaceId, members, onSend }: { workspaceId: number; membe
           ))}
         </div>
       )}
-      <button type="button" className="icon-btn comment-attach" aria-label="Add a screenshot or file" disabled={attached.length >= MAX_COMMENT_FILES} onClick={() => pickFiles((files) => void attach(files))}>
+      <button type="button" className="icon-btn comment-attach" aria-label={tr('Add a screenshot or file')} disabled={attached.length >= MAX_COMMENT_FILES} onClick={() => pickFiles((files) => void attach(files))}>
         <Icon name="attach" />
       </button>
       <textarea
@@ -230,8 +231,8 @@ function Composer({ workspaceId, members, onSend }: { workspaceId: number; membe
         className="field comment-input"
         rows={1}
         maxLength={2000}
-        aria-label="Write a comment"
-        placeholder="Comment, or type @ to mention"
+        aria-label={tr('Write a comment')}
+        placeholder={tr('Comment, or type @ to mention')}
         value={text}
         onChange={(e) => {
           setText(e.target.value)
@@ -272,7 +273,7 @@ function Composer({ workspaceId, members, onSend }: { workspaceId: number; membe
         }}
       />
       <button type="button" className="primary-btn" disabled={busy || stillSending || (!text.trim() && !attached.length)} onClick={() => void send()}>
-        {busy ? 'Sending…' : stillSending ? 'Uploading…' : 'Send'}
+        {busy ? tr('Sending…') : stillSending ? tr('Uploading…') : tr('Send')}
       </button>
       {error && (
         <span className="field-error comment-error" role="alert">
@@ -343,7 +344,7 @@ export function ActivityList({ workspaceId, now, pageId, rowId, onOpen }: Activi
         <div className="error-banner" role="alert">
           <span>{error}</span>
           <button className="text-btn" onClick={() => void load()}>
-            Retry
+            {tr('Retry')}
           </button>
         </div>
       )
@@ -353,7 +354,7 @@ export function ActivityList({ workspaceId, now, pageId, rowId, onOpen }: Activi
 
   return (
     <>
-      {items.length === 0 && <p className="empty">Nothing has happened here yet.</p>}
+      {items.length === 0 && <p className="empty">{tr('Nothing has happened here yet.')}</p>}
       <ul className="activity-list">
         {items.map((item) => {
           const line = (
@@ -379,7 +380,7 @@ export function ActivityList({ workspaceId, now, pageId, rowId, onOpen }: Activi
       </ul>
       {more && (
         <button type="button" className="text-btn activity-more" disabled={loadingMore} onClick={() => void showMore()}>
-          {loadingMore ? 'Loading…' : 'Show more'}
+          {loadingMore ? tr('Loading…') : tr('Show more')}
         </button>
       )}
     </>
@@ -393,7 +394,7 @@ export function HistoryFold({ workspaceId, now, pageId, rowId }: { workspaceId: 
     <section className="history-fold">
       <button type="button" className="history-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon name="chevron" />
-        History
+        {tr('History')}
       </button>
       {open && <ActivityList workspaceId={workspaceId} now={now} pageId={pageId} rowId={rowId} />}
     </section>

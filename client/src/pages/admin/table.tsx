@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Icon } from '../../icons'
 import { PAGE_SIZES, type ServerTable } from './useServerTable'
+import { tr } from '../../i18n'
 
 export function SearchBox({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
@@ -76,10 +77,10 @@ export function Pager({ table, noun }: { table: ServerTable; noun: string }) {
   return (
     <div className="pager">
       <span className="list-sub">
-        {first}–{last} of {count} {count === 1 ? noun.replace(/s$/, '') : noun}
+        {tr('{first}–{last} of {count}', { first, last, count })}{' '}{count === 1 ? noun.replace(/s$/, '') : noun}
       </span>
       <label className="pager-size">
-        <span className="list-sub">Rows</span>
+        <span className="list-sub">{tr('Rows')}</span>
         <select className="field" value={pageSize} onChange={(e) => table.setPageSize(Number(e.target.value))}>
           {PAGE_SIZES.map((size) => (
             <option key={size} value={size}>
@@ -88,14 +89,13 @@ export function Pager({ table, noun }: { table: ServerTable; noun: string }) {
           ))}
         </select>
       </label>
-      <nav className="pager-pages" aria-label={`${noun} pages`}>
-        <button type="button" className="page-btn" aria-label="Previous page" disabled={page <= 1} onClick={() => table.setPage(page - 1)}>
+      <nav className="pager-pages" aria-label={tr('{noun} pages', { noun })}>
+        <button type="button" className="page-btn" aria-label={tr('Previous page')} disabled={page <= 1} onClick={() => table.setPage(page - 1)}>
           <Icon name="back" />
         </button>
         <span className="page-status" aria-live="polite">
-          <strong>{page}</strong> of {pages}
-        </span>
-        <button type="button" className="page-btn" aria-label="Next page" disabled={page >= pages} onClick={() => table.setPage(page + 1)}>
+          <strong>{page}</strong> {tr('of {pages}', { pages })}</span>
+        <button type="button" className="page-btn" aria-label={tr('Next page')} disabled={page >= pages} onClick={() => table.setPage(page + 1)}>
           <Icon name="chevron" />
         </button>
       </nav>
@@ -108,7 +108,7 @@ export function TableError({ message, onRetry }: { message: string; onRetry: () 
     <div className="error-banner" role="alert">
       <span>{message}</span>
       <button type="button" className="text-btn" onClick={onRetry}>
-        Retry
+        {tr('Retry')}
       </button>
     </div>
   )

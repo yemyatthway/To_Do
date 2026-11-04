@@ -1,13 +1,13 @@
-{% autoescape off %}
-Welcome to Todo Clock{% if name %}, {{ name }}{% endif %}!
+{% load email_text %}{% autoescape off %}
+{% say "Welcome to Todo Clock" %}{% if name %}, {{ name }}{% endif %}!
 
-Your account is ready. Here's how to get the most out of it:
+{% say "Your account is ready. Here's how to get the most out of it:" %}
 {% for feature in features %}
 - {{ feature.title }}: {{ feature.body }}{% endfor %}
 
-Open Todo Clock: {{ app_url }}
+{% say "Open Todo Clock" %}: {{ app_url }}
 
-Tip: on iPhone, add Todo Clock to your Home Screen (Share > Add to Home Screen) to get reminders.
+{% say "Tip: on iPhone, add Todo Clock to your Home Screen (Share > Add to Home Screen) to get reminders." %}
 
 — Todo Clock
 {% endautoescape %}

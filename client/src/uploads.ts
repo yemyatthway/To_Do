@@ -1,4 +1,5 @@
 import type { PreparedFile } from './imageShrink'
+import { tr } from './i18n'
 
 /** Uploads run here, not in a screen, so they keep going if you move to another page. A file's
  *  record is made first, which lets a page or row hold its place while the bytes travel. */
@@ -56,7 +57,7 @@ interface Part {
 }
 
 const MAX_AT_ONCE = 2
-const errorText = (err: unknown) => (err instanceof Error ? err.message : "The upload didn't finish.")
+const errorText = (err: unknown) => (err instanceof Error ? err.message : tr('The upload didn\'t finish.'))
 
 export class Uploads<F extends UploadRecord = UploadRecord> {
   items: ReadonlyMap<number, UploadItem> = new Map()

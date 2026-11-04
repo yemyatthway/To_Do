@@ -5,18 +5,23 @@ from datetime import timedelta
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.live import ably
 from apps.social.models import Friendship
 from apps.social.services import _notify
+from apps.users.language import tr
 from apps.users.models import User
 
-from .models import Conversation, HiddenMessage, Message, MessageReaction
+from .models import Conversation, HiddenMessage, Message, MessageReaction, ScheduledMessage
 
 MAX_LENGTH = 2000
 PAGE = 50
 EDIT_HOURS = 24  # your own messages can be edited for a day
+MAX_SCHEDULED = 50
+MAX_SCHEDULE_DAYS = 365
+MAX_SCHEDULED_PER_RUN = 100
 # One emoji as a keyboard types it, with any skin tone, joined people, flag or keycap. Nothing else.
 _PICTURE = (
     r"[\u00a9\u00ae\u203c\u2049\u2122\u2139\u2194-\u21aa\u231a-\u23ff\u24c2\u25aa-\u25fe\u2600-\u27bf"
@@ -194,7 +199,7 @@ def react(me, conversation, message_id, emoji):
     reactions = reactions_of(message)
     ably.to_chat(conversation.pk, "reacted", {"id": message.pk, "reactions": reactions})
     if emoji is not None and message.sender_id == other.pk and str(other.pk) not in ably.present(f"chat:{conversation.pk}"):
-        _notify(other, me.full_name or me.email, f"Reacted {emoji} to your message", url=f"/?view=chats&chat={conversation.pk}", event="chat")
+        _notify(other, me.full_name or me.email, tr(other, "Reacted {emoji} to your message", emoji=emoji), url=f"/?view=chats&chat={conversation.pk}", event="chat")
     return reactions
 
 
@@ -235,3 +240,100 @@ def message_data(message, viewer):
         "reactions": [] if message.deleted_at else reactions_of(message),
         "created_at": message.created_at.isoformat(),
     }
+
+
+def _clean_send_at(value, now=None):
+    now = now or timezone.now()
+    try:
+        when = parse_datetime(value) if isinstance(value, str) else None
+    except ValueError:
+        when = None
+    if when is None or when.tzinfo is None:
+        raise ValidationError({"send_at": ["Choose a date and time."]})
+    if when <= now:
+        raise ValidationError({"send_at": ["Choose a time in the future."]})
+    if when > now + timedelta(days=MAX_SCHEDULE_DAYS):
+        raise ValidationError({"send_at": ["You can schedule up to a year ahead."]})
+    return when
+
+
+def _can_message(me, conversation):
+    other = conversation.other(me)
+    if not other.is_active or not Friendship.are_friends(me, other):
+        raise PermissionDenied("You're no longer friends, so you can't send messages here.")
+
+
+def schedule(me, conversation, text, send_at):
+    text = _clean(text)
+    when = _clean_send_at(send_at)
+    _can_message(me, conversation)
+    if ScheduledMessage.objects.filter(sender=me).count() >= MAX_SCHEDULED:
+        raise ValidationError({"send_at": [f"You can have up to {MAX_SCHEDULED} scheduled messages."]})
+    item = ScheduledMessage(conversation=conversation, sender=me, send_at=when)
+    item.text = text
+    item.save()
+    return item
+
+
+def scheduled_of(me, conversation):
+    return conversation.scheduled.filter(sender=me)
+
+
+def _scheduled_for(me, conversation, item_id):
+    item = scheduled_of(me, conversation).filter(pk=item_id).exclude(status=ScheduledMessage.Status.SENDING).first()
+    if item is None:
+        raise NotFound("That scheduled message doesn't exist.")
+    return item
+
+
+def update_scheduled(me, conversation, item_id, text=None, send_at=None):
+    item = _scheduled_for(me, conversation, item_id)
+    if text is not None:
+        item.text = _clean(text)
+    if send_at is not None:
+        item.send_at = _clean_send_at(send_at)
+    elif item.status == ScheduledMessage.Status.FAILED and item.send_at <= timezone.now():
+        raise ValidationError({"send_at": ["Choose a time in the future."]})
+    item.status = ScheduledMessage.Status.PENDING
+    item.error = ""
+    item.save()
+    return item
+
+
+def delete_scheduled(me, conversation, item_id):
+    _scheduled_for(me, conversation, item_id).delete()
+
+
+def send_scheduled_now(me, conversation, item_id):
+    item = _scheduled_for(me, conversation, item_id)
+    message = send(me, conversation, item.text, client_id=item.client_id)
+    item.delete()
+    return message
+
+
+def _deliver_scheduled(item, now):
+    sender, conversation = item.sender, item.conversation
+    try:
+        send(sender, conversation, item.text, client_id=item.client_id)
+    except (PermissionDenied, ValidationError) as error:
+        reason = error.detail if isinstance(error.detail, str) else "This message can't be sent."
+        reason = tr(sender, str(reason))
+        ScheduledMessage.objects.filter(pk=item.pk).update(status=ScheduledMessage.Status.FAILED, error=str(reason)[:200], claimed_at=None)
+        _notify(sender, tr(sender, "A scheduled message wasn't sent"), reason, url=f"/?view=chats&chat={conversation.pk}", event="chat")
+        return False
+    item.delete()
+    return True
+
+
+def send_due_scheduled(now=None):
+    """Runs from the every-minute job. Returns how many messages went out."""
+    now = now or timezone.now()
+    # A run that died part way: try again. The client_id means nothing posts twice.
+    ScheduledMessage.objects.filter(status=ScheduledMessage.Status.SENDING, claimed_at__lt=now - timedelta(minutes=5)).update(status=ScheduledMessage.Status.PENDING)
+    due = ScheduledMessage.objects.filter(status=ScheduledMessage.Status.PENDING, send_at__lte=now).select_related("sender", "conversation__user_a", "conversation__user_b").order_by("send_at")[:MAX_SCHEDULED_PER_RUN]
+    sent = 0
+    for item in due:
+        # Claimed first, so two runs at once can't both send it.
+        if ScheduledMessage.objects.filter(pk=item.pk, status=ScheduledMessage.Status.PENDING).update(status=ScheduledMessage.Status.SENDING, claimed_at=now):
+            sent += _deliver_scheduled(item, now)
+    return sent

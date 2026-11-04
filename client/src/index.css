@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Sans+Myanmar:wght@400;500;600;700&display=swap');
 
 /* ---------- Theme tokens ---------- */
 
@@ -2679,6 +2679,7 @@ body > .scrim.center {
 .time-wheels {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -6670,6 +6671,13 @@ li:first-child > .flat-row {
   .side-nav.is-closed .side-label {
     display: none;
   }
+
+  /* No room beside the icon once the menu is closed: the count sits on its corner. */
+  .side-nav.is-closed .side-item .nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
 }
 
 /* An open page: a list of everything, the page, and its comments, as far as the room allows. */
@@ -7137,4 +7145,402 @@ button.file-thumb {
 
 .file-card:has(.file-remove) {
   padding-right: 42px;
+}
+
+/* ---------- Table: delete a row, open or remove a picture ---------- */
+
+.grid-row {
+  position: relative;
+}
+
+.grid-delete {
+  position: sticky;
+  right: 0;
+  align-self: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin: 0 4px 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--dIcon);
+  background: var(--glassSolid);
+  box-shadow: 0 2px 8px var(--glassSh);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.grid-delete .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.grid-row:hover .grid-delete,
+.grid-delete:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .grid-delete {
+    opacity: 1;
+  }
+}
+
+.thumb-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+button.file-thumb,
+a.file-thumb {
+  position: relative;
+  cursor: pointer;
+}
+
+.thumb-open {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 30, 50, 0.45);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.thumb-open .icon {
+  width: 18px;
+  height: 18px;
+}
+
+button.file-thumb:hover .thumb-open,
+button.file-thumb:focus-visible .thumb-open {
+  opacity: 1;
+}
+
+.thumb-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--glassSolid);
+  color: var(--dIcon);
+  box-shadow: 0 2px 6px var(--glassSh);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.thumb-remove .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.thumb-wrap:hover .thumb-remove,
+.thumb-remove:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .thumb-remove {
+    opacity: 1;
+  }
+}
+
+/* ---------- Side menu labels ---------- */
+
+.side-tip {
+  position: fixed;
+  z-index: 70;
+  transform: translateY(-50%);
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: var(--toast);
+  border: 1px solid var(--toastB);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 8px 22px var(--glassSh);
+}
+
+/* ---------- Digital clock ---------- */
+
+.clock-swap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.clock-panel {
+  position: relative;
+}
+
+.clock-style {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+}
+
+@media (max-width: 767px) {
+  .clock-style {
+    top: 0;
+    right: 0;
+  }
+}
+
+.digital-clock {
+  width: min(100%, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.digital-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 26px 18px;
+  border-radius: 32px;
+  background: var(--bg);
+  box-shadow: inset 8px 8px 18px var(--inD), inset -8px -8px 18px var(--shL);
+}
+
+.digital-face.ghost {
+  opacity: 0.55;
+}
+
+.digital-time {
+  display: flex;
+  align-items: center;
+  font-size: clamp(56px, 19vw, 88px);
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -2px;
+  color: var(--num);
+}
+
+.digit {
+  display: inline-block;
+  min-width: 0.6em;
+  text-align: center;
+}
+
+.digital-colon {
+  padding: 0 2px;
+  color: var(--accSoft);
+  animation: colon-blink 2s steps(1) infinite;
+}
+
+@keyframes colon-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.digital-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.digital-seconds {
+  display: flex;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accSoft);
+}
+
+.digital-period {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.digital-hours {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.digital-hour {
+  min-height: 48px;
+  padding: 8px 0 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  transition: box-shadow var(--hover-dur) var(--hover-ease), color var(--hover-dur) var(--hover-ease);
+}
+
+@media (hover: hover) {
+  .digital-hour:hover {
+    color: var(--text);
+  }
+}
+
+.digital-hour.is-now {
+  color: var(--accT);
+}
+
+.digital-hour[aria-pressed='true'] {
+  box-shadow: var(--sk-raised);
+  color: var(--accT);
+}
+
+.digital-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 5px;
+}
+
+.digital-dots .dot {
+  width: 5px;
+  height: 5px;
+}
+
+.digital-dots .dot.is-done {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .digital-colon {
+    animation: none;
+  }
+}
+
+/* ---------- Send later ---------- */
+
+.composer-later {
+  flex: none;
+  align-self: flex-end;
+}
+
+.scheduled-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  margin: 4px 16px 0;
+  min-height: 42px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: var(--chip);
+  color: var(--accT);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.scheduled-bar .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.scheduled-bar.failed {
+  background: var(--dBg);
+  color: var(--dIcon);
+}
+
+.scheduled-bar[aria-expanded='true'] .more-go {
+  transform: rotate(90deg);
+}
+
+.scheduled-list {
+  flex: none;
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 2px 16px 0;
+}
+
+.scheduled-list .person-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-sub.is-failed {
+  color: var(--dIcon);
+}
+
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.schedule-text {
+  height: auto;
+  padding: 12px 14px;
+  resize: none;
+}
+
+.schedule-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.schedule-more .danger {
+  color: var(--dIcon);
+}
+
+.schedule-quote {
+  margin: 0;
+  color: var(--sub);
+  font-size: 14px;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Burmese ---------- */
+
+:root[lang='my'] {
+  font-family: Manrope, 'Noto Sans Myanmar', 'Myanmar Text', 'Pyidaungsu', system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+/* Burmese stacks marks above and below its letters, so it needs taller lines. */
+:root[lang='my'] body {
+  line-height: 1.65;
+}
+
+:root[lang='my'] :is(h1, h2, h3, button, label, .label, .chip, .nav-btn, .side-item, .row-main, .row-sub, .task-meta, .hint, .field, .greeting) {
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+.auth-language {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 2;
 }

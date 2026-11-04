@@ -1,5 +1,6 @@
 import { Rule } from './CheckRule'
 import type { UsernameStatus } from './usernameCheck'
+import { tr } from '../i18n'
 
 interface UsernameFieldProps {
   value: string
@@ -14,7 +15,7 @@ export function UsernameField({ value, status, onChange, error, autoFocus }: Use
   const showRule = status.state !== 'empty' && status.state !== 'current'
   return (
     <label className="field-group">
-      <span className="label">Username</span>
+      <span className="label">{tr('Username')}</span>
       <span className="username-input">
         <span aria-hidden="true">@</span>
         <input
@@ -35,23 +36,22 @@ export function UsernameField({ value, status, onChange, error, autoFocus }: Use
         <span className="field-error">{error}</span>
       ) : (
         showRule && (
-          <ul className="password-rules" aria-label="Username check" aria-live="polite">
+          <ul className="password-rules" aria-label={tr('Username check')} aria-live="polite">
             <Rule
               state={status.state === 'ok' ? 'ok' : status.state === 'checking' ? 'checking' : 'bad'}
-              label={status.state === 'ok' ? `@${status.value} is available` : status.state === 'checking' ? `@${status.value}` : status.message}
+              label={status.state === 'ok' ? tr('@{value} is available', { value: status.value }) : status.state === 'checking' ? `@${status.value}` : status.message}
             />
           </ul>
         )
       )}
       {!error && status.suggestion && (
         <span className="field-hint">
-          Try{' '}
-          <button type="button" className="link-btn" onClick={() => onChange(status.suggestion!)}>
+          {tr('Try')}{' '}<button type="button" className="link-btn" onClick={() => onChange(status.suggestion!)}>
             @{status.suggestion}
           </button>
         </span>
       )}
-      {!error && !showRule && <span className="field-hint">People can find you by it. Letters, numbers, dots and underscores.</span>}
+      {!error && !showRule && <span className="field-hint">{tr('People can find you by it. Letters, numbers, dots and underscores.')}</span>}
     </label>
   )
 }

@@ -14,6 +14,7 @@ from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.live import ably
+from apps.users.language import tr
 from apps.social.services import _notify
 from apps.tasks.models import Task
 from apps.users import mail, usernames
@@ -161,18 +162,19 @@ def invite(me, workspace_id, invitee, role):
         except IntegrityError:
             raise ValidationError({"invitee": ["They already have an invitation waiting."]})
     who = " ".join(me.full_name.split()) or f"@{me.username}"
+    language = user.language if user is not None else me.language
     mail.send(
         to=email,
-        subject=f"{who} invited you to {workspace.name} on Todo Clock",
+        subject=tr(language, "{who} invited you to {workspace} on Todo Clock", who=who, workspace=workspace.name),
         template="workspace_invite",
         context={
-            "who": who, "workspace": workspace.name, "role": role.capitalize(), "days": INVITE_DAYS,
+            "language": language, "who": who, "workspace": workspace.name, "role": tr(language, role.capitalize()), "days": INVITE_DAYS,
             "app_url": f"{settings.APP_URL.rstrip('/')}/?view=workspaces",
-            "preheader": f"Join {workspace.name} on Todo Clock.",
+            "preheader": tr(language, "Join {workspace} on Todo Clock.", workspace=workspace.name),
         },
     )
     if user is not None:
-        _notify(user, "Workspace invitation", f"{who} invited you to {workspace.name}.", url="/?view=workspaces", event="workspaces")
+        _notify(user, tr(user, "Workspace invitation"), tr(user, "{who} invited you to {workspace}.", who=who, workspace=workspace.name), url="/?view=workspaces", event="workspaces")
     _tell_members(workspace)
     return invitation
 
@@ -347,7 +349,7 @@ def create_page(me, workspace_id, title):
         raise ValidationError({"title": [f"A workspace can have up to {MAX_PAGES} pages."]})
     page = Page.objects.create(workspace=workspace, title=_clean_title(title), created_by=me, updated_by=me)
     _log(workspace, me, "page.created", "page", page.pk, page.title)
-    _tell_team(me, workspace, Notification.Kind.NEW_WORK, f"{_name(me)} added a page to {workspace.name}", page.title, _link(workspace.pk, page=page))
+    _tell_team(me, workspace, Notification.Kind.NEW_WORK, lambda user: tr(user, "{name} added a page to {workspace}", name=_name(me), workspace=workspace.name), page.title, _link(workspace.pk, page=page))
     _tell_members(workspace)
     return page
 
@@ -539,7 +541,7 @@ def create_table(me, workspace_id, title):
         workspace=workspace, title=_clean_title(title), columns=[_new_column(*c) for c in STARTER_COLUMNS], created_by=me, updated_by=me,
     )
     _log(workspace, me, "table.created", "table", table.pk, table.title)
-    _tell_team(me, workspace, Notification.Kind.NEW_WORK, f"{_name(me)} added a table to {workspace.name}", table.title, f"/workspaces/{workspace.pk}/tables/{table.pk}")
+    _tell_team(me, workspace, Notification.Kind.NEW_WORK, lambda user: tr(user, "{name} added a table to {workspace}", name=_name(me), workspace=workspace.name), table.title, f"/workspaces/{workspace.pk}/tables/{table.pk}")
     _tell_members(workspace)
     return table
 
@@ -806,10 +808,15 @@ def _inform(recipient, actor, workspace, kind, title, body, url):
     _notify(recipient, title, body, url=url, event="notifications")
 
 
-def _tell_team(me, workspace, kind, title, body, url):
-    """Everyone else in the workspace: in the app and as a push now, by email shortly (digest.py)."""
+def _tell_team(me, workspace, kind, title_for, body, url):
+    """Everyone else in the workspace, each in their own language: in the app and as a push now,
+    by email shortly (digest.py)."""
     for membership in workspace.memberships.select_related("user").exclude(user=me):
-        _inform(membership.user, me, workspace, kind, title, body, url)
+        _inform(membership.user, me, workspace, kind, title_for(membership.user), body, url)
+
+
+def _row_name(user, table, row):
+    return tr(user, "row {no} of {table}", no=row.no, table=table.title)
 
 
 def _row_text(table, values):
@@ -823,14 +830,10 @@ def _announce_row(me, table, row, before):
     workspace = table.workspace
     url = _link(workspace.pk, row=row)
     if text and not _row_text(table, before):
-        _tell_team(me, workspace, Notification.Kind.NEW_WORK, f"{_name(me)} added work to {table.title}", text, url)
+        _tell_team(me, workspace, Notification.Kind.NEW_WORK, lambda user: tr(user, "{name} added work to {table}", name=_name(me), table=table.title), text, url)
     done = next((c for c in table.columns if c["type"] == "checkbox"), None)
     if done and row.values.get(done["id"]) is True and before.get(done["id"]) is not True:
-        _tell_team(me, workspace, Notification.Kind.DONE, f"{_name(me)} finished {text or _row_name(table, row)}", table.title, url)
-
-
-def _row_name(table, row):
-    return f"row {row.no} of {table.title}"
+        _tell_team(me, workspace, Notification.Kind.DONE, lambda user: tr(user, "{name} finished {what}", name=_name(me), what=text or _row_name(user, table, row)), table.title, url)
 
 
 def _assigned_people(table, values):
@@ -848,7 +851,7 @@ def _tell_assigned(me, table, row, before, changed):
         membership = table.workspace.memberships.select_related("user").filter(user_id=person_id).first()
         if membership:
             text = next((row.values.get(c["id"]) for c in table.columns if c["type"] == "text" and row.values.get(c["id"])), "")
-            _inform(membership.user, me, table.workspace, Notification.Kind.ASSIGNED, f"{_name(me)} assigned you {_row_name(table, row)}", " ".join(text.split()), _link(table.workspace_id, row=row))
+            _inform(membership.user, me, table.workspace, Notification.Kind.ASSIGNED, tr(membership.user, "{name} assigned you {what}", name=_name(me), what=_row_name(membership.user, table, row)), " ".join(text.split()), _link(table.workspace_id, row=row))
 
 
 def _comment_target(membership, page_id=None, table_id=None, row_id=None):
@@ -897,21 +900,21 @@ def add_comment(me, workspace_id, body, page_id=None, table_id=None, row_id=None
     summary = body or "Shared a file"
     if page:
         _log(workspace, me, "comment.page", "page", page.pk, page.title)
-        where = page.title
+        where = lambda user: page.title
         url = _link(workspace.pk, page=page)
     else:
         _log(workspace, me, "comment.row", "row", row.pk, table.title, _row_detail(row))
         _touch(table, me)
-        where = _row_name(table, row)
+        where = lambda user: _row_name(user, table, row)
         url = _link(workspace.pk, row=row)
     # Everyone gets one notification at most, and the most personal one.
     mentioned = [user for user in mentioned_in(workspace, body) if user.pk != me.pk]
     for user in mentioned:
-        _inform(user, me, workspace, Notification.Kind.MENTION, f"{_name(me)} mentioned you on {where}", summary, url)
+        _inform(user, me, workspace, Notification.Kind.MENTION, tr(user, "{name} mentioned you on {where}", name=_name(me), where=where(user)), summary, url)
     followers = set(earlier_authors) | (_assigned_people(table, row.values) if row else set())
     followers -= {me.pk, *(u.pk for u in mentioned)}
     for other in workspace.memberships.select_related("user").filter(user_id__in=followers):
-        _inform(other.user, me, workspace, Notification.Kind.COMMENT, f"{_name(me)} commented on {where}", summary, url)
+        _inform(other.user, me, workspace, Notification.Kind.COMMENT, tr(other.user, "{name} commented on {where}", name=_name(me), where=where(other.user)), summary, url)
     _tell_members(workspace)
     return comment
 

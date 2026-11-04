@@ -4,6 +4,7 @@ import { QUICK_REACTIONS, firstEmoji } from '../emojiText'
 import { Icon, type IconName } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { EmojiGrid } from './emoji'
+import { tr } from '../i18n'
 
 export interface MessageAction {
   icon: IconName
@@ -96,14 +97,14 @@ export function MessageMenu({ anchor, mine, reaction, actions, onClose }: Messag
 
   return createPortal(
     <div className="menu-layer" onMouseDown={(e) => e.target === e.currentTarget && close()} onTouchEnd={(e) => e.target === e.currentTarget && (e.preventDefault(), close())}>
-      <div ref={panel} className="message-menu" role="menu" aria-label="Message options">
+      <div ref={panel} className="message-menu" role="menu" aria-label={tr('Message options')}>
         {view === 'emoji' ? (
           <>
             <input
               className="field emoji-input"
               value=""
-              placeholder="Any emoji from your keyboard"
-              aria-label="Any emoji from your keyboard"
+              placeholder={tr('Any emoji from your keyboard')}
+              aria-label={tr('Any emoji from your keyboard')}
               autoComplete="off"
               onChange={(e) => {
                 const emoji = firstEmoji(e.target.value)
@@ -115,13 +116,13 @@ export function MessageMenu({ anchor, mine, reaction, actions, onClose }: Messag
         ) : (
           <>
             {reaction && (
-              <div className="reaction-bar" role="group" aria-label="React">
+              <div className="reaction-bar" role="group" aria-label={tr('React')}>
                 {QUICK_REACTIONS.map((emoji) => (
                   <button key={emoji} type="button" className="reaction-key" aria-pressed={reaction.current === emoji} onClick={() => pick(emoji)}>
                     {emoji}
                   </button>
                 ))}
-                <button type="button" className="reaction-key reaction-more" aria-label="More emoji" onClick={() => setView('emoji')}>
+                <button type="button" className="reaction-key reaction-more" aria-label={tr('More emoji')} onClick={() => setView('emoji')}>
                   <Icon name="reactPlus" />
                 </button>
               </div>

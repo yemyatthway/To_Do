@@ -78,6 +78,8 @@ SIMPLE_JWT = {
 # Refresh token cookie (httpOnly, scoped to the auth endpoints).
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth/"
+# How long a just-rotated token still works, for two tabs at once or an answer lost on the way.
+REFRESH_REUSE_SECONDS = 60
 REFRESH_COOKIE_SECURE = env.bool("REFRESH_COOKIE_SECURE", default=not DEBUG)
 # "Lax" works when the frontend proxies /api on its own domain; "None" if it calls another domain directly.
 REFRESH_COOKIE_SAMESITE = env("REFRESH_COOKIE_SAMESITE", default="Lax")

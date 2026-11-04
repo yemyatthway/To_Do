@@ -13,6 +13,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.tasks.models import Task
 from apps.tasks.serializers import user_zone
+from apps.users.language import tr
 from apps.users.models import User
 
 from .models import Friendship
@@ -29,7 +30,7 @@ def _name(user):
 def when(task, viewer):
     """'7:00 PM' today, 'Sat, Oct 31 · 7:00 PM' another day, in the viewer's own time zone."""
     if task.due_at is None:
-        return "Anytime"
+        return tr(viewer, "Anytime")
     zone = user_zone(viewer)
     local = timezone.localtime(task.due_at, zone)
     time = local.strftime("%I:%M %p").lstrip("0")
@@ -82,9 +83,9 @@ def add_for_friend(*, me, recipient_id, task_ids):
 
     if copies:
         if len(copies) == 1:
-            title, body = f"{_name(me)} added a task for you", f"{copies[0].title} · {when(copies[0], recipient)}"
+            title, body = tr(recipient, "{name} added a task for you", name=_name(me)), f"{copies[0].title} · {when(copies[0], recipient)}"
         else:
-            title, body = f"{_name(me)} added {len(copies)} tasks for you", ", ".join(c.title for c in copies[:3])
+            title, body = tr(recipient, "{name} added {count} tasks for you", name=_name(me), count=len(copies)), ", ".join(c.title for c in copies[:3])
         _notify(recipient, title, body, url="/", event="tasks")
     return {"mode": "added", "added": len(copies), "already": len(upcoming) - len(fresh), "past": past}
 
@@ -116,11 +117,11 @@ def sync_copies(task, before):
             update_fields += ["reminder_sent_at", "remind_before_minutes"]
         other.save(update_fields=update_fields)
         if "due_at" in changed:
-            title, body = f"{editor} moved a task", f"{other.title} is now {when(other, other.owner)}"
+            title, body = tr(other.owner, "{name} moved a task", name=editor), tr(other.owner, "{title} is now {when}", title=other.title, when=when(other, other.owner))
         elif "title" in changed:
-            title, body = f"{editor} renamed a task", f"{before['title']} is now {other.title}"
+            title, body = tr(other.owner, "{name} renamed a task", name=editor), tr(other.owner, "{before} is now {title}", before=before["title"], title=other.title)
         else:
-            title, body = f"{editor} updated a task", f"{other.title}: new {', '.join(f for f in changed)}"
+            title, body = tr(other.owner, "{name} updated a task", name=editor), tr(other.owner, "{title}: new {fields}", title=other.title, fields=", ".join(f for f in changed))
         _notify(other.owner, title, body, url="/", event="tasks")
     return len(others)
 
@@ -131,14 +132,14 @@ def cancel_copies(task):
     if task.linked_from_id:
         root = Task.all_objects.filter(pk=task.linked_from_id).select_related("owner").first()
         if root and root.deleted_at is None:
-            _notify(root.owner, f"{_name(task.owner)} left a plan", f"{task.title} was removed from their list.", url="/", event="tasks")
+            _notify(root.owner, tr(root.owner, "{name} left a plan", name=_name(task.owner)), tr(root.owner, "{title} was removed from their list.", title=task.title), url="/", event="tasks")
         return 0
     copies = list(Task.objects.filter(linked_from=task).select_related("owner"))
     now = timezone.now()
     for copy in copies:
         copy.deleted_at = now
         copy.save(update_fields=["deleted_at"])
-        _notify(copy.owner, f"{_name(task.owner)} cancelled a task", f"{copy.title} was removed from your list.", url="/", event="tasks")
+        _notify(copy.owner, tr(copy.owner, "{name} cancelled a task", name=_name(task.owner)), tr(copy.owner, "{title} was removed from your list.", title=copy.title), url="/", event="tasks")
     return len(copies)
 
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon, type IconName } from '../icons'
 import { gsap, useGsap } from '../motion'
+import { tr } from '../i18n'
 
 interface ConfirmActionProps {
   title: string
@@ -21,7 +22,7 @@ interface ConfirmActionProps {
 }
 
 /** "Are you sure?" before anything hard to undo. */
-export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'help', typeToConfirm, confirmDisabled, cancelLabel = 'Cancel', onCancel, onConfirm }: ConfirmActionProps) {
+export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'help', typeToConfirm, confirmDisabled, cancelLabel = tr('Cancel'), onCancel, onConfirm }: ConfirmActionProps) {
   const [typed, setTyped] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -72,7 +73,7 @@ export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'h
         <div className="confirm-body">{children}</div>
         {typeToConfirm && (
           <label className="field-group" style={{ width: '100%', textAlign: 'left' }}>
-            <span className="label">Type "{typeToConfirm}" to confirm</span>
+            <span className="label">{tr('Type "{typeToConfirm}" to confirm', { typeToConfirm })}</span>
             <input ref={typedRef} className="field" value={typed} autoComplete="off" onChange={(e) => setTyped(e.target.value)} />
           </label>
         )}
@@ -86,7 +87,7 @@ export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'h
             {cancelLabel}
           </button>
           <button type="submit" className={danger ? 'danger-btn' : 'primary-btn'} disabled={!ready || busy}>
-            {busy ? 'One moment…' : confirmLabel}
+            {busy ? tr('One moment…') : confirmLabel}
           </button>
         </div>
       </form>

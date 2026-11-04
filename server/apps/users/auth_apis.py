@@ -1,9 +1,11 @@
 """
 Login/logout like afm_sys: the access token is returned in the body (the client keeps it in memory),
 the refresh token lives in an httpOnly cookie that JavaScript can't read. Refresh rotates the token
-and blacklists the old one; logout blacklists the current one and clears the cookie.
+and blacklists the old one, which can only be repeated for a moment (two tabs, a lost answer);
+logout blacklists the current one and clears the cookie.
 """
 
+from datetime import timedelta
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -14,13 +16,15 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import TokenBackendError, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.state import token_backend
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from . import events, mail, otp, usernames
 from .email_check import check_email, email_checks
-from .models import AuthEvent, EmailCode, TrustedDevice, User
+from .models import AuthEvent, EmailCode, RotatedRefresh, TrustedDevice, User
 from .serializers import (
     ChallengeSerializer,
     ChangePasswordSerializer,
@@ -297,6 +301,34 @@ class DeviceDeleteApi(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _session_over():
+    response = Response({"detail": "Your session has expired. Log in again."}, status=status.HTTP_401_UNAUTHORIZED)
+    _clear_refresh_cookie(response)
+    return response
+
+
+def _read_refresh_token(token):
+    """Its contents if it's really ours and not expired, whether or not it's been blacklisted."""
+    try:
+        payload = token_backend.decode(token, verify=True)
+    except TokenBackendError:
+        return None
+    return payload if payload.get("token_type") == "refresh" and payload.get("jti") and payload.get("user_id") else None
+
+
+def _is_blacklisted(jti):
+    return BlacklistedToken.objects.filter(token__jti=jti).exists()
+
+
+def _user_for_repeat(payload):
+    """Who may repeat this token: only if it was rotated (not logged out or banned), just now."""
+    since = timezone.now() - timedelta(seconds=settings.REFRESH_REUSE_SECONDS)
+    if not RotatedRefresh.objects.filter(jti=payload["jti"], rotated_at__gte=since).exists():
+        return None
+    user = User.objects.filter(pk=payload["user_id"]).first()
+    return user if user and user.is_active else None
+
+
 class RefreshApi(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -309,15 +341,33 @@ class RefreshApi(APIView):
             # Simply logged out: not an error, so the app's startup check doesn't log one.
             return Response(status=status.HTTP_204_NO_CONTENT)
 
+        payload = _read_refresh_token(token)
+        if payload and _is_blacklisted(payload["jti"]):
+            # Rotated a moment ago: the same request twice, not a stolen token. Answering with a
+            # new token, rather than clearing the cookie, also keeps the one the first answer set.
+            user = _user_for_repeat(payload)
+            if user is None:
+                return _session_over()
+            fresh = RefreshToken.for_user(user)
+            response = Response({"access": str(fresh.access_token)})
+            _set_refresh_cookie(response, fresh)
+            return response
+
+        # Written before the swap, so a repeat that sees the old token blacklisted also finds this.
+        if payload:
+            RotatedRefresh.objects.get_or_create(
+                jti=payload["jti"], defaults={"user_id": payload["user_id"], "rotated_at": timezone.now()}
+            )
         serializer = TokenRefreshSerializer(data={"refresh": token})
         try:
             serializer.is_valid(raise_exception=True)
         except (TokenError, AuthenticationFailed, User.DoesNotExist):
-            # Expired, blacklisted (already rotated or logged out), or the user no longer exists.
-            response = Response({"detail": "Your session has expired. Log in again."}, status=status.HTTP_401_UNAUTHORIZED)
-            _clear_refresh_cookie(response)
-            return response
+            # Expired, or the user no longer exists or is banned.
+            if payload:
+                RotatedRefresh.objects.filter(jti=payload["jti"]).delete()
+            return _session_over()
 
+        RotatedRefresh.objects.filter(rotated_at__lt=timezone.now() - timedelta(hours=1)).delete()
         response = Response({"access": serializer.validated_data["access"]})
         if "refresh" in serializer.validated_data:
             _set_refresh_cookie(response, serializer.validated_data["refresh"])
@@ -337,6 +387,7 @@ class LogoutApi(APIView):
                 refresh = RefreshToken(token)
                 user = User.objects.filter(pk=refresh.payload.get("user_id")).first()
                 refresh.blacklist()
+                RotatedRefresh.objects.filter(user_id=refresh.payload.get("user_id")).delete()
                 if user:
                     events.record(user, AuthEvent.Kind.LOGOUT)
             except TokenError:

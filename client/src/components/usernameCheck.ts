@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { auth, type UsernameCheck } from '../api'
 import { normalizeUsername, usernameProblem } from '../user'
+import { tr } from '../i18n'
 
 export type UsernameState = 'empty' | 'invalid' | 'checking' | 'ok' | 'taken' | 'current'
 
@@ -37,7 +38,7 @@ export function useUsernameCheck(raw: string, { current, signedIn = false }: { c
 
   const known = result?.for === value ? result : null
   const status: UsernameStatus = !value
-    ? { value, state: 'empty', message: 'Choose a username.' }
+    ? { value, state: 'empty', message: tr('Choose a username.') }
     : problem
       ? { value, state: 'invalid', message: problem }
       : value === current

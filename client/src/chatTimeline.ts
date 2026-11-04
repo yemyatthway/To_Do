@@ -1,5 +1,6 @@
 import type { Chat } from './api'
 import { addDays, sameDay } from './time'
+import { formatDate, tr } from './i18n'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
@@ -8,12 +9,12 @@ const HOUR = 60 * MINUTE
 export function momentLabel(at: Date, now: Date) {
   const ago = now.getTime() - at.getTime()
   if (sameDay(at, now)) {
-    if (ago < MINUTE) return 'Now'
-    return ago < HOUR ? `${Math.floor(ago / MINUTE)}m` : `${Math.floor(ago / HOUR)}h`
+    if (ago < MINUTE) return tr('Now')
+    return ago < HOUR ? tr('{n}m', { n: Math.floor(ago / MINUTE) }) : tr('{n}h', { n: Math.floor(ago / HOUR) })
   }
-  if (sameDay(at, addDays(now, -1))) return 'Yest.'
-  if (ago < 7 * 24 * HOUR) return at.toLocaleDateString('en-US', { weekday: 'short' })
-  return at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (sameDay(at, addDays(now, -1))) return tr('Yest.')
+  if (ago < 7 * 24 * HOUR) return formatDate(at, { weekday: 'short' }, 'en-US')
+  return formatDate(at, { month: 'short', day: 'numeric' }, 'en-US')
 }
 
 export interface ChatSection {
@@ -26,8 +27,8 @@ export function chatSections(chats: Chat[], now: Date): ChatSection[] {
   const today = chats.filter((c) => c.last_message_at && sameDay(new Date(c.last_message_at), now))
   const earlier = chats.filter((c) => !today.includes(c))
   return [
-    { label: 'Today', chats: today },
-    { label: 'Earlier', chats: earlier },
+    { label: tr('Today'), chats: today },
+    { label: tr('Earlier'), chats: earlier },
   ].filter((section) => section.chats.length)
 }
 
@@ -44,11 +45,11 @@ export const matchesChat = (chat: Chat, query: string) => {
 
 /** The label between days: Today, Yesterday, Monday, then Oct 28, with the year once it's not this year. */
 export function dayLabel(at: Date, now: Date) {
-  if (sameDay(at, now)) return 'Today'
-  if (sameDay(at, addDays(now, -1))) return 'Yesterday'
-  if (now.getTime() - at.getTime() < 7 * 24 * HOUR) return at.toLocaleDateString('en-US', { weekday: 'long' })
-  return at.toLocaleDateString('en-US', at.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })
+  if (sameDay(at, now)) return tr('Today')
+  if (sameDay(at, addDays(now, -1))) return tr('Yesterday')
+  if (now.getTime() - at.getTime() < 7 * 24 * HOUR) return formatDate(at, { weekday: 'long' }, 'en-US')
+  return formatDate(at, at.getFullYear() === now.getFullYear() ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }, 'en-US')
 }
 
 /** A message's exact time, always with AM or PM. */
-export const messageTime = (at: Date) => at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+export const messageTime = (at: Date) => formatDate(at, { hour: 'numeric', minute: '2-digit', hour12: true }, 'en-US')

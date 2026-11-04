@@ -8,6 +8,7 @@ import { errorMessage } from './admin/useServerTable'
 import { ConfirmDialog, UserPanel } from './admin/UserPanel'
 import { UsersTable } from './admin/UsersTable'
 import { timeAgo } from '../user'
+import { tr } from '../i18n'
 
 type Tab = 'users' | 'activity' | 'emails'
 
@@ -54,7 +55,7 @@ export function Admin({ me, now, notify }: AdminProps) {
       try {
         setDetail(await admin.user(id))
       } catch (err) {
-        notify("Couldn't load that account", errorMessage(err))
+        notify(tr('Couldn\'t load that account'), errorMessage(err))
         setSelectedId(null)
       } finally {
         setDetailLoading(false)
@@ -77,24 +78,24 @@ export function Admin({ me, now, notify }: AdminProps) {
       setDetail({ ...detail, ...updated })
       setConfirm(null)
       loadStats()
-      notify(action === 'ban' ? 'Account banned' : 'Account restored', updated.email)
+      notify(action === 'ban' ? tr('Account banned') : tr('Account restored'), updated.email)
     } catch (err) {
-      notify(action === 'ban' ? "Couldn't ban the account" : "Couldn't unban the account", errorMessage(err))
+      notify(action === 'ban' ? tr('Couldn\'t ban the account') : tr('Couldn\'t unban the account'), errorMessage(err))
     }
   }
 
   const statCards: { label: string; value: number | undefined; tone?: string }[] = [
-    { label: 'Total users', value: stats?.total_users },
-    { label: 'Active', value: stats?.active_users, tone: 'ok' },
-    { label: 'Banned', value: stats?.banned_users, tone: 'danger' },
-    { label: 'Deleted (restorable)', value: stats?.deleted_users },
-    { label: 'New this week', value: stats?.new_users_7d },
-    { label: 'Logins (24 h)', value: stats?.logins_24h },
+    { label: tr('Total users'), value: stats?.total_users },
+    { label: tr('Active'), value: stats?.active_users, tone: 'ok' },
+    { label: tr('Banned'), value: stats?.banned_users, tone: 'danger' },
+    { label: tr('Deleted (restorable)'), value: stats?.deleted_users },
+    { label: tr('New this week'), value: stats?.new_users_7d },
+    { label: tr('Logins (24 h)'), value: stats?.logins_24h },
   ]
 
   return (
     <div className="admin-page">
-      <section className="admin-stats" aria-label="Overview">
+      <section className="admin-stats" aria-label={tr('Overview')}>
         {statCards.map((card) => (
           <div key={card.label} className={`stat-card neu${card.tone ? ` stat-${card.tone}` : ''}`}>
             <span className="stat-value">
@@ -107,12 +108,12 @@ export function Admin({ me, now, notify }: AdminProps) {
       {statsError && <div className="error-banner">{statsError}</div>}
       {stats && <ServiceStatus lastRun={stats.reminders_last_run} now={now} />}
 
-      <div className="segmented admin-tabs" role="tablist" aria-label="Admin sections">
+      <div className="segmented admin-tabs" role="tablist" aria-label={tr('Admin sections')}>
         {(
           [
-            ['users', 'Users'],
-            ['activity', 'Activity log'],
-            ['emails', 'Emails'],
+            ['users', tr('Users')],
+            ['activity', tr('Activity log')],
+            ['emails', tr('Emails')],
           ] as const
         ).map(([value, label]) => (
           <button key={value} type="button" role="tab" aria-selected={tab === value} aria-pressed={tab === value} onClick={() => setTab(value)}>
@@ -183,20 +184,20 @@ function EmailResults({ now, notify }: { now: Date; notify: AdminProps['notify']
   useLiveRefresh(load, 15_000)
 
   return (
-    <section className="card glass email-results" aria-label="Email results">
+    <section className="card glass email-results" aria-label={tr('Email results')}>
       {error && <div className="error-banner">{error}</div>}
       {data === null && !error && <Loading skeleton={<Bone width="60%" height={18} />} />}
       {data && (
         <>
           <p className="task-meta">
-            Last 24 hours: {data.sent_24h} sent · {data.failed_24h} failed
+            {tr('Last 24 hours: {sent_24h} sent · {failed_24h} failed', { sent_24h: data.sent_24h, failed_24h: data.failed_24h })}
           </p>
-          {data.items.length === 0 && <p className="empty">No emails yet.</p>}
+          {data.items.length === 0 && <p className="empty">{tr('No emails yet.')}</p>}
           <ul className="row-list">
             {data.items.map((item) => (
               <li key={item.id}>
                 <div className="flat-row">
-                  <span className={`row-status ${item.ok ? 'done' : 'failed'}`}>{item.ok ? 'Sent' : 'Failed'}</span>
+                  <span className={`row-status ${item.ok ? 'done' : 'failed'}`}>{item.ok ? tr('Sent') : tr('Failed')}</span>
                   <span className="row-main">
                     <span className="person-name">{EMAIL_NAMES[item.kind] ?? item.kind}</span>
                     <span className="row-sub">
@@ -220,8 +221,8 @@ function ServiceStatus({ lastRun, now }: { lastRun: string | null; now: Date }) 
   return (
     <div className={`service-status ${running ? 'ok' : 'bad'}`} role="status">
       <span className="dot" aria-hidden="true" />
-      Reminder service: {running ? 'running' : 'not running'} · last check {timeAgo(lastRun, now).toLowerCase()}
-      {!running && ' · check the cron-job.org job'}
+      {tr('Reminder service:')}{' '}{running ? 'running' : tr('not running')} {tr('· last check')}{' '}{timeAgo(lastRun, now).toLowerCase()}
+      {!running && tr(' · check the cron-job.org job')}
     </div>
   )
 }

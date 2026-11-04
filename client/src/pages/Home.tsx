@@ -1,14 +1,17 @@
 import { useRef, useState } from 'react'
 import type { Task } from '../api'
 import { Clock } from '../components/Clock'
+import { DigitalClock } from '../components/DigitalClock'
 import { DayPicker } from '../components/DayPicker'
 import { Segments } from '../components/Segments'
 import { TaskRow } from '../components/TaskRow'
 import { Icon } from '../icons'
-import { enter, useGsap } from '../motion'
+import { enter, gsap, useGsap } from '../motion'
 import { addDays, clockWindow, dueDate, formatHour, formatShortDay, formatTime, hourSlot, sameDay, startOfDay } from '../time'
+import { tr } from '../i18n'
 
 const HOUR = 3600_000
+const CLOCK_STYLE_KEY = 'todo:clockStyle'
 
 interface HomeProps {
   tasks: Task[]
@@ -66,6 +69,25 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
   const face = clockWindow(day, now, firstHour)
   const onClock = timedAll.filter((t) => time(t) >= face.start.getTime() && time(t) < face.end.getTime())
 
+  const clockRef = useRef<HTMLDivElement>(null)
+  const [clockStyle, setClockStyle] = useState<'analog' | 'digital'>(() => {
+    try {
+      return localStorage.getItem(CLOCK_STYLE_KEY) === 'digital' ? 'digital' : 'analog'
+    } catch {
+      return 'analog'
+    }
+  })
+  function chooseClock(style: 'analog' | 'digital') {
+    if (style === clockStyle) return
+    setClockStyle(style)
+    try {
+      localStorage.setItem(CLOCK_STYLE_KEY, style)
+    } catch {
+      // This device won't remember it; the clock still changes.
+    }
+    gsap.fromTo(clockRef.current, { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.45, ease: 'back.out(1.6)', clearProps: 'transform,opacity' })
+  }
+
   function changeDay(next: Date) {
     onDayChange(next)
     setSelectedHour(null)
@@ -89,7 +111,7 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
   )
 
   const endsTomorrow = !sameDay(face.start, new Date(face.end.getTime() - 1))
-  const windowLabel = `${isToday ? 'Next 12 hours' : 'Showing'} · ${formatHour(face.start)} to ${formatHour(face.end)}${endsTomorrow ? ' tomorrow' : ''}`
+  const windowLabel = tr('{value} · {value2} to {value3}{value4}', { value: isToday ? tr('Next 12 hours') : tr('Showing'), value2: formatHour(face.start), value3: formatHour(face.end), value4: endsTomorrow ? tr(' tomorrow') : '' })
 
   let list: React.ReactNode
   if (selectedHour !== null) {
@@ -100,23 +122,23 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
     const best = Math.min(...onClock.map((t) => Math.abs(time(t) - middle)))
     const nearest = inHour.length ? [] : onClock.filter((t) => Math.abs(time(t) - middle) === best)
     const after = onClock.find((t) => time(t) >= slotEnd && !t.done)
-    const range = `${formatTime(slot)} to ${formatTime(new Date(slotEnd - 60_000))}`
+    const range = tr('{value} to {value2}', { value: formatTime(slot), value2: formatTime(new Date(slotEnd - 60_000)) })
     const otherDay = !sameDay(slot, day) ? ` · ${dayLabel(slot, now)}` : ''
     list = (
       <>
         <div className="list-head">
           <div>
-            <h2 className="list-title">{inHour.length ? `Around ${selectedHour} o'clock` : `Nothing at ${selectedHour}`}</h2>
+            <h2 className="list-title">{inHour.length ? tr('Around {selectedHour} o\'clock', { selectedHour }) : tr('Nothing at {selectedHour}', { selectedHour })}</h2>
             <span className="list-sub">
               {inHour.length
                 ? `${inHour.length} ${inHour.length === 1 ? 'task' : 'tasks'} · ${range}${otherDay}`
                 : nearest.length
-                  ? `Closest tasks instead${otherDay}`
-                  : 'Nothing on the clock right now'}
+                  ? tr('Closest tasks instead{otherDay}', { otherDay })
+                  : tr('Nothing on the clock right now')}
             </span>
           </div>
           <button className="text-btn" onClick={() => setSelectedHour(null)}>
-            Show all
+            {tr('Show all')}
           </button>
         </div>
         <div className="list-scroll">
@@ -125,7 +147,7 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
             <p className="next-hint">
               <Icon name="arrow" />
               <span>
-                Next after this hour: <strong>{after.title}, {formatTime(dueDate(after)!)}</strong>
+                {tr('Next after this hour:')}{' '}<strong>{after.title}, {formatTime(dueDate(after)!)}</strong>
               </span>
             </p>
           )}
@@ -142,20 +164,18 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
           className="day-progress"
           data-tour="day-progress"
           onClick={onShowProgress}
-          aria-label={`${doneCount} of ${timed.length} tasks done. Open progress`}
+          aria-label={tr('{doneCount} of {length} tasks done. Open progress', { doneCount, length: timed.length })}
         >
           <span className="day-progress-head">
-            <span className="list-title">{isToday ? 'Today' : formatShortDay(day)}</span>
+            <span className="list-title">{isToday ? tr('Today') : formatShortDay(day)}</span>
             <span className="list-sub">
               {timed.length ? (
                 <>
                   <strong style={{ color: 'var(--text)' }}>
-                    {doneCount} of {timed.length}
-                  </strong>{' '}
-                  done
+                    {tr('{doneCount} of {length}', { doneCount, length: timed.length })}{' '}</strong>{' '}{tr('done')}
                 </>
               ) : (
-                'No timed tasks'
+                tr('No timed tasks')
               )}
             </span>
           </span>
@@ -165,8 +185,8 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
         <div className="list-scroll">
           {upcoming.length + openAnytime.length + done.length + (isToday ? overdue.length : 0) === 0 && (
             <div className="empty-state">
-              <p className="empty-title">{isToday ? 'Nothing planned yet' : `Nothing planned for ${formatShortDay(day)}`}</p>
-              <p className="empty">Press and hold an hour on the clock, or tap + to add your first task.</p>
+              <p className="empty-title">{isToday ? tr('Nothing planned yet') : tr('Nothing planned for {value}', { value: formatShortDay(day) })}</p>
+              <p className="empty">{tr('Press and hold an hour on the clock, or tap + to add your first task.')}</p>
             </div>
           )}
           {isToday && overdue.length > 0 && (
@@ -174,11 +194,10 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
               <div className="overdue-head">
                 <h3 id="overdue-h" className="section-label">
                   <Icon name="clock" />
-                  Overdue · {overdue.length}
-                </h3>
+                  {tr('Overdue · {length}', { length: overdue.length })}</h3>
                 {overdue.length > 1 && (
                   <button type="button" className="text-btn" onClick={() => onMoveToToday(overdue)}>
-                    Move all to today
+                    {tr('Move all to today')}
                   </button>
                 )}
               </div>
@@ -193,8 +212,8 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
                     onOpen={() => onOpen(task)}
                     onDelete={() => onDelete(task)}
                     action={
-                      <button type="button" className="move-today" onClick={() => onMoveToToday([task])} aria-label={`Move ${task.title} to today`}>
-                        Today
+                      <button type="button" className="move-today" onClick={() => onMoveToToday([task])} aria-label={tr('Move {title} to today', { title: task.title })}>
+                        {tr('Today')}
                         <Icon name="arrow" />
                       </button>
                     }
@@ -204,9 +223,9 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
             </section>
           )}
           <ul className="task-list">{upcoming.map(row)}</ul>
-          {openAnytime.length > 0 && <h3 className="section-label">Anytime</h3>}
+          {openAnytime.length > 0 && <h3 className="section-label">{tr('Anytime')}</h3>}
           <ul className="task-list">{openAnytime.map(row)}</ul>
-          {done.length > 0 && <h3 className="section-label">Done</h3>}
+          {done.length > 0 && <h3 className="section-label">{tr('Done')}</h3>}
           <ul className="task-list">{done.map(row)}</ul>
         </div>
       </>
@@ -215,36 +234,55 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
 
   return (
     <div className="home">
-      <section className="clock-panel" aria-label="Clock">
+      <section className="clock-panel" aria-label={tr('Clock')}>
+        <button
+          type="button"
+          className="round-btn clock-style"
+          title={clockStyle === 'digital' ? tr('Show the round clock') : tr('Show the digital clock')}
+          aria-label={clockStyle === 'digital' ? tr('Show the round clock') : tr('Show the digital clock')}
+          onClick={() => chooseClock(clockStyle === 'digital' ? 'analog' : 'digital')}
+        >
+          <Icon name={clockStyle === 'digital' ? 'clock' : 'digits'} />
+        </button>
         <DayPicker day={day} now={now} onChange={changeDay} onAddTask={onAddOnDay} />
-        <Clock
-          tasks={onClock}
-          showHands={isToday}
-          selectedHour={selectedHour}
-          freshTaskId={freshId}
-          onSelectHour={(h) => setSelectedHour(selectedHour === h ? null : h)}
-          onLongPressHour={longPress}
-        />
-        <p className="clock-window">{windowLabel}</p>
-        {!isToday && <p className="clock-ghost-note">Faded hands show the time now</p>}
-        <div className="legend" aria-hidden="true">
-          <span>
-            <span className="dot dot-work" />
-            Work
-          </span>
-          <span>
-            <span className="dot dot-personal" />
-            Personal
-          </span>
-          <span>
-            <span className="dot dot-health" />
-            Health
-          </span>
+        <div ref={clockRef} className="clock-swap">
+          {clockStyle === 'digital' ? (
+            <DigitalClock tasks={onClock} start={face.start} showNow={isToday} selectedHour={selectedHour} onSelectHour={(h) => setSelectedHour(selectedHour === h ? null : h)} onLongPressHour={longPress} />
+          ) : (
+            <Clock
+              tasks={onClock}
+              showHands={isToday}
+              selectedHour={selectedHour}
+              freshTaskId={freshId}
+              onSelectHour={(h) => setSelectedHour(selectedHour === h ? null : h)}
+              onLongPressHour={longPress}
+            />
+          )}
         </div>
-        <p className="clock-hint">Tap an hour to filter · press and hold to add a task there</p>
+        <p className="clock-window">{windowLabel}</p>
+        {!isToday && <p className="clock-ghost-note">{clockStyle === 'digital' ? tr('Faded numbers show the time now') : tr('Faded hands show the time now')}</p>}
+        {clockStyle === 'analog' && (
+          <>
+            <div className="legend" aria-hidden="true">
+              <span>
+                <span className="dot dot-work" />
+                {tr('Work')}
+              </span>
+              <span>
+                <span className="dot dot-personal" />
+                {tr('Personal')}
+              </span>
+              <span>
+                <span className="dot dot-health" />
+                {tr('Health')}
+              </span>
+            </div>
+            <p className="clock-hint">{tr('Tap an hour to filter · press and hold to add a task there')}</p>
+          </>
+        )}
       </section>
 
-      <section ref={listRef} className="list-panel glass" aria-label="Tasks" data-tour="task-list">
+      <section ref={listRef} className="list-panel glass" aria-label={tr('Tasks')} data-tour="task-list">
         {list}
       </section>
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../icons'
 import { formatClock, timeLeft, type TimerState } from '../timer/useTimer'
+import { tr } from '../i18n'
 
 /**
  * Header button for a timer in progress. While one runs (or is paused) it shows the time left, and
@@ -21,15 +22,15 @@ export function TimerPill({ timer, active, onOpen }: { timer: TimerState; active
   const label = formatClock(timeLeft(timer, now))
 
   useEffect(() => {
-    document.title = running ? `${label} · Todo Clock` : timer.status === 'done' ? "Time's up · Todo Clock" : 'Todo Clock'
+    document.title = running ? tr('{label} · Todo Clock', { label }) : timer.status === 'done' ? tr('Time\'s up · Todo Clock') : tr('Todo Clock')
   }, [label, running, timer.status])
 
-  useEffect(() => () => void (document.title = 'Todo Clock'), [])
+  useEffect(() => () => void (document.title = tr('Todo Clock')), [])
 
   if (!live) return null
 
   return (
-    <button className="round-btn timer-pill live" aria-pressed={active} aria-label={`Timer, ${label} left${running ? '' : ', paused'}`} onClick={onOpen}>
+    <button className="round-btn timer-pill live" aria-pressed={active} aria-label={tr('Timer, {label} left{value}', { label, value: running ? '' : tr(', paused') })} onClick={onOpen}>
       <Icon name="timer" />
       <span className="timer-pill-time">{label}</span>
     </button>

@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { reportError } from '../monitoring'
+import { tr } from '../i18n'
 
 /**
  * Last line of defence: if a screen crashes while rendering, show a way out instead of a blank
@@ -23,12 +24,12 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
     return (
       <div className="crash-screen" role="alert">
         <div className="card glass">
-          <h1 className="auth-title">{outdated ? 'A new version is ready' : 'Something went wrong'}</h1>
+          <h1 className="auth-title">{outdated ? tr('A new version is ready') : tr('Something went wrong')}</h1>
           <p className="list-sub" style={{ margin: 0 }}>
-            {outdated ? 'Reload to get the latest version of the app.' : 'Your tasks are safe. Reloading usually fixes this.'}
+            {outdated ? tr('Reload to get the latest version of the app.') : tr('Your tasks are safe. Reloading usually fixes this.')}
           </p>
           <button type="button" className="primary-btn" onClick={() => window.location.reload()}>
-            Reload
+            {tr('Reload')}
           </button>
         </div>
       </div>

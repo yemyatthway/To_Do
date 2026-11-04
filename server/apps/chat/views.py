@@ -129,3 +129,40 @@ class ClearApi(APIView):
     def post(self, request, conversation_id):
         services.clear_chat(request.user, services.conversation_for(request.user, conversation_id))
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def scheduled_data(item):
+    return {"id": item.pk, "text": item.text, "send_at": item.send_at, "status": item.status, "error": item.error}
+
+
+class ScheduledApi(APIView):
+    """GET: your messages waiting to send in this chat. POST {text, send_at}: add one."""
+
+    throttle_scope = "chat"
+
+    def get(self, request, conversation_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        return Response([scheduled_data(i) for i in services.scheduled_of(request.user, conversation)])
+
+    def post(self, request, conversation_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        item = services.schedule(request.user, conversation, request.data.get("text"), request.data.get("send_at"))
+        return Response(scheduled_data(item), status=status.HTTP_201_CREATED)
+
+
+class ScheduledOneApi(APIView):
+    """PATCH {text?, send_at?}: change it. POST: send it now. DELETE: drop it."""
+
+    throttle_scope = "chat"
+
+    def patch(self, request, conversation_id, item_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        return Response(scheduled_data(services.update_scheduled(request.user, conversation, item_id, request.data.get("text"), request.data.get("send_at"))))
+
+    def post(self, request, conversation_id, item_id):
+        conversation = services.conversation_for(request.user, conversation_id)
+        return Response(services.message_data(services.send_scheduled_now(request.user, conversation, item_id), request.user), status=status.HTTP_201_CREATED)
+
+    def delete(self, request, conversation_id, item_id):
+        services.delete_scheduled(request.user, services.conversation_for(request.user, conversation_id), item_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)

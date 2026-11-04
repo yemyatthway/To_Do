@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { chat, social, type Chat, type ChatMessage, type ChatReaction, type Person } from '../api'
+import { chat, social, type Chat, type ChatMessage, type ChatReaction, type Person, type ScheduledMessage } from '../api'
+import { scheduledSummary, sendAtText } from '../chatSchedule'
 import { chatSections, dayLabel, isSeen, matchesChat, messageTime, momentLabel } from '../chatTimeline'
 import { ConfirmAction } from '../components/ConfirmAction'
 import { Dial } from '../components/Dial'
@@ -14,10 +15,12 @@ import { useLiveRefresh } from '../live'
 import { gsap, useGsap } from '../motion'
 import { pendingMessages, type Outbox, type ShownMessage } from '../outbox'
 import { isLive, joinChat, onLive, watchOnline, watchTyping } from '../realtime'
+import { toLocalInput } from '../tableLogic'
 import { sameDay } from '../time'
 import { handle, initials } from '../user'
 import { usePageVisible } from '../visibility'
 import './Chats.css'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const nameOf = (p: Person) => p.full_name || p.email
@@ -119,7 +122,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
         setOpened(c)
         setOpenId(c.id)
       } catch (err) {
-        notify("Couldn't open that chat", errorMessage(err))
+        notify(tr('Couldn\'t open that chat'), errorMessage(err))
       }
     },
     [notify],
@@ -164,11 +167,11 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
 
   return (
     <div className={`chats-page${openId ? ' has-thread' : ''}`}>
-      <section className="card glass panel chat-list-pane" aria-label="Your chats">
+      <section className="card glass panel chat-list-pane" aria-label={tr('Your chats')}>
         <div className="panel-top">
-          <SearchField label="Search chats" placeholder="Search chats" value={search} onChange={setSearch} />
+          <SearchField label={tr('Search chats')} placeholder={tr('Search chats')} value={search} onChange={setSearch} />
           {friends.length > 0 && (
-            <button className="primary-btn icon-only" aria-label={picking ? 'Close' : 'New chat'} aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
+            <button className="primary-btn icon-only" aria-label={picking ? tr('Close') : tr('New chat')} aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
               <Icon name={picking ? 'x' : 'plus'} />
             </button>
           )}
@@ -178,21 +181,21 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button className="text-btn" onClick={refresh}>
-              Retry
+              {tr('Retry')}
             </button>
           </div>
         )}
 
         <div ref={listRef} className="panel-scroll chat-scroll">
           {picking && (
-            <ul className="chat-list" aria-label="Start a chat with">
+            <ul className="chat-list" aria-label={tr('Start a chat with')}>
               {friends.filter((f) => `${f.full_name} ${f.username}`.toLowerCase().includes(search.trim().toLowerCase())).map((f) => (
                 <li key={f.id}>
                   <button className="flat-row" onClick={() => openWith(f.id)}>
                     <Dial id={f.id} initials={initials(f)} ring={online.has(f.id) ? 'live' : null} />
                     <span className="row-main">
                       <span className="person-name">{nameOf(f)}</span>
-                      <span className={`row-sub${online.has(f.id) ? ' live-status' : ''}`}>{online.has(f.id) ? `Online · ${handle(f)}` : handle(f)}</span>
+                      <span className={`row-sub${online.has(f.id) ? ' live-status' : ''}`}>{online.has(f.id) ? tr('Online · {value}', { value: handle(f) }) : handle(f)}</span>
                     </span>
                   </button>
                 </li>
@@ -204,9 +207,9 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
             (chats === null ? (
               <Loading active={!error} skeleton={<SkeletonRows count={4} avatar />} onRetry={() => void refresh()} />
             ) : chats.length === 0 ? (
-              <p className="empty">{friends.length ? 'No messages yet. Press + to write to a friend.' : 'Add a friend first, then you can message them here.'}</p>
+              <p className="empty">{friends.length ? tr('No messages yet. Press + to write to a friend.') : tr('Add a friend first, then you can message them here.')}</p>
             ) : sections.length === 0 ? (
-              <p className="empty">No chats match.</p>
+              <p className="empty">{tr('No chats match.')}</p>
             ) : (
               sections.map((section) => (
                 <div key={section.label} className="chat-section">
@@ -232,12 +235,12 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
                                 <i />
                                 <i />
                                 <i />
-                                typing
+                                {tr('typing')}
                               </span>
                             ) : (
                               <span className={`row-sub${c.unread ? ' unread' : ''}`}>
                                 {isSeen(c) && (
-                                  <span className="seen-mark" role="img" aria-label="Seen">
+                                  <span className="seen-mark" role="img" aria-label={tr('Seen')}>
                                     <Icon name="seen" />
                                   </span>
                                 )}
@@ -246,7 +249,7 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
                             )}
                           </span>
                           {c.unread > 0 && (
-                            <span className="count-badge" aria-label={`${c.unread} unread`}>
+                            <span className="count-badge" aria-label={tr('{unread} unread', { unread: c.unread })}>
                               {c.unread}
                             </span>
                           )}
@@ -259,12 +262,12 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
             ))}
 
           {!picking && chats && chats.length > 0 && newFriends.length > 0 && !search && (
-            <p className="task-meta chat-hint">Press + to message {newFriends.length === 1 ? nameOf(newFriends[0]) : `${newFriends.length} more friends`}.</p>
+            <p className="task-meta chat-hint">{tr('Press + to message')}{' '}{newFriends.length === 1 ? nameOf(newFriends[0]) : tr('{length} more friends', { length: newFriends.length })}.</p>
           )}
         </div>
       </section>
 
-      <section className="card glass chat-thread-pane" aria-label="Messages">
+      <section className="card glass chat-thread-pane" aria-label={tr('Messages')}>
         {active ? (
           <Thread
             key={active.id}
@@ -282,8 +285,8 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
         ) : (
           <div className="chat-placeholder">
             <Icon name="chat" />
-            <p>Pick a chat to read and reply.</p>
-            <p className="task-meta">Messages are stored encrypted. You can delete your own messages for everyone.</p>
+            <p>{tr('Pick a chat to read and reply.')}</p>
+            <p className="task-meta">{tr('Messages are stored encrypted. You can delete your own messages for everyone.')}</p>
           </div>
         )}
       </section>
@@ -301,9 +304,9 @@ function withDeleted<T extends ChatMessage>(list: T[], id: number): T[] {
 
 function preview(c: Chat) {
   const m = c.last_message
-  if (!m) return 'No messages yet'
-  if (m.deleted) return m.mine ? 'You deleted a message' : 'Message deleted'
-  return `${m.mine ? 'You: ' : ''}${m.text}`
+  if (!m) return tr('No messages yet')
+  if (m.deleted) return m.mine ? tr('You deleted a message') : tr('Message deleted')
+  return m.mine ? tr('You: {text}', { text: m.text }) : m.text
 }
 
 /** A message on screen: real ones from the server, plus my own still in the save queue. */
@@ -334,6 +337,9 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
   const [picker, setPicker] = useState(false)
   const [deleting, setDeleting] = useState<Shown | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
+  const [scheduled, setScheduled] = useState<ScheduledMessage[]>([])
+  const [scheduling, setScheduling] = useState<{ item: ScheduledMessage | null; text: string } | null>(null)
+  const [showScheduled, setShowScheduled] = useState(false)
   const [error, setError] = useState('')
   const visible = usePageVisible()
   const scroller = useRef<HTMLDivElement>(null)
@@ -375,6 +381,14 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
   }, [loadLatest])
   // Fallback when there's no live connection.
   useLiveRefresh(loadLatest, isLive() ? 60_000 : 5_000)
+
+  const loadScheduled = useCallback(() => {
+    chat.scheduled(info.id).then(setScheduled, () => undefined)
+  }, [info.id])
+  useEffect(loadScheduled, [loadScheduled])
+  useLiveRefresh(loadScheduled, 30_000)
+  // One of yours just went out.
+  useEffect(() => onLive((e) => e.name === 'chat' && loadScheduled()), [loadScheduled])
 
   // Live: new and deleted messages, "Seen", "typing…", and whether they're in this chat now.
   useEffect(() => {
@@ -513,7 +527,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         if (el) el.scrollTop = el.scrollHeight - fromBottom
       })
     } catch (err) {
-      notify("Couldn't load older messages", errorMessage(err))
+      notify(tr('Couldn\'t load older messages'), errorMessage(err))
     }
   }
 
@@ -545,7 +559,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       setMessages((list) => list?.map((x) => (x.id === m.id ? { ...x, reactions: saved.reactions } : x)) ?? null)
     } catch (err) {
       setMessages((list) => list?.map((x) => (x.id === m.id ? { ...x, reactions: before } : x)) ?? null)
-      notify("Couldn't add your reaction", errorMessage(err))
+      notify(tr('Couldn\'t add your reaction'), errorMessage(err))
     }
   }
 
@@ -553,7 +567,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
   function jumpTo(id: number) {
     const target = scroller.current?.querySelector<HTMLElement>(`[data-id="${id}"] .bubble`)
     if (!target) {
-      notify('That message is further back', 'Load older messages to see it.')
+      notify(tr('That message is further back'), tr('Load older messages to see it.'))
       return
     }
     stick.current = false
@@ -592,7 +606,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       onChanged()
     } catch (err) {
       setMessages((list) => list?.map((x) => (x.id === m.id ? m : x)) ?? null)
-      notify("Couldn't edit that message", errorMessage(err))
+      notify(tr('Couldn\'t edit that message'), errorMessage(err))
     }
   }
 
@@ -612,7 +626,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       onChanged()
     } catch (err) {
       setMessages(before)
-      notify("Couldn't delete that message", errorMessage(err))
+      notify(tr('Couldn\'t delete that message'), errorMessage(err))
     }
   }
 
@@ -625,7 +639,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
       onChanged()
     } catch (err) {
       setMessages(before)
-      notify("Couldn't clear the chat", errorMessage(err))
+      notify(tr('Couldn\'t clear the chat'), errorMessage(err))
     }
   }
 
@@ -641,12 +655,12 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
 
   const menuActions = (m: Shown): MessageAction[] => {
     const list: MessageAction[] = []
-    if (m.failed) list.push({ icon: 'undo', label: 'Try again', run: () => m.key && outbox.retry(m.key) })
-    if (!m.deleted && m.id > 0) list.push({ icon: 'reply', label: 'Reply', run: () => startReply(m) })
+    if (m.failed) list.push({ icon: 'undo', label: tr('Try again'), run: () => m.key && outbox.retry(m.key) })
+    if (!m.deleted && m.id > 0) list.push({ icon: 'reply', label: tr('Reply'), run: () => startReply(m) })
     if (m.mine && !m.deleted && !m.failed && now.getTime() - new Date(m.created_at).getTime() < EDIT_HOURS * 3_600_000) {
-      list.push({ icon: 'edit', label: 'Edit', run: () => startEdit(m) })
+      list.push({ icon: 'edit', label: tr('Edit'), run: () => startEdit(m) })
     }
-    list.push({ icon: 'trash', label: m.failed ? 'Discard' : 'Delete', danger: true, run: () => setDeleting(m) })
+    list.push({ icon: 'trash', label: m.failed ? tr('Discard') : tr('Delete'), danger: true, run: () => setDeleting(m) })
     return list
   }
 
@@ -663,12 +677,12 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
 
   const lastMine = messages?.filter((m) => m.mine && !m.deleted && m.id > 0).at(-1)
   const seen = lastMine && friendReadAt && new Date(friendReadAt) >= new Date(lastMine.created_at)
-  const status = typing ? 'Typing…' : here ? 'In this chat' : online ? 'Online' : 'Offline'
+  const status = typing ? tr('Typing…') : here ? tr('In this chat') : online ? tr('Online') : tr('Offline')
 
   return (
     <div className="thread">
       <header className="thread-head">
-        <button className="round-btn thread-back" aria-label="Back to chats" onClick={onBack}>
+        <button className="round-btn thread-back" aria-label={tr('Back to chats')} onClick={onBack}>
           <Icon name="back" />
         </button>
         <span className="row-main">
@@ -677,11 +691,11 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           </span>
           <h2 className="thread-name">{nameOf(friend)}</h2>
         </span>
-        <OptionsMenu label="Chat options" options={[{ icon: 'trash', label: 'Clear chat', danger: true, run: () => setConfirmClear(true) }]} />
+        <OptionsMenu label={tr('Chat options')} options={[{ icon: 'trash', label: tr('Clear chat'), danger: true, run: () => setConfirmClear(true) }]} />
       </header>
       {confirmClear && (
-        <ConfirmAction danger icon="trash" title="Clear this chat?" confirmLabel="Clear chat" onCancel={() => setConfirmClear(false)} onConfirm={clearChat}>
-          <p>It's cleared for you. {nameOf(friend)} keeps their copy.</p>
+        <ConfirmAction danger icon="trash" title={tr('Clear this chat?')} confirmLabel={tr('Clear chat')} onCancel={() => setConfirmClear(false)} onConfirm={clearChat}>
+          <p>{tr('It\'s cleared for you.')}{' '}{nameOf(friend)} {tr('keeps their copy.')}</p>
         </ConfirmAction>
       )}
 
@@ -699,19 +713,19 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button className="text-btn" onClick={() => void loadLatest()}>
-              Retry
+              {tr('Retry')}
             </button>
           </div>
         )}
         {more && (
           <button className="text-btn load-older" onClick={loadOlder}>
-            Load older messages
+            {tr('Load older messages')}
           </button>
         )}
         {messages === null ? (
           <Loading active={!error} skeleton={<ThreadSkeleton />} onRetry={() => void loadLatest()} />
         ) : shown?.length === 0 ? (
-          <p className="empty">Say hi to {nameOf(friend)}.</p>
+          <p className="empty">{tr('Say hi to')}{' '}{nameOf(friend)}.</p>
         ) : (
           <ol className="bubbles" aria-live="polite">
             {shown?.map((m, i) => {
@@ -730,7 +744,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                       className={`bubble${m.deleted ? ' deleted' : ''}${m.pending ? ' pending' : ''}${m.failed ? ' failed' : ''}${editing?.id === m.id ? ' editing' : ''}${menu?.message.id === m.id ? ' is-open' : ''}${big ? ' sticker' : ''}`}
                       role={m.pending ? undefined : 'button'}
                       tabIndex={m.pending ? undefined : 0}
-                      aria-label={m.pending ? undefined : 'Message options'}
+                      aria-label={m.pending ? undefined : tr('Message options')}
                       onMouseDown={(e) => {
                         // Typing? Keep the keyboard up, so the screen doesn't jump while the menu opens.
                         if (document.activeElement === input.current) e.preventDefault()
@@ -751,21 +765,21 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                         <button
                           type="button"
                           className="bubble-quote"
-                          aria-label={`Go to the message from ${m.reply.sender === myId ? 'you' : nameOf(friend)}`}
+                          aria-label={tr('Go to the message from {value}', { value: m.reply.sender === myId ? tr('you') : nameOf(friend) })}
                           onClick={(e) => {
                             e.stopPropagation()
                             jumpTo(m.reply!.id)
                           }}
                         >
-                          <span className="quote-name">{m.reply.sender === myId ? 'You' : nameOf(friend)}</span>
-                          <span className="quote-text">{m.reply.deleted ? 'Message deleted' : m.reply.text}</span>
+                          <span className="quote-name">{m.reply.sender === myId ? tr('You') : nameOf(friend)}</span>
+                          <span className="quote-text">{m.reply.deleted ? tr('Message deleted') : m.reply.text}</span>
                         </button>
                       )}
                       {m.deleted ? (
                         m.mine ? (
-                          'You deleted this message'
+                          tr('You deleted this message')
                         ) : (
-                          'This message was deleted'
+                          tr('This message was deleted')
                         )
                       ) : big ? (
                         <span className={`sticker-row${big.length === 1 ? ' one' : ''}`}>{big.join('')}</span>
@@ -773,7 +787,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                         m.text
                       )}
                       <span className="bubble-time">
-                        {m.edited && 'edited · '}
+                        {m.edited && tr('edited · ')}
                         {messageTime(at)}
                       </span>
                     </div>
@@ -781,7 +795,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                       <button
                         type="button"
                         className="bubble-react-hint"
-                        aria-label="React or reply"
+                        aria-label={tr('React or reply')}
                         onClick={(e) => {
                           e.stopPropagation()
                           openMenu(m, e.currentTarget.parentElement?.querySelector('.bubble') ?? e.currentTarget)
@@ -799,9 +813,9 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                       ))}
                     </div>
                   )}
-                  {m.failed && menu?.message.id !== m.id && <div className="bubble-note mine">Not sent. Tap to try again.</div>}
-                  {m.waiting && <div className="bubble-note mine">Waiting for network</div>}
-                  {lastMine?.id === m.id && <div className="bubble-note mine">{seen ? 'Seen' : 'Sent'}</div>}
+                  {m.failed && menu?.message.id !== m.id && <div className="bubble-note mine">{tr('Not sent. Tap to try again.')}</div>}
+                  {m.waiting && <div className="bubble-note mine">{tr('Waiting for network')}</div>}
+                  {lastMine?.id === m.id && <div className="bubble-note mine">{seen ? tr('Seen') : tr('Sent')}</div>}
                 </li>
               )
             })}
@@ -809,7 +823,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         )}
         {typing && (
           <div className="bubble-row">
-            <div className="bubble typing-bubble" aria-label={`${nameOf(friend)} is typing`}>
+            <div className="bubble typing-bubble" aria-label={tr('{value} is typing', { value: nameOf(friend) })}>
               <span />
               <span />
               <span />
@@ -818,8 +832,30 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         )}
       </div>
 
-      {editing && <ComposerNote icon="edit" title="Editing your message" text={editing.text} cancelLabel="Cancel editing" onCancel={cancelEdit} />}
-      {replying && <ComposerNote icon="reply" title={replying.sender === myId ? 'Replying to your message' : `Replying to ${nameOf(friend)}`} text={replying.text} cancelLabel="Cancel reply" onCancel={() => setReplying(null)} />}
+      {scheduled.length > 0 && (
+        <button type="button" className={`scheduled-bar${scheduled.some((s) => s.status === 'failed') ? ' failed' : ''}`} aria-expanded={showScheduled} onClick={() => setShowScheduled((v) => !v)}>
+          <Icon name="clock" />
+          <span className="row-main">{scheduledSummary(scheduled, now)}</span>
+          <Icon name="chevron" className="more-go" />
+        </button>
+      )}
+      {showScheduled && scheduled.length > 0 && (
+        <ul className="row-list scheduled-list">
+          {scheduled.map((item) => (
+            <li key={item.id}>
+              <button type="button" className="flat-row" disabled={item.status === 'sending'} onClick={() => setScheduling({ item, text: item.text })}>
+                <span className="row-main">
+                  <span className="person-name">{item.text}</span>
+                  <span className={`row-sub${item.status === 'failed' ? ' is-failed' : ''}`}>{item.status === 'failed' ? item.error || tr('Couldn\'t send') : item.status === 'sending' ? tr('Sending…') : sendAtText(new Date(item.send_at), now)}</span>
+                </span>
+                <Icon name="chevron" className="more-go" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {editing && <ComposerNote icon="edit" title={tr('Editing your message')} text={editing.text} cancelLabel={tr('Cancel editing')} onCancel={cancelEdit} />}
+      {replying && <ComposerNote icon="reply" title={replying.sender === myId ? tr('Replying to your message') : tr('Replying to {value}', { value: nameOf(friend) })} text={replying.text} cancelLabel={tr('Cancel reply')} onCancel={() => setReplying(null)} />}
       {picker && <EmojiPanel onPick={insertEmoji} />}
       <form
         className="composer"
@@ -828,7 +864,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           submit()
         }}
       >
-        <button type="button" className="icon-btn composer-emoji" aria-label="Send an emoji" aria-expanded={picker} onClick={() => setPicker((open) => !open)}>
+        <button type="button" className="icon-btn composer-emoji" aria-label={tr('Send an emoji')} aria-expanded={picker} onClick={() => setPicker((open) => !open)}>
           <Icon name="smile" />
         </button>
         <textarea
@@ -838,8 +874,8 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
           rows={1}
           value={draft}
           maxLength={MAX_LENGTH}
-          placeholder={`Message ${nameOf(friend)}`}
-          aria-label="Message"
+          placeholder={tr('Message {value}', { value: nameOf(friend) })}
+          aria-label={tr('Message')}
           onChange={(e) => {
             setDraft(e.target.value)
             if (e.target.value.trim()) live.current?.typing()
@@ -854,10 +890,36 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
             }
           }}
         />
-        <button className="fab send-btn" type="submit" aria-label={editing ? 'Save edit' : 'Send'} disabled={!draft.trim()}>
+        {draft.trim() && !editing && !replying && (
+          <button type="button" className="icon-btn composer-later" aria-label={tr('Send later')} onMouseDown={(e) => e.preventDefault()} onClick={() => setScheduling({ item: null, text: draft })}>
+            <Icon name="clock" />
+          </button>
+        )}
+        <button className="fab send-btn" type="submit" aria-label={editing ? tr('Save edit') : tr('Send')} disabled={!draft.trim()}>
           <Icon name={editing ? 'check' : 'send'} />
         </button>
       </form>
+
+      {scheduling && (
+        <ScheduleDialog
+          chatId={info.id}
+          item={scheduling.item}
+          text={scheduling.text}
+          now={now}
+          friendName={nameOf(friend)}
+          onClose={() => setScheduling(null)}
+          onDone={(sentNow) => {
+            setScheduling(null)
+            if (!scheduling.item) setDraft('')
+            if (sentNow) {
+              stick.current = true
+              void loadLatest()
+              onChanged()
+            }
+            loadScheduled()
+          }}
+        />
+      )}
 
       {menu && (
         <MessageMenu
@@ -880,6 +942,74 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         />
       )}
     </div>
+  )
+}
+
+/** Pick when a message goes. Also where a waiting one can be changed, sent now or dropped. */
+function ScheduleDialog({ chatId, item, text, now, friendName, onClose, onDone }: { chatId: number; item: ScheduledMessage | null; text: string; now: Date; friendName: string; onClose: () => void; onDone: (sentNow: boolean) => void }) {
+  const [words, setWords] = useState(text)
+  const [when, setWhen] = useState(() => toLocalInput(item && item.status !== 'failed' ? item.send_at : new Date(now.getTime() + 60 * 60_000).toISOString()))
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [error, setError] = useState('')
+  const chosen = when ? new Date(when) : null
+  const ahead = Boolean(chosen && chosen.getTime() > now.getTime())
+  const ready = Boolean(words.trim() && ahead)
+
+  async function act(action: () => Promise<unknown>, sentNow = false) {
+    setError('')
+    try {
+      await action()
+      onDone(sentNow)
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+  }
+
+  if (confirmingDelete && item) {
+    return (
+      <ConfirmAction danger icon="trash" title={tr('Delete this scheduled message?')} confirmLabel={tr('Delete')} onCancel={() => setConfirmingDelete(false)} onConfirm={() => act(() => chat.deleteScheduled(chatId, item.id))}>
+        <p>{tr('It won\'t be sent to {friendName}.', { friendName })}</p>
+      </ConfirmAction>
+    )
+  }
+  return (
+    <ConfirmAction
+      icon={null}
+      title={item ? tr('Scheduled message') : tr('Send later')}
+      confirmLabel={item ? tr('Save') : tr('Schedule')}
+      confirmDisabled={!ready}
+      onCancel={onClose}
+      onConfirm={async () => {
+        const iso = new Date(when).toISOString()
+        await (item ? chat.updateScheduled(chatId, item.id, words, iso) : chat.schedule(chatId, words, iso))
+        onDone(false)
+      }}
+    >
+      <div className="schedule-form">
+        {item ? (
+          <textarea className="field schedule-text" rows={2} maxLength={MAX_LENGTH} aria-label={tr('Message to {friendName}', { friendName })} value={words} onChange={(e) => setWords(e.target.value)} />
+        ) : (
+          <p className="schedule-quote">{words}</p>
+        )}
+        <input data-autofocus className="field" type="datetime-local" aria-label={tr('Date and time')} value={when} min={toLocalInput(now.toISOString())} onChange={(e) => setWhen(e.target.value)} />
+        {when && !ahead && <p className="task-meta">{tr('Choose a time in the future.')}</p>}
+        {item && (
+          <div className="schedule-more">
+            <button type="button" className="text-btn" onClick={() => void act(() => chat.sendScheduledNow(chatId, item.id), true)}>
+              {tr('Send now')}
+            </button>
+            <button type="button" className="icon-btn danger" aria-label={tr('Delete')} onClick={() => setConfirmingDelete(true)}>
+              <Icon name="trash" />
+            </button>
+          </div>
+        )}
+        {error && (
+          <span className="field-error" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
+    </ConfirmAction>
   )
 }
 
@@ -923,30 +1053,30 @@ function DeleteMessage({ message, friendName, onCancel, onDelete }: { message: S
     <ConfirmAction
       danger
       icon="trash"
-      title={message.failed ? 'Discard this message?' : 'Delete this message?'}
-      confirmLabel={message.failed ? 'Discard' : 'Delete'}
+      title={message.failed ? tr('Discard this message?') : tr('Delete this message?')}
+      confirmLabel={message.failed ? tr('Discard') : tr('Delete')}
       onCancel={onCancel}
       onConfirm={async () => onDelete(!(canChoose && forEveryone))}
     >
       {canChoose ? (
-        <div className="delete-choices" role="radiogroup" aria-label="Delete for">
+        <div className="delete-choices" role="radiogroup" aria-label={tr('Delete for')}>
           <label className="delete-choice">
             <input type="radio" name="delete-for" checked={forEveryone} onChange={() => setForEveryone(true)} />
             <span>
-              <strong>For everyone</strong>
-              <small>{friendName} will see that a message was deleted.</small>
+              <strong>{tr('For everyone')}</strong>
+              <small>{tr('{friendName} will see that a message was deleted.', { friendName })}</small>
             </span>
           </label>
           <label className="delete-choice">
             <input type="radio" name="delete-for" checked={!forEveryone} onChange={() => setForEveryone(false)} />
             <span>
-              <strong>Just for me</strong>
-              <small>{friendName} can still see it.</small>
+              <strong>{tr('Just for me')}</strong>
+              <small>{tr('{friendName} can still see it.', { friendName })}</small>
             </span>
           </label>
         </div>
       ) : (
-        <p>{message.failed ? "It wasn't sent, and you can't get it back." : message.deleted ? "This removes the note from your chat." : `It goes from your chat only. ${friendName} can still see it.`}</p>
+        <p>{message.failed ? tr('It wasn\'t sent, and you can\'t get it back.') : message.deleted ? tr('This removes the note from your chat.') : tr('It goes from your chat only. {friendName} can still see it.', { friendName })}</p>
       )}
     </ConfirmAction>
   )
@@ -960,7 +1090,7 @@ function ReactionChip({ group, onToggle }: { group: ReactionGroup; onToggle: () 
       className={`reaction-chip${group.mine ? ' mine' : ''}`}
       data-emoji={group.emoji}
       aria-pressed={group.mine}
-      aria-label={`${group.emoji} ${group.count}. ${group.mine ? 'Take back' : 'React the same'}`}
+      aria-label={`${group.emoji} ${group.count}. ${group.mine ? tr('Take back') : tr('React the same')}`}
       onClick={(e) => {
         e.stopPropagation()
         onToggle()

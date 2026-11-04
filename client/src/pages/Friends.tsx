@@ -10,6 +10,7 @@ import { useEnterOnChange } from '../motion'
 import { watchOnline } from '../realtime'
 import { formatShortDay, formatTime } from '../time'
 import { handle, initials, timeAgo } from '../user'
+import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const nameOf = (p: Person) => p.full_name || p.email
@@ -114,7 +115,7 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
       await refresh()
       onChanged()
     } catch (err) {
-      notify("That didn't work", errorMessage(err))
+      notify(tr('That didn\'t work'), errorMessage(err))
       // Usually it changed elsewhere (they cancelled, accepted, declined): show how things are now.
       await refresh()
     } finally {
@@ -135,14 +136,14 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
       const notes: string[] = []
       if (result.clashes.length) {
         const c = result.clashes[0]
-        notes.push(`You also have "${c.existing}" at ${formatTime(new Date(c.due_at))}. Both are kept.`)
+        notes.push(tr('You also have "{existing}" at {value}. Both are kept.', { existing: c.existing, value: formatTime(new Date(c.due_at)) }))
       }
-      if (result.moved_to_anytime.length) notes.push(`${result.moved_to_anytime.join(', ')} was on a past day, so it's under Anytime.`)
-      notify(`Added ${result.added} task${result.added === 1 ? '' : 's'} to your list`, notes.join(' ') || undefined)
+      if (result.moved_to_anytime.length) notes.push(tr('{value} was on a past day, so it\'s under Anytime.', { value: result.moved_to_anytime.join(', ') }))
+      notify(tr('Added {added} task{value} to your list', { added: result.added, value: result.added === 1 ? '' : 's' }), notes.join(' ') || undefined)
       await refresh()
       onChanged()
     } catch (err) {
-      notify("Couldn't add those tasks", errorMessage(err))
+      notify(tr('Couldn\'t add those tasks'), errorMessage(err))
     } finally {
       setBusy(null)
     }
@@ -152,8 +153,8 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
     <ConfirmAction
       danger
       icon="users"
-      title={`Remove ${nameOf(removing)}?`}
-      confirmLabel="Remove friend"
+      title={tr('Remove {value}?', { value: nameOf(removing) })}
+      confirmLabel={tr('Remove friend')}
       onCancel={() => setRemoving(null)}
       onConfirm={async () => {
         await social.remove(removing.friendship_id!)
@@ -163,7 +164,7 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
         onChanged()
       }}
     >
-      <p>You won't be able to send each other tasks or chat until you're friends again. Your tasks stay in your list.</p>
+      <p>{tr('You won\'t be able to send each other tasks or chat until you\'re friends again. Your tasks stay in your list.')}</p>
     </ConfirmAction>
   )
 
@@ -171,7 +172,7 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
     <div className="error-banner" role="alert">
       <span>{error}</span>
       <button className="text-btn" onClick={refresh}>
-        Retry
+        {tr('Retry')}
       </button>
     </div>
   )
@@ -180,11 +181,11 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
     return (
       <div ref={pageRef} className="panel-page">
         {errorBanner}
-        <section className="card glass" aria-label={friendName ?? 'Friend'}>
+        <section className="card glass" aria-label={friendName ?? tr('Friend')}>
           {lists === null ? (
             <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
           ) : !friend ? (
-            <p className="empty">@{username} isn't in your friends.</p>
+            <p className="empty">{tr('@{username} isn\'t in your friends.', { username })}</p>
           ) : (
             <>
               <div className="panel-hero">
@@ -199,17 +200,17 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
               <div className="panel-actions">
                 <button className="primary-btn" onClick={() => onMessage(friend)}>
                   <Icon name="chat" />
-                  Message
+                  {tr('Message')}
                 </button>
                 <button className="text-btn" onClick={() => onSendTasks(friend)}>
                   <Icon name="send" />
-                  Send tasks
+                  {tr('Send tasks')}
                 </button>
               </div>
               <div className="panel-rows">
                 <button className="more-row danger-row" onClick={() => setRemoving(friend)}>
                   <Icon name="x" />
-                  <span className="person-name">Remove friend</span>
+                  <span className="person-name">{tr('Remove friend')}</span>
                 </button>
               </div>
             </>
@@ -232,24 +233,24 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
   const people = results?.filter((p) => p.relationship !== 'friends' && p.relationship !== 'outgoing') ?? []
   const nothingFound = trimmed.length >= 2 && !searching && results !== null && people.length === 0 && friends.length === 0 && outgoing.length === 0
   const tabs: { id: Tab; label: string; count: number }[] = [
-    { id: 'all', label: 'All', count: lists?.friends.length ?? 0 },
-    { id: 'requests', label: 'Requests', count: incoming.length },
-    { id: 'sent', label: 'Sent to you', count: newShares },
+    { id: 'all', label: tr('All'), count: lists?.friends.length ?? 0 },
+    { id: 'requests', label: tr('Requests'), count: incoming.length },
+    { id: 'sent', label: tr('Sent to you'), count: newShares },
   ]
 
   return (
     <div ref={pageRef} className="panel-page">
       {errorBanner}
-      <section className="card glass panel" aria-label="Friends">
+      <section className="card glass panel" aria-label={tr('Friends')}>
         <div className="panel-top">
-          <SearchField label="Search friends or find people" placeholder="Search people" value={query} onChange={typeQuery} />
+          <SearchField label={tr('Search friends or find people')} placeholder={tr('Search people')} value={query} onChange={typeQuery} />
           {Boolean(lists?.friends.length) && (
-            <button className="primary-btn icon-only" aria-label="Send tasks" onClick={() => onSendTasks()}>
+            <button className="primary-btn icon-only" aria-label={tr('Send tasks')} onClick={() => onSendTasks()}>
               <Icon name="send" />
             </button>
           )}
         </div>
-        <div className="chips panel-tabs" role="group" aria-label="Show">
+        <div className="chips panel-tabs" role="group" aria-label={tr('Show')}>
           {tabs.map((t) => (
             <button key={t.id} type="button" className="chip" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>
               {t.label}
@@ -264,10 +265,10 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
               <Loading active={!error} skeleton={<SkeletonRows count={3} avatar />} onRetry={() => void refresh()} />
             ) : (
               <>
-                {lists.friends.length === 0 && lists.outgoing.length === 0 && !trimmed && <p className="empty">No friends yet. Search above to find people and send a request.</p>}
+                {lists.friends.length === 0 && lists.outgoing.length === 0 && !trimmed && <p className="empty">{tr('No friends yet. Search above to find people and send a request.')}</p>}
                 {onlineFriends.length > 0 && (
                   <>
-                    <h3 className="section-label">Online now · {onlineFriends.length}</h3>
+                    <h3 className="section-label">{tr('Online now · {length}', { length: onlineFriends.length })}</h3>
                     <ul className="people">
                       {onlineFriends.map((p) => (
                         <FriendRow key={p.id} person={p} online onOpen={() => onOpenFriend(p.username)} />
@@ -277,15 +278,15 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
                 )}
                 {otherFriends.length + outgoing.length > 0 && (
                   <>
-                    <h3 className="section-label">{onlineFriends.length > 0 ? 'Everyone' : 'Your friends'}</h3>
+                    <h3 className="section-label">{onlineFriends.length > 0 ? tr('Everyone') : tr('Your friends')}</h3>
                     <ul className="people">
                       {otherFriends.map((p) => (
                         <FriendRow key={p.id} person={p} online={false} onOpen={() => onOpenFriend(p.username)} />
                       ))}
                       {outgoing.map((p) => (
-                        <PersonRow key={p.id} person={p} note="Request sent">
+                        <PersonRow key={p.id} person={p} note={tr('Request sent')}>
                           <button className="text-btn" disabled={busy !== null} onClick={() => act(`cancel-${p.id}`, () => social.remove(p.friendship_id!))}>
-                            Cancel
+                            {tr('Cancel')}
                           </button>
                         </PersonRow>
                       ))}
@@ -295,19 +296,19 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
                 <Loading active={searching} skeleton={<SkeletonRows count={2} avatar />} />
                 {!searching && people.length > 0 && (
                   <>
-                    <h3 className="section-label">People on Todo Clock</h3>
+                    <h3 className="section-label">{tr('People on Todo Clock')}</h3>
                     <ul className="people">
                       {people.map((p) => (
                         <PersonRow key={p.id} person={p}>
                           {p.relationship === 'incoming' && (
-                            <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => actOnResult(p, () => social.accept(p.friendship_id!), `You and ${nameOf(p)} are now friends`)}>
-                              Accept
+                            <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => actOnResult(p, () => social.accept(p.friendship_id!), tr('You and {value} are now friends', { value: nameOf(p) }))}>
+                              {tr('Accept')}
                             </button>
                           )}
                           {p.relationship === 'none' && (
-                            <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => actOnResult(p, () => social.requestFriend(p.id), `Friend request sent to ${nameOf(p)}`)}>
+                            <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => actOnResult(p, () => social.requestFriend(p.id), tr('Friend request sent to {value}', { value: nameOf(p) }))}>
                               <Icon name="userPlus" />
-                              Add friend
+                              {tr('Add friend')}
                             </button>
                           )}
                         </PersonRow>
@@ -315,8 +316,8 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
                     </ul>
                   </>
                 )}
-                {nothingFound && <p className="empty">No one found. Try their full email address.</p>}
-                {trimmed.length === 1 && friends.length + outgoing.length === 0 && <p className="empty">Keep typing to find people.</p>}
+                {nothingFound && <p className="empty">{tr('No one found. Try their full email address.')}</p>}
+                {trimmed.length === 1 && friends.length + outgoing.length === 0 && <p className="empty">{tr('Keep typing to find people.')}</p>}
               </>
             ))}
 
@@ -324,16 +325,16 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
             (lists === null ? (
               <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
             ) : incoming.length === 0 ? (
-              <p className="empty">No friend requests right now.</p>
+              <p className="empty">{tr('No friend requests right now.')}</p>
             ) : (
               <ul className="people">
                 {incoming.map((p) => (
                   <PersonRow key={p.id} person={p}>
-                    <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => act(`accept-${p.id}`, () => social.accept(p.friendship_id!), `You and ${nameOf(p)} are now friends`)}>
-                      Accept
+                    <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => act(`accept-${p.id}`, () => social.accept(p.friendship_id!), tr('You and {value} are now friends', { value: nameOf(p) }))}>
+                      {tr('Accept')}
                     </button>
                     <button className="text-btn" disabled={busy !== null} onClick={() => act(`decline-${p.id}`, () => social.remove(p.friendship_id!))}>
-                      Decline
+                      {tr('Decline')}
                     </button>
                   </PersonRow>
                 ))}
@@ -344,7 +345,7 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
             (inbox === null ? (
               <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} onRetry={() => void refresh()} />
             ) : shares.length === 0 ? (
-              <p className="empty">When a friend sends you tasks, they show up here. Nothing is added to your list until you choose.</p>
+              <p className="empty">{tr('When a friend sends you tasks, they show up here. Nothing is added to your list until you choose.')}</p>
             ) : (
               <ul className="share-list">
                 {shares.map((share) => (
@@ -367,7 +368,7 @@ function FriendRow({ person, online, onOpen }: { person: Person; online: boolean
         <Dial id={person.id} initials={initials(person)} ring={online ? 'live' : null} />
         <span className="row-main">
           <span className="person-name">{nameOf(person)}</span>
-          <span className={`row-sub${online ? ' live-status' : ''}`}>{online ? `Online · ${handle(person)}` : handle(person)}</span>
+          <span className={`row-sub${online ? ' live-status' : ''}`}>{online ? tr('Online · {value}', { value: handle(person) }) : handle(person)}</span>
         </span>
         <Icon name="chevron" className="more-go" />
       </button>
@@ -421,7 +422,7 @@ function ShareCard({
         <span className="person-main">
           <span className="person-name">{nameOf(share.sender)}</span>
           <span className="task-meta">
-            {handle(share.sender)} · sent {share.tasks.length} task{share.tasks.length === 1 ? '' : 's'} · {timeAgo(share.created_at, now)}
+            {handle(share.sender)} {tr('· sent {length} task', { length: share.tasks.length })}{share.tasks.length === 1 ? '' : 's'} · {timeAgo(share.created_at, now)}
           </span>
         </span>
       </div>
@@ -434,16 +435,16 @@ function ShareCard({
               <span className="dot" style={{ background: 'var(--cat)' }} aria-hidden="true" />
               <span className="person-main">
                 <span className="task-title">{t.title}</span>
-                <span className="task-meta">{due ? `${formatShortDay(due)} · ${formatTime(due)}` : 'Anytime'}</span>
+                <span className="task-meta">{due ? `${formatShortDay(due)} · ${formatTime(due)}` : tr('Anytime')}</span>
               </span>
               {t.added ? (
                 <span className="badge badge-active">
-                  <Icon name="check" /> Added
+                  <Icon name="check" /> {tr('Added')}
                 </span>
               ) : (
-                <button className="text-btn" disabled={busy !== null} onClick={() => onAdd(share, [t.id])} aria-label={`Add ${t.title} to my list`}>
+                <button className="text-btn" disabled={busy !== null} onClick={() => onAdd(share, [t.id])} aria-label={tr('Add {title} to my list', { title: t.title })}>
                   <Icon name="plus" />
-                  Add
+                  {tr('Add')}
                 </button>
               )}
             </li>
@@ -453,13 +454,12 @@ function ShareCard({
       {remaining.length > 0 && (
         <div className="share-actions">
           <button className="text-btn" disabled={busy !== null} onClick={onDismiss}>
-            Dismiss
+            {tr('Dismiss')}
           </button>
           {remaining.length > 1 && (
             <button className="primary-btn small-btn" disabled={busy !== null} onClick={() => onAdd(share)}>
               <Icon name="plus" />
-              Add all {remaining.length}
-            </button>
+              {tr('Add all {length}', { length: remaining.length })}</button>
           )}
         </div>
       )}

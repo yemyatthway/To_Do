@@ -5,6 +5,7 @@ import { CodeEntry } from '../components/CodeEntry'
 import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { isValidEmail } from '../user'
+import { tr } from '../i18n'
 
 // A code lasts 10 minutes and "Send again" opens 60 s after it was sent; work that out from its
 // expiry so a reload doesn't restart the wait.
@@ -32,7 +33,7 @@ export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVeri
 
   async function changeEmail(e: React.FormEvent) {
     e.preventDefault()
-    if (!isValidEmail(email)) return setError('Enter a valid email, like name@example.com.')
+    if (!isValidEmail(email)) return setError(tr('Enter a valid email, like name@example.com.'))
     setBusy(true)
     setError('')
     try {
@@ -52,23 +53,23 @@ export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVeri
         <span className="auth-logo" aria-hidden="true">
           <Icon name="clock" />
         </span>
-        <span>Todo Clock</span>
+        <span>{tr('Todo Clock')}</span>
       </div>
 
       <div className="auth-card glass" role="region" aria-labelledby="verify-title">
         <div>
           <h1 id="verify-title" className="auth-title">
-            Verify your email
+            {tr('Verify your email')}
           </h1>
           <p className="list-sub" style={{ margin: '4px 0 0' }}>
-            We sent a 6-digit code to <strong>{user.email}</strong>. It can take a minute; check your spam folder too.
+            {tr('We sent a 6-digit code to')}{' '}<strong>{user.email}</strong>{tr('. It can take a minute; check your spam folder too.')}
           </p>
         </div>
 
         {changing ? (
           <form className="code-entry" onSubmit={changeEmail} noValidate>
             <label className="field-group">
-              <span className="label">Email</span>
+              <span className="label">{tr('Email')}</span>
               <input
                 className="field"
                 type="email"
@@ -88,16 +89,16 @@ export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVeri
               )}
             </label>
             <button type="submit" className="primary-btn" disabled={busy} style={{ height: 52 }}>
-              {busy ? 'Saving…' : 'Send the code here'}
+              {busy ? tr('Saving…') : tr('Send the code here')}
             </button>
             <button type="button" className="link-btn" onClick={() => setChanging(false)}>
-              Cancel
+              {tr('Cancel')}
             </button>
           </form>
         ) : (
           <CodeEntry
             key={sentAt}
-            submitLabel="Verify email"
+            submitLabel={tr('Verify email')}
             initialWait={resendWait(user.code_expires_at)}
             expiresAt={user.code_expires_at}
             onSubmit={async (code) => onVerified(await auth.verifyEmail(code))}
@@ -109,13 +110,13 @@ export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVeri
           {!changing && (
             <>
               <button type="button" className="link-btn" onClick={() => setChanging(true)}>
-                Wrong email? Change it
+                {tr('Wrong email? Change it')}
               </button>
               {' · '}
             </>
           )}
           <button type="button" className="link-btn" onClick={onLogout}>
-            Log out
+            {tr('Log out')}
           </button>
         </p>
       </div>

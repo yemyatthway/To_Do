@@ -10,6 +10,7 @@ import { Icon } from '../icons'
 import { enter, gsap, useGsap } from '../motion'
 import { deviceTimezone } from '../time'
 import { isValidEmail, normalizeUsername, PASSWORD_RULES, usernameFromName } from '../user'
+import { chooseLanguage, formatDate, language, LANGUAGES, tr } from '../i18n'
 
 type Mode = 'login' | 'register'
 
@@ -106,12 +107,12 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
 
   function validate() {
     const next: Record<string, string> = {}
-    if (registering && !fullName.trim()) next.full_name = 'Enter your name.'
+    if (registering && !fullName.trim()) next.full_name = tr('Enter your name.')
     if (registering && usernameBlocks(usernameStatus)) next.username = usernameStatus.message
-    if (!email.trim()) next.email = 'Enter your email.'
-    else if (!isValidEmail(email)) next.email = 'Enter a valid email, like name@example.com.'
-    if (!password) next.password = 'Enter your password.'
-    else if (registering && !PASSWORD_RULES.every((r) => r.test(password))) next.password = 'Your password needs everything in the list below.'
+    if (!email.trim()) next.email = tr('Enter your email.')
+    else if (!isValidEmail(email)) next.email = tr('Enter a valid email, like name@example.com.')
+    if (!password) next.password = tr('Enter your password.')
+    else if (registering && !PASSWORD_RULES.every((r) => r.test(password))) next.password = tr('Your password needs everything in the list below.')
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -136,6 +137,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
             email: email.trim(),
             password,
             timezone: deviceTimezone(),
+            language,
           })
         : await auth.login(email.trim(), password)
       if (isDeletedAccount(result)) {
@@ -205,11 +207,18 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
   return (
     <div ref={pageRef} className="auth-page">
       <AuthScene />
+      <div className="segmented auth-language" role="group" aria-label={tr('Language')}>
+        {LANGUAGES.map((option) => (
+          <button key={option.value} type="button" lang={option.value} aria-pressed={language === option.value} onClick={() => option.value !== language && chooseLanguage(option.value)}>
+            {option.name}
+          </button>
+        ))}
+      </div>
       <div className="auth-brand">
         <span className="auth-logo" aria-hidden="true">
           <Icon name="clock" />
         </span>
-        <span>Todo Clock</span>
+        <span>{tr('Todo Clock')}</span>
       </div>
 
       <form ref={cardRef} className="auth-card glass" onSubmit={submit} noValidate aria-labelledby="auth-title">
@@ -217,21 +226,19 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
           <>
             <div>
               <h1 id="auth-title" className="auth-title">
-                Restore your account?
+                {tr('Restore your account?')}
               </h1>
               <p className="list-sub" style={{ margin: '4px 0 0' }}>
-                This account was deleted. You can bring it back, with all its tasks, until{' '}
-                <strong>{new Date(deleted.restore_until).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</strong>.
-                After that it's erased for good.
+                {tr('This account was deleted. You can bring it back, with all its tasks, until')}{' '}<strong>{formatDate(new Date(deleted.restore_until), { day: 'numeric', month: 'long', year: 'numeric' })}</strong>{tr('. After that it\'s erased for good.')}
               </p>
             </div>
             <Banner tone="error" message={formError} />
             <button type="button" className="primary-btn" disabled={busy} style={{ height: 52 }} onClick={() => void restore()}>
-              {busy ? 'Restoring…' : 'Restore my account'}
+              {busy ? tr('Restoring…') : tr('Restore my account')}
             </button>
             <p className="list-sub" style={{ margin: 0, textAlign: 'center' }}>
               <button type="button" className="link-btn" onClick={backToLogin}>
-                Not now
+                {tr('Not now')}
               </button>
             </p>
           </>
@@ -239,15 +246,14 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
           <>
             <div>
               <h1 id="auth-title" className="auth-title">
-                Check your email
+                {tr('Check your email')}
               </h1>
               <p className="list-sub" style={{ margin: '4px 0 0' }}>
-                {restoring ? 'To restore your account, enter' : 'This browser is new to your account. Enter'} the code we sent to{' '}
-                <strong>{challenge.email}</strong>.
+                {restoring ? tr('To restore your account, enter') : tr('This browser is new to your account. Enter')} {tr('the code we sent to')}{' '}<strong>{challenge.email}</strong>.
               </p>
             </div>
             <CodeEntry
-              submitLabel="Verify and log in"
+              submitLabel={tr('Verify and log in')}
               initialWait={challenge.resend_in}
               expiresAt={challenge.expires_at}
               onSubmit={async (code) => onAuthenticated(await auth.verifyLogin(challenge.challenge, code))}
@@ -255,28 +261,28 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
             />
             <p className="list-sub" style={{ margin: 0, textAlign: 'center' }}>
               <button type="button" className="link-btn" onClick={backToLogin}>
-                Back to log in
+                {tr('Back to log in')}
               </button>
             </p>
           </>
         ) : (
           <>
-            <div className={`segmented auth-tabs${registering ? ' right' : ''}`} role="group" aria-label="Log in or sign up">
+            <div className={`segmented auth-tabs${registering ? ' right' : ''}`} role="group" aria-label={tr('Log in or sign up')}>
               <span className="seg-knob" aria-hidden="true" />
               <button type="button" aria-pressed={!registering} onClick={() => switchMode('login')}>
-                Log in
+                {tr('Log in')}
               </button>
               <button type="button" aria-pressed={registering} onClick={() => switchMode('register')}>
-                Sign up
+                {tr('Sign up')}
               </button>
             </div>
 
             <div>
               <h1 id="auth-title" className="auth-title">
-                {registering ? 'Create your account' : 'Welcome back'}
+                {registering ? tr('Create your account') : tr('Welcome back')}
               </h1>
               <p className="list-sub" style={{ margin: '4px 0 0' }}>
-                {registering ? 'Your tasks and reminders, on a clock.' : 'Log in to see your tasks.'}
+                {registering ? tr('Your tasks and reminders, on a clock.') : tr('Log in to see your tasks.')}
               </p>
             </div>
 
@@ -285,12 +291,12 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
 
             {registering && (
               <label className="field-group">
-                <span className="label">Name</span>
+                <span className="label">{tr('Name')}</span>
                 <input
                   className="field"
                   autoComplete="name"
                   value={fullName}
-                  placeholder="Mia Thompson"
+                  placeholder={tr('Mia Thompson')}
                   aria-invalid={Boolean(errors.full_name)}
                   aria-describedby={errors.full_name ? 'full_name-error' : undefined}
                   onChange={(e) => {
@@ -319,7 +325,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
             )}
 
             <label className="field-group">
-              <span className="label">Email</span>
+              <span className="label">{tr('Email')}</span>
               <input
                 className="field"
                 type="email"
@@ -338,14 +344,14 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
               />
               {fieldError('email')}
               {typedEmail && (
-                <ul className="password-rules" aria-label="Email checks" aria-live="polite">
-                  <Rule state={formatOk ? 'ok' : emailTouched ? 'bad' : 'wait'} label={formatOk || !emailTouched ? 'Valid email format' : 'Not a valid email address'} />
+                <ul className="password-rules" aria-label={tr('Email checks')} aria-live="polite">
+                  <Rule state={formatOk ? 'ok' : emailTouched ? 'bad' : 'wait'} label={formatOk || !emailTouched ? tr('Valid email format') : tr('Not a valid email address')} />
                   {registering && (
                     <>
-                      <Rule state={serverRule(hint?.checks.real_inbox)} label={hint?.checks.real_inbox === false ? 'Temporary inbox' : 'Real inbox'} />
+                      <Rule state={serverRule(hint?.checks.real_inbox)} label={hint?.checks.real_inbox === false ? tr('Temporary inbox') : tr('Real inbox')} />
                       <Rule
                         state={serverRule(hint?.checks.receives_mail)}
-                        label={hint?.checks.receives_mail === false ? "Domain can't receive email" : 'Domain receives email'}
+                        label={hint?.checks.receives_mail === false ? tr('Domain can\'t receive email') : tr('Domain receives email')}
                       />
                     </>
                   )}
@@ -353,8 +359,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
               )}
               {hint?.suggestion && (
                 <span className="field-hint">
-                  Did you mean{' '}
-                  <button
+                  {tr('Did you mean')}{' '}<button
                     type="button"
                     className="link-btn"
                     onClick={() => {
@@ -371,7 +376,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
 
             <div className="field-group">
               <label className="label" htmlFor="auth-password">
-                Password
+                {tr('Password')}
               </label>
               <div className="password-field">
                 <input
@@ -389,19 +394,19 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
                   }}
                 />
                 <button type="button" className="text-btn" aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? tr('Hide') : tr('Show')}
                 </button>
               </div>
               {fieldError('password')}
               {registering && (
-                <ul className="password-rules" aria-label="Password requirements">
+                <ul className="password-rules" aria-label={tr('Password requirements')}>
                   {PASSWORD_RULES.map((rule) => {
                     const ok = rule.test(password)
                     return (
                       <li key={rule.label} className={ok ? 'ok' : ''}>
                         <Icon name={ok ? 'check' : 'circle'} />
                         {rule.label}
-                        <span className="sr-only">{ok ? ' (done)' : ' (needed)'}</span>
+                        <span className="sr-only">{ok ? tr(' (done)') : tr(' (needed)')}</span>
                       </li>
                     )
                   })}
@@ -410,13 +415,13 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
             </div>
 
             <button type="submit" className="primary-btn" disabled={busy} style={{ height: 52 }}>
-              {busy ? (registering ? 'Creating account…' : 'Logging in…') : registering ? 'Create account' : 'Log in'}
+              {busy ? (registering ? tr('Creating account…') : tr('Logging in…')) : registering ? tr('Create account') : tr('Log in')}
             </button>
 
             <p className="list-sub" style={{ margin: 0, textAlign: 'center' }}>
-              {registering ? 'Already have an account? ' : 'New here? '}
+              {registering ? tr('Already have an account? ') : tr('New here? ')}
               <button type="button" className="link-btn" onClick={() => switchMode(registering ? 'login' : 'register')}>
-                {registering ? 'Log in' : 'Create an account'}
+                {registering ? tr('Log in') : tr('Create an account')}
               </button>
             </p>
           </>

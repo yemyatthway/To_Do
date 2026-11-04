@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -100,3 +102,35 @@ class MessageReaction(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["message", "user"], name="one_reaction_per_person")]
+
+
+class ScheduledMessage(models.Model):
+    """A message waiting for its time. The every-minute job sends it as a normal message, then removes this."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending"
+        SENDING = "sending"
+        FAILED = "failed"
+
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="scheduled")
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    # Encrypted like every other message.
+    body = models.TextField()
+    send_at = models.DateTimeField(db_index=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    error = models.CharField(max_length=200, blank=True)
+    # So trying again after a crash can't post it twice.
+    client_id = models.UUIDField(default=uuid.uuid4, editable=False)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["send_at", "id"]
+
+    @property
+    def text(self):
+        return decrypt(self.body)
+
+    @text.setter
+    def text(self, value):
+        self.body = encrypt(value)

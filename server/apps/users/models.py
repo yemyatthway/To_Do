@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone as dj_timezone
@@ -48,6 +49,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Friends may put tasks straight into this list (with reminders); off = they land in the inbox.
     friends_can_add_tasks = models.BooleanField(default=True)
     workspace_emails = models.BooleanField(default=True)
+    language = models.CharField(max_length=2, choices=[("en", "English"), ("my", "Burmese")], default="en")
     email_verified_at = models.DateTimeField(null=True, blank=True)
     # When the welcome email went out (once per account; see mail.send_welcome_once).
     welcomed_at = models.DateTimeField(null=True, blank=True)
@@ -156,6 +158,15 @@ class AuthEvent(models.Model):
 
     def __str__(self):
         return f"{self.email} {self.kind} {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class RotatedRefresh(models.Model):
+    """A refresh token that was just swapped for a new one, so a repeat of the same request can be
+    told apart from a token that was logged out or banned. Only needed for a moment."""
+
+    jti = models.CharField(max_length=255, unique=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    rotated_at = models.DateTimeField(db_index=True)
 
 
 class EmailLog(models.Model):

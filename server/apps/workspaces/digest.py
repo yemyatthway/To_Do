@@ -9,6 +9,7 @@ from django.db.models import Min
 from django.utils import timezone
 
 from apps.users import mail
+from apps.users.language import tr
 from apps.users.models import EmailLog
 
 from .models import Notification
@@ -23,17 +24,19 @@ DAILY_LIMIT = 200  # of the 300, leaving 100 for sign-in codes and invitations
 
 def _context(items):
     first = items[0]
+    language = first.recipient.language
     workspaces = {item.workspace.name for item in items}
     count = len(items)
-    place = workspaces.pop() if len(workspaces) == 1 else "your workspaces"
+    place = workspaces.pop() if len(workspaces) == 1 else tr(language, "your workspaces")
     base = settings.APP_URL.rstrip("/")
     return {
+        "language": language,
         "eyebrow": place,
-        "heading": first.title if count == 1 else f"{count} updates in {place}",
+        "heading": first.title if count == 1 else tr(language, "{count} updates in {place}", count=count, place=place),
         "items": [{"title": item.title, "body": item.body} for item in items[:MAX_ITEMS]],
         "more": max(count - MAX_ITEMS, 0),
         "open_url": f"{base}{first.url}" if count == 1 else f"{base}/notifications",
-        "open_label": "Open it" if count == 1 else "See what changed",
+        "open_label": tr(language, "Open it") if count == 1 else tr(language, "See what changed"),
         "preheader": first.title,
     }
 

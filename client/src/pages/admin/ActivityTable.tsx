@@ -6,21 +6,22 @@ import { EVENT_ICON, EVENT_LABEL } from './labels'
 import { FilterSelect, Pager, SearchBox, SortHeader, TableError } from './table'
 import { useLiveRefresh } from '../../live'
 import { useServerTable } from './useServerTable'
+import { tr } from '../../i18n'
 
 const KIND_OPTIONS = [
-  ['', 'All events'],
-  ['signup', 'Created account'],
-  ['login', 'Logged in'],
-  ['logout', 'Logged out'],
-  ['deleted', 'Deleted account'],
-  ['restored', 'Restored account'],
+  ['', tr('All events')],
+  ['signup', tr('Created account')],
+  ['login', tr('Logged in')],
+  ['logout', tr('Logged out')],
+  ['deleted', tr('Deleted account')],
+  ['restored', tr('Restored account')],
 ] as const
 
 const SINCE_OPTIONS = [
-  ['', 'Any time'],
-  ['24h', 'Last 24 hours'],
-  ['7d', 'Last 7 days'],
-  ['30d', 'Last 30 days'],
+  ['', tr('Any time')],
+  ['24h', tr('Last 24 hours')],
+  ['7d', tr('Last 7 days')],
+  ['30d', tr('Last 30 days')],
 ] as const
 
 /** The sign-up / login / logout log for every account. */
@@ -32,10 +33,10 @@ export function ActivityTable({ now, initialSearch, onOpenUser }: { now: Date; i
   return (
     <section className="card glass admin-table-card" aria-labelledby="activity-h">
       <div className="admin-toolbar">
-        <h2 id="activity-h">Activity log</h2>
-        <SearchBox label="Search email or IP" value={table.search} onChange={table.setSearch} />
-        <FilterSelect label="Event" value={table.filters.kind} options={KIND_OPTIONS} onChange={(v) => table.setFilter('kind', v)} />
-        <FilterSelect label="Period" value={table.filters.since} options={SINCE_OPTIONS} onChange={(v) => table.setFilter('since', v)} />
+        <h2 id="activity-h">{tr('Activity log')}</h2>
+        <SearchBox label={tr('Search email or IP')} value={table.search} onChange={table.setSearch} />
+        <FilterSelect label={tr('Event')} value={table.filters.kind} options={KIND_OPTIONS} onChange={(v) => table.setFilter('kind', v)} />
+        <FilterSelect label={tr('Period')} value={table.filters.since} options={SINCE_OPTIONS} onChange={(v) => table.setFilter('since', v)} />
       </div>
 
       {table.error && <TableError message={table.error} onRetry={table.reload} />}
@@ -45,15 +46,15 @@ export function ActivityTable({ now, initialSearch, onOpenUser }: { now: Date; i
           <thead>
             <tr>
               <SortHeader table={table} field="time" descFirst>
-                Time
+                {tr('Time')}
               </SortHeader>
               <SortHeader table={table} field="kind">
-                Event
+                {tr('Event')}
               </SortHeader>
               <SortHeader table={table} field="email">
-                Account
+                {tr('Account')}
               </SortHeader>
-              <th scope="col">IP address</th>
+              <th scope="col">{tr('IP address')}</th>
             </tr>
           </thead>
           <tbody>
@@ -75,8 +76,8 @@ export function ActivityTable({ now, initialSearch, onOpenUser }: { now: Date; i
                       {event.email}
                     </button>
                   ) : (
-                    <span title="This account was deleted">
-                      {event.email} <span className="task-meta">(deleted)</span>
+                    <span title={tr('This account was deleted')}>
+                      {event.email} <span className="task-meta">{tr('(deleted)')}</span>
                     </span>
                   )}
                 </td>
@@ -88,7 +89,7 @@ export function ActivityTable({ now, initialSearch, onOpenUser }: { now: Date; i
           </tbody>
         </table>
         {table.firstLoad && <Loading active={!table.error} skeleton={<SkeletonRows count={5} avatar />} onRetry={table.reload} />}
-        {!table.loading && !table.error && table.rows.length === 0 && <p className="empty">{filtered ? 'No activity matches these filters.' : 'No activity yet.'}</p>}
+        {!table.loading && !table.error && table.rows.length === 0 && <p className="empty">{filtered ? tr('No activity matches these filters.') : tr('No activity yet.')}</p>}
       </div>
 
       <Pager table={table} noun="events" />
