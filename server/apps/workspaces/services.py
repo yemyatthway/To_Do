@@ -172,16 +172,15 @@ def invite(me, workspace_id, invitee, role):
             raise ValidationError({"invitee": ["They already have an invitation waiting."]})
     who = " ".join(me.full_name.split()) or f"@{me.username}"
     language = user.language if user is not None else me.language
-    app_url = settings.APP_URL.rstrip("/")
     mail.send(
         to=email,
         subject=tr(language, "{who} invited you to {workspace} on Todo Clock", who=who, workspace=workspace.name),
         template="workspace_invite",
         context={
             "language": language, "who": who, "workspace": workspace.name, "role": tr(language, role.capitalize()), "days": INVITE_DAYS,
-            "app_url": f"{app_url}/?view=workspaces",
+            "app_url": f"{settings.APP_URL.rstrip('/')}/?view=workspaces",
             # No account yet: they can look around, read only, until they join.
-            "guest_url": f"{app_url}/guest/{guest_token(invitation)}" if user is None else None,
+            "guest_url": guest_url(invitation) if user is None else None,
             "preheader": tr(language, "Join {workspace} on Todo Clock.", workspace=workspace.name),
         },
     )
@@ -193,6 +192,10 @@ def invite(me, workspace_id, invitee, role):
 
 def guest_token(invitation):
     return _GUEST_SIGNER.sign(str(invitation.pk))
+
+
+def guest_url(invitation):
+    return f"{settings.APP_URL.rstrip('/')}/guest/{guest_token(invitation)}"
 
 
 def guest_invitation(token):

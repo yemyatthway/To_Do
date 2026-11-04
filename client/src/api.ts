@@ -583,7 +583,15 @@ export interface WorkspaceDetail extends WorkspaceSummary {
   assignable_roles: Role[]
   members: Member[]
   /** Only for people who can manage members. */
-  invitations: { id: number; label: string; role: Role; created_at: string; expires_at: string }[]
+  invitations: {
+    id: number
+    label: string
+    role: Role
+    created_at: string
+    expires_at: string
+    /** Lets anyone holding it view the workspace, but only the invited address can join. */
+    guest_url: string
+  }[]
 }
 
 export type BlockType = 'p' | 'h' | 'todo' | 'file'

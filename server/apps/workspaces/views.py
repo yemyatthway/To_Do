@@ -38,7 +38,10 @@ def detail_data(membership):
     data["members"] = [member_data(m) for m in services.members_of(workspace)]
     # Only people who can manage members see who's been invited.
     data["invitations"] = (
-        [{"id": i.pk, "label": i.label, "role": i.role, "created_at": i.created_at, "expires_at": i.expires_at} for i in services.pending_invitations(workspace)]
+        [
+            {"id": i.pk, "label": i.label, "role": i.role, "created_at": i.created_at, "expires_at": i.expires_at, "guest_url": services.guest_url(i)}
+            for i in services.pending_invitations(workspace)
+        ]
         if perms.can(membership.role, perms.MANAGE_MEMBERS)
         else []
     )

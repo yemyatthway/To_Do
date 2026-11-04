@@ -8,6 +8,7 @@ import { PageEditor } from '../components/PageEditor'
 import { TableView } from '../components/TableView'
 import { SearchField } from '../components/SearchField'
 import type { ToastData } from '../components/Toast'
+import { copyText } from '../guestLink'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
 import { useEnterOnChange } from '../motion'
@@ -340,6 +341,11 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
     }
   }
 
+  async function copyInvite(link: string) {
+    if (await copyText(link)) notify(tr('Link copied'), tr('Anyone with it can view this workspace until the invitation ends.'))
+    else notify(tr('Couldn\'t copy the link'))
+  }
+
   async function cancelInvite(invitationId: number) {
     try {
       await api.cancelInvitation(id, invitationId)
@@ -528,6 +534,9 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
                         <span className="task-meta">{tr('Invited as')}{' '}{label(i.role)}</span>
                       </span>
                       <span className="person-actions">
+                        <button className="icon-btn" aria-label={tr('Copy link for {name}', { name: i.label })} title={tr('Copy link')} onClick={() => void copyInvite(i.guest_url)}>
+                          <Icon name="link" />
+                        </button>
                         <button className="text-btn" onClick={() => void cancelInvite(i.id)}>
                           {tr('Cancel')}
                         </button>

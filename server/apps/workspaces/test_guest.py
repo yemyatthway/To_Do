@@ -55,6 +55,32 @@ class GuestLinkTests(APITestCase):
         self.assertNotIn("/guest/", email.body)
         self.assertNotIn("/guest/", email.alternatives[0][0])
 
+    def invitations_for(self, user):
+        self.client.force_authenticate(user)
+        return self.client.get(f"/api/workspaces/{self.workspace.pk}/").data["invitations"]
+
+    def test_the_owner_can_copy_a_working_link(self):
+        link = self.invitations_for(self.owner)[0]["guest_url"]
+        self.assertTrue(link.endswith(f"/guest/{self.link}"))
+        self.client.force_authenticate(None)
+        self.assertEqual(self.get("", token=link.rsplit("/", 1)[1]).status_code, 200)
+
+    def test_only_people_who_manage_members_get_the_link(self):
+        self.assertEqual(self.invitations_for(self.aung), [])
+        Membership.objects.filter(workspace=self.workspace, user=self.aung).update(role="admin")
+        self.assertIn("guest_url", self.invitations_for(self.aung)[0])
+
+    def test_every_invitation_gets_a_link_so_it_cannot_show_who_has_an_account(self):
+        services.invite(self.owner, self.workspace.pk, person("mia").email, "viewer")
+        self.assertTrue(all(i["guest_url"] for i in self.invitations_for(self.owner)))
+
+    def test_a_copied_link_lets_nobody_else_join(self):
+        token = self.invitations_for(self.owner)[0]["guest_url"].rsplit("/", 1)[1]
+        self.client.force_authenticate(None)
+        self.assertEqual(self.get("", token=token).data["role"], "editor")
+        self.client.force_authenticate(self.aung)
+        self.assertEqual(self.client.post(f"/api/workspaces/invitations/{self.invitation.pk}/accept/").status_code, 404)
+
     def test_shows_the_workspace_without_giving_away_the_address(self):
         response = self.get("")
         self.assertEqual(response.status_code, 200)

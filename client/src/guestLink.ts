@@ -38,3 +38,31 @@ export function forgetJoinEmail() {
     // Nothing to forget.
   }
 }
+
+/** The older way of copying, for in-app browsers that refuse the clipboard call. */
+function copyBySelecting(text: string) {
+  const box = document.createElement('textarea')
+  box.value = text
+  box.readOnly = true // so a phone doesn't open its keyboard
+  box.style.cssText = 'position:fixed;top:0;left:0;opacity:0'
+  document.body.append(box)
+  box.select()
+  box.setSelectionRange(0, text.length)
+  try {
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    box.remove()
+  }
+}
+
+/** Puts text on the clipboard. Says whether it worked. */
+export async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return copyBySelecting(text)
+  }
+}
