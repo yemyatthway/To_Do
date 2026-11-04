@@ -778,6 +778,8 @@ export const workspaces = {
   readWorkspaceNotifications: (id: number) => request<void>('/api/workspaces/notifications/read/', json('POST', { workspace: id })),
   tables: (id: number) => request<TeamTableSummary[]>(`/api/workspaces/${id}/tables/`),
   createTable: (id: number, title: string) => request<TeamTable>(`/api/workspaces/${id}/tables/`, json('POST', { title })),
+  importTable: (id: number, title: string, plan: { columns: { name: string; type: string }[]; rows: (string | number | boolean | null)[][] }) =>
+    request<TeamTable>(`/api/workspaces/${id}/tables/import/`, json('POST', { title, columns: plan.columns, rows: plan.rows })),
   /** With `known`, answers "unchanged" if nothing moved since that version. */
   getTable: (id: number, tableId: number, known?: number) => request<TeamTable | { unchanged: true }>(`/api/workspaces/${id}/tables/${tableId}/${known === undefined ? '' : `?known=${known}`}`),
   updateTable: (id: number, tableId: number, change: { title?: string; description?: string }) => request<TeamTable>(`/api/workspaces/${id}/tables/${tableId}/`, json('PATCH', change)),

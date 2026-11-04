@@ -15,7 +15,8 @@
     "ably": "^2.30.0",
     "gsap": "^3.15.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "read-excel-file": "9.3.14"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

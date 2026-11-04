@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from unittest import mock
 
 from django.core import mail as django_mail
@@ -7,8 +8,10 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.users.cleanup import prune
+from apps.users import mail as mail_module
 from apps.users.models import EmailLog, User
 
+from . import services
 from .digest import DAILY_LIMIT, send_due_emails
 from .models import Membership, Notification, Workspace
 
@@ -181,3 +184,65 @@ class TeamNotificationTests(APITestCase):
     def test_the_email_setting_can_be_changed(self):
         self.assertTrue(self.client.get("/api/auth/me/").data["workspace_emails"])
         self.assertFalse(self.client.patch("/api/auth/me/", {"workspace_emails": False}, format="json").data["workspace_emails"])
+
+
+@override_settings(EMAIL_SEND_ASYNC=False, PUSH_SEND_ASYNC=False)
+class InvitationAcceptedEmailTests(APITestCase):
+    def setUp(self):
+        make = lambda name: User.objects.create_user(f"{name}@example.com", "CorrectHorse-Battery9!", full_name=name.title(), email_verified_at=timezone.now())
+        self.owner, self.admin, self.mia = make("olivia"), make("adam"), make("mia")
+        self.workspace = Workspace.objects.create(name="Dev Team")
+        Membership.objects.create(workspace=self.workspace, user=self.owner, role="owner")
+        Membership.objects.create(workspace=self.workspace, user=self.admin, role="admin")
+
+    def invite(self, by=None):
+        invitation = services.invite(by or self.owner, self.workspace.pk, self.mia.email, "editor")
+        django_mail.outbox.clear()
+        return invitation
+
+    def accept(self, invitation):
+        self.client.force_authenticate(self.mia)
+        return self.client.post(f"/api/workspaces/invitations/{invitation.pk}/accept/")
+
+    def test_the_person_who_invited_hears_about_it(self):
+        self.assertEqual(self.accept(self.invite(by=self.admin)).status_code, 200)
+        self.assertEqual([m.to for m in django_mail.outbox], [["adam@example.com"]])
+        email = django_mail.outbox[0]
+        self.assertEqual(email.subject, "Mia joined Dev Team")
+        self.assertIn("Mia accepted your invitation and joined Dev Team as Editor.", email.body)
+        self.assertIn(f"/workspaces/{self.workspace.pk}/members", email.alternatives[0][0])
+        self.assertNotIn("mia@example.com", email.body)
+
+    def test_the_owner_hears_if_the_inviter_has_left(self):
+        invitation = self.invite(by=self.admin)
+        Membership.objects.filter(user=self.admin).delete()
+        self.accept(invitation)
+        self.assertEqual([m.to for m in django_mail.outbox], [["olivia@example.com"]])
+
+    def test_it_comes_in_their_language(self):
+        User.objects.filter(pk=self.owner.pk).update(language="my")
+        self.accept(self.invite())
+        self.assertIn("ပါဝင်လိုက်ပါပြီ", django_mail.outbox[0].subject)
+        self.assertIn("ပါဝင်လိုက်ပါပြီ", django_mail.outbox[0].body)
+
+    def test_respects_the_workspace_emails_setting(self):
+        User.objects.filter(pk=self.owner.pk).update(workspace_emails=False)
+        self.assertEqual(self.accept(self.invite()).status_code, 200)
+        self.assertEqual(django_mail.outbox, [])
+
+    def test_declining_sends_nothing(self):
+        invitation = self.invite()
+        self.client.force_authenticate(self.mia)
+        self.client.post(f"/api/workspaces/invitations/{invitation.pk}/decline/")
+        self.assertEqual(django_mail.outbox, [])
+
+    def test_accepting_twice_sends_one_email(self):
+        invitation = self.invite()
+        self.assertEqual(self.accept(invitation).status_code, 200)
+        self.assertEqual(self.accept(invitation).status_code, 404)
+        self.assertEqual(len(django_mail.outbox), 1)
+
+    def test_no_email_has_a_gradient_behind_its_text(self):
+        folder = Path(mail_module.__file__).parent / "templates" / "emails"
+        for template in folder.glob("*.html"):
+            self.assertNotIn("linear-gradient", template.read_text(), template.name)

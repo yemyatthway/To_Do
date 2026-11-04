@@ -48,10 +48,11 @@ export function useUploads() {
 }
 
 /** Opens the system's file chooser (on phones: photos, camera or files). */
-export function pickFiles(onFiles: (files: File[]) => void) {
+export function pickFiles(onFiles: (files: File[]) => void, only?: { accept: string }) {
   const input = document.createElement('input')
   input.type = 'file'
-  input.multiple = true
+  input.multiple = !only
+  if (only) input.accept = only.accept
   input.style.display = 'none'
   input.onchange = () => {
     onFiles(Array.from(input.files ?? []))

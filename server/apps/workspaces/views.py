@@ -1,6 +1,7 @@
 from django.db.models import Count
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -215,6 +216,24 @@ class TablesApi(APIView):
 
     def post(self, request, workspace_id):
         table = services.create_table(request.user, workspace_id, request.data.get("title"))
+        return Response(table_data(table, request.user), status=status.HTTP_201_CREATED)
+
+
+class ImportTableApi(APIView):
+    """POST {title, columns: [{name, type}], rows: [[cell, ...]]}: a new table from a spreadsheet."""
+
+    throttle_scope = "table_import"
+
+    def post(self, request, workspace_id):
+        # Before reading the body, so an oversized one is never loaded into memory.
+        try:
+            size = int(request.META.get("CONTENT_LENGTH") or 0)
+        except ValueError:
+            size = 0
+        if size > services.MAX_IMPORT_BYTES:
+            raise ValidationError({"rows": ["This file has too much data to import."]})
+        data = request.data if isinstance(request.data, dict) else {}
+        table = services.import_table(request.user, workspace_id, data.get("title"), data.get("columns"), data.get("rows"))
         return Response(table_data(table, request.user), status=status.HTTP_201_CREATED)
 
 

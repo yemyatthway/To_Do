@@ -1,0 +1,8 @@
+{% load email_text %}{% autoescape off %}{% say "{name} accepted your invitation and joined {workspace} as {role}." name=name workspace=workspace role=role %}
+
+{% say "Open the workspace" %}: {{ open_url }}
+
+{% say "You get these because you're in a workspace. Turn them off in Settings, under Preferences." %}
+
+— Todo Clock
+{% endautoescape %}

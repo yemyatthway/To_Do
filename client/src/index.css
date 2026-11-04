@@ -8003,3 +8003,47 @@ button.file-thumb:focus-visible .thumb-open {
 .guest-closed-card .primary-btn {
   text-decoration: none;
 }
+
+/* ---------- Making a table from a spreadsheet ---------- */
+
+.import-file {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+}
+
+.import-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--sub);
+  text-align: left;
+  cursor: pointer;
+}
+
+.import-pick.has-file {
+  color: var(--text);
+}
+
+.import-pick .icon {
+  flex: none;
+}
+
+.import-pick span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-preview {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.import-preview .row-sub {
+  white-space: normal;
+}

@@ -29,6 +29,7 @@ urlpatterns = [
     path("<int:workspace_id>/comments/<int:comment_id>/", views.CommentApi.as_view()),
     path("<int:workspace_id>/activity/", views.ActivityApi.as_view()),
     path("<int:workspace_id>/tables/", views.TablesApi.as_view()),
+    path("<int:workspace_id>/tables/import/", views.ImportTableApi.as_view()),
     path("<int:workspace_id>/tables/<int:table_id>/", views.TableApi.as_view()),
     path("<int:workspace_id>/tables/<int:table_id>/restore/", views.RestoreTableApi.as_view()),
     path("<int:workspace_id>/tables/<int:table_id>/columns/", views.ColumnsApi.as_view()),

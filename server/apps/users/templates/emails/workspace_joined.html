@@ -1,0 +1,14 @@
+{% extends "emails/base.html" %}
+{% load email_text %}
+
+{% block hero %}
+<p style="margin:30px 0 8px;font:600 12px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:1.6px;text-transform:uppercase;color:#255fc0;" class="hero-eyebrow">{% say "Invitation accepted" %}</p>
+<p style="margin:0;font:800 28px/1.25 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;letter-spacing:-0.5px;color:#1e2b45;" class="hero-title">{% say "{name} joined {workspace}" name=name workspace=workspace %}</p>
+{% endblock %}
+
+{% block content %}
+<p class="text" style="margin:0 0 20px;font-size:16px;line-height:1.65;color:#4b5b78;">{% say "{name} accepted your invitation and joined {workspace} as {role}." name=name workspace=workspace role=role %}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0;"><tr><td bgcolor="#2f6fd6" style="border-radius:16px;background:#2f6fd6;box-shadow:0 10px 22px rgba(47,111,214,0.32);"><a href="{{ open_url }}" style="display:inline-block;padding:15px 30px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">{% say "Open the workspace" %}</a></td></tr></table>
+{% endblock %}
+
+{% block footer %}{% say "You get these because you're in a workspace. Turn them off in Settings, under Preferences." %}{% endblock %}

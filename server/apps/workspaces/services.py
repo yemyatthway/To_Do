@@ -10,7 +10,7 @@ from django.core import signing
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Func, IntegerField, Q, Sum
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -41,6 +41,9 @@ MAX_COLUMNS = 30
 MAX_ROWS = 2000
 MAX_CELL_TEXT = 5000
 COLUMN_TYPES = {"text", "number", "select", "person", "date", "checkbox", "file"}
+IMPORT_TYPES = {"text", "number", "date", "checkbox"}
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+MAX_TABLE_DATA_PER_PERSON = 20 * 1024 * 1024
 MAX_CELL_FILES = 10
 MAX_COMMENT_FILES = 6
 STARTER_COLUMNS = [("Description", "text"), ("Assigned", "person"), ("Done", "checkbox")]
@@ -246,11 +249,36 @@ def accept(me, invitation_id):
     with transaction.atomic():
         invitation = _my_invitation(me, invitation_id)
         Invitation.objects.select_for_update().get(pk=invitation.pk)
-        membership, _ = Membership.objects.get_or_create(workspace=invitation.workspace, user=me, defaults={"role": invitation.role})
-        Invitation.objects.filter(pk=invitation.pk).update(status=Invitation.Status.ACCEPTED)
+        membership, joined = Membership.objects.get_or_create(workspace=invitation.workspace, user=me, defaults={"role": invitation.role})
+        # Only one of two taps at once gets past this, so nobody hears about it twice.
+        if not Invitation.objects.filter(pk=invitation.pk, status=Invitation.Status.PENDING).update(status=Invitation.Status.ACCEPTED):
+            raise NotFound("That invitation is no longer available.")
     _log(invitation.workspace, me, "member.joined")
     _tell_members(invitation.workspace)
+    if joined:
+        _email_about_joining(invitation, me, membership.role)
     return membership
+
+
+def _email_about_joining(invitation, me, role):
+    """Whoever sent the invitation hears that it was accepted. If they've left, the owner does."""
+    workspace = invitation.workspace
+    members = _members(workspace).exclude(user=me)
+    member = members.filter(user=invitation.invited_by).first() or members.filter(role=perms.OWNER).first()
+    if member is None or not member.user.workspace_emails:
+        return
+    to = member.user
+    name = _name(me)
+    mail.send(
+        to=to.email,
+        subject=tr(to, "{name} joined {workspace}", name=name, workspace=workspace.name),
+        template="workspace_joined",
+        context={
+            "language": to.language, "name": name, "workspace": workspace.name, "role": tr(to, role.capitalize()),
+            "open_url": f"{settings.APP_URL.rstrip('/')}/workspaces/{workspace.pk}/members",
+            "preheader": tr(to, "{name} accepted your invitation and joined {workspace} as {role}.", name=name, workspace=workspace.name, role=tr(to, role.capitalize())),
+        },
+    )
 
 
 def decline(me, invitation_id):
@@ -582,8 +610,58 @@ def table_for(me, workspace_id, table_id):
     return _table_for(me, workspace_id, table_id)
 
 
+def _table_data_size(me):
+    """How much room the tables this person made take up in the database."""
+    size = TableRow.objects.filter(table__created_by=me, table__deleted_at__isnull=True).aggregate(
+        total=Sum(Func(F("values"), function="pg_column_size", output_field=IntegerField()))
+    )["total"]
+    return size or 0
+
+
+def import_table(me, workspace_id, title, columns, rows):
+    """A new table with the columns and rows of a spreadsheet, all at once or not at all. The app
+    reads the file; only its cells arrive here, and each is checked like one typed by hand."""
+    if not isinstance(columns, list) or not columns or not isinstance(rows, list) or any(not isinstance(row, list) for row in rows):
+        raise ValidationError({"rows": ["That file couldn't be read."]})
+    if len(columns) > MAX_COLUMNS:
+        raise ValidationError({"rows": [f"This file has {len(columns)} columns. A table can have up to {MAX_COLUMNS}."]})
+    if len(rows) > MAX_ROWS:
+        raise ValidationError({"rows": [f"This file has {len(rows):,} rows. A table can have up to {MAX_ROWS:,}."]})
+    made = []
+    for column in columns:
+        kind = column.get("type") if isinstance(column, dict) else None
+        if kind not in IMPORT_TYPES:
+            raise ValidationError({"rows": ["That file couldn't be read."]})
+        made.append(_new_column(_clean_column_name(column.get("name")), kind))
+    title = _clean_title(title)
+    with transaction.atomic():
+        membership = membership_for(me, workspace_id, lock=True)
+        perms.require(membership, perms.EDIT)
+        workspace = membership.workspace
+        if workspace.tables.count() >= MAX_TABLES:
+            raise ValidationError({"title": [f"A workspace can have up to {MAX_TABLES} tables."]})
+        if _table_data_size(me) >= MAX_TABLE_DATA_PER_PERSON:
+            raise ValidationError({"rows": ["You've used all the room for table data. Delete a table you no longer need first."]})
+        table = Table.objects.create(workspace=workspace, title=title, columns=made, next_no=len(rows) + 1, created_by=me, updated_by=me)
+        new_rows = []
+        for number, row in enumerate(rows, start=1):
+            if len(row) > len(made):
+                raise ValidationError({"rows": ["That file couldn't be read."]})
+            cells = {column["id"]: _clean_cell(column, row[i] if i < len(row) else None, workspace) for i, column in enumerate(made)}
+            new_rows.append(TableRow(table=table, no=number, values=cells, created_by=me, updated_by=me))
+        TableRow.objects.bulk_create(new_rows, batch_size=500)
+    _announce_table(me, workspace, table)
+    return table
+
+
 def rows_of(table):
     return list(table.rows.all())
+
+
+def _announce_table(me, workspace, table):
+    _log(workspace, me, "table.created", "table", table.pk, table.title)
+    _tell_team(me, workspace, Notification.Kind.NEW_WORK, lambda user: tr(user, "{name} added a table to {workspace}", name=_name(me), workspace=workspace.name), table.title, f"/workspaces/{workspace.pk}/tables/{table.pk}")
+    _tell_members(workspace)
 
 
 def create_table(me, workspace_id, title):
@@ -595,9 +673,7 @@ def create_table(me, workspace_id, title):
     table = Table.objects.create(
         workspace=workspace, title=_clean_title(title), columns=[_new_column(*c) for c in STARTER_COLUMNS], created_by=me, updated_by=me,
     )
-    _log(workspace, me, "table.created", "table", table.pk, table.title)
-    _tell_team(me, workspace, Notification.Kind.NEW_WORK, lambda user: tr(user, "{name} added a table to {workspace}", name=_name(me), workspace=workspace.name), table.title, f"/workspaces/{workspace.pk}/tables/{table.pk}")
-    _tell_members(workspace)
+    _announce_table(me, workspace, table)
     return table
 
 

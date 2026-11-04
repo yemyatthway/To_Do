@@ -9,18 +9,20 @@
 <style>
   /* Layout and colours are inline (Gmail and Outlook drop most of <style>). These rules only
      add phone sizing and dark mode for the apps that support them (Apple Mail, iOS, Outlook.com). */
+  /* No gradients behind text: Gmail's dark mode flips text colours but leaves a gradient light,
+     which makes a heading vanish. A plain background gets flipped along with its text. */
   body { margin: 0; padding: 0; }
   @media (max-width: 540px) {
     .wrap { padding: 20px 10px !important; }
-    .body { padding: 30px 22px 28px !important; }
+    .body { padding: 20px 22px 28px !important; }
     .h1 { font-size: 24px !important; }
     .code { font-size: 30px !important; letter-spacing: 8px !important; }
-    .hero { padding: 26px 22px !important; }
+    .hero { padding: 28px 22px 0 !important; }
   }
   @media (prefers-color-scheme: dark) {
     .page { background: #0b1120 !important; }
     .card { background: #121a2e !important; border-color: #1f2a44 !important; }
-    .hero { background: #172036 !important; background-image: none !important; }
+    .hero { background: #121a2e !important; }
     .hero-title { color: #f1f5ff !important; }
     .hero-eyebrow { color: #93b9f8 !important; }
     .h1, .strong { color: #f1f5ff !important; }
@@ -51,7 +53,7 @@
               <!-- Header band -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td class="hero" bgcolor="#e6f0fd" style="background:#e6f0fd;background-image:linear-gradient(135deg,#eef4fd 0%,#d6e5fb 100%);padding:28px 36px;border-radius:28px 28px 0 0;">
+                  <td class="hero" bgcolor="#ffffff" style="background:#ffffff;padding:34px 40px 0;border-radius:28px 28px 0 0;">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
                         <td width="40" height="40" valign="middle" style="width:40px;height:40px;"><img src="{{ icons }}logo.png" width="40" height="40" alt="Todo Clock" style="display:block;width:40px;height:40px;border:0;border-radius:11px;"></td>
@@ -66,7 +68,7 @@
               <!-- Body -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td class="body" style="padding:36px 40px 34px;">
+                  <td class="body" style="padding:22px 40px 34px;">
                     {% block content %}{% endblock %}
                   </td>
                 </tr>

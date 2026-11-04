@@ -3,11 +3,13 @@ import { ApiError, workspaces as api, type Member, type Role, type TeamPage, typ
 import { ConfirmAction } from '../components/ConfirmAction'
 import { ActivityScreen } from '../components/ActivityScreen'
 import { InviteField } from '../components/InviteField'
+import { ImportFile } from '../components/ImportFile'
 import { CardsSkeleton, Loading, SkeletonRows } from '../components/Loading'
 import { PageEditor } from '../components/PageEditor'
 import { TableView } from '../components/TableView'
 import { SearchField } from '../components/SearchField'
 import type { ToastData } from '../components/Toast'
+import type { ImportPlan } from '../excelImport'
 import { copyText } from '../guestLink'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
@@ -229,7 +231,8 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
   const [data, setData] = useState<WorkspaceDetail | null>(null)
   const [items, setItems] = useState<WorkspaceItem[] | null>(null)
   const [itemQuery, setItemQuery] = useState('')
-  const [newKind, setNewKind] = useState<WorkspaceItem['kind']>('page')
+  const [newKind, setNewKind] = useState<WorkspaceItem['kind'] | 'excel'>('page')
+  const [importPlan, setImportPlan] = useState<ImportPlan | null>(null)
   const [error, setError] = useState('')
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [query, setQuery] = useState('')
@@ -668,11 +671,16 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
           icon={null}
           title={tr('New in {name}', { name: data.name })}
           confirmLabel={tr('Create')}
-          confirmDisabled={!text.trim()}
+          confirmDisabled={!text.trim() || (newKind === 'excel' && (!importPlan || Boolean(importPlan.problem)))}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
             try {
-              if (newKind === 'table') {
+              if (newKind === 'excel' && importPlan) {
+                const table = await api.importTable(id, text, importPlan)
+                setDialog(null)
+                tableSaved(table)
+                onOpenTable(table.id)
+              } else if (newKind === 'table') {
                 const table = await api.createTable(id, text)
                 setDialog(null)
                 tableSaved(table)
@@ -695,7 +703,11 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             <button type="button" className="chip" aria-pressed={newKind === 'page'} onClick={() => setNewKind('page')}>
               {tr('Page')}
             </button>
+            <button type="button" className="chip" aria-pressed={newKind === 'excel'} onClick={() => setNewKind('excel')}>
+              {tr('Excel')}
+            </button>
           </div>
+          {newKind === 'excel' && <ImportFile onPlan={setImportPlan} onTitle={setText} />}
           <label className="field-group" style={leftField}>
             <span className="label">{tr('Title')}</span>
             <input data-autofocus className="field" maxLength={120} autoComplete="off" value={text} placeholder={newKind === 'table' ? tr('Sprint 12 testing') : tr('Release plan')} onChange={(e) => setText(e.target.value)} />
