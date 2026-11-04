@@ -1,11 +1,12 @@
 import type { Block, TeamPage } from './api'
+import { mergeContent, sameContent } from './pageMerge'
 
 /**
  * Auto-save for a page. Typing shows at once and is kept on the device straight away, then goes to
  * the server after a short pause. "Saved" only ever means the server said so.
  *
  *  - Network trouble or a busy server: keep it and retry, waiting longer each time.
- *  - Someone saved first: stop and ask, so nobody's words are overwritten without a choice.
+ *  - Someone saved first: their changes and yours are put together (pageMerge.ts), then sent again.
  *  - The server refuses it (too long, role changed, page deleted): stop and say why.
  */
 
@@ -18,7 +19,6 @@ export type SaveStatus =
   | { state: 'saved' }
   | { state: 'saving' }
   | { state: 'waiting' }
-  | { state: 'conflict'; theirs: TeamPage }
   | { state: 'refused'; message: string }
 
 export type SaveTransport = (base: number, doc: PageDoc) => Promise<TeamPage>
@@ -27,15 +27,19 @@ interface Draft {
   workspaceId: number
   pageId: number
   base: number
+  /** The page as the server last had it, so these edits can still be merged later. */
+  baseDoc?: PageDoc
   doc: PageDoc
 }
 
 const DEBOUNCE_MS = 800
+/** With others on the page, whole lines and new blocks reach them sooner. */
+const TOGETHER_DEBOUNCE_MS = 350
 const RETRY_MIN_MS = 2000
 const RETRY_MAX_MS = 60_000
 
 const draftPrefix = (userId: number) => `todo:page:${userId}:`
-const sameDoc = (a: PageDoc, b: PageDoc) => a.title === b.title && JSON.stringify(a.blocks) === JSON.stringify(b.blocks)
+const docOf = (page: TeamPage): PageDoc => ({ title: page.title, blocks: page.blocks })
 const statusOf = (err: unknown) => (err as { status?: number }).status ?? 0
 /** Worth trying again by itself: no connection, a busy server, or a signed-out moment. */
 const isTemporary = (status: number) => status === 0 || status === 401 || status === 408 || status === 429 || status >= 500
@@ -46,7 +50,13 @@ export class PageSaver {
 
   private onStatus: (status: SaveStatus) => void = () => {}
   private onSaved: (page: TeamPage) => void = () => {}
+  private onMerged: (doc: PageDoc) => void = () => {}
   private version: number
+  /** The page as the server has it at `version`: what both sides' changes are measured against. */
+  private base: PageDoc
+  /** A newer copy that came in while a save was on its way. */
+  private held: TeamPage | null = null
+  private debounce = DEBOUNCE_MS
   private dirty = false
   private sending = false
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -60,7 +70,8 @@ export class PageSaver {
   constructor(page: TeamPage, workspaceId: number, userId: number, transport: SaveTransport, store: Storage | null) {
     this.transport = transport
     this.store = store
-    this.doc = { title: page.title, blocks: page.blocks }
+    this.doc = docOf(page)
+    this.base = this.doc
     this.version = page.version
     this.ids = { workspaceId, pageId: page.id }
     this.key = `${draftPrefix(userId)}${page.id}`
@@ -68,22 +79,28 @@ export class PageSaver {
     // Words from last time that never reached the server.
     const draft = this.readDraft()
     if (!draft) return
-    if (sameDoc(draft.doc, this.doc)) {
+    const merged = draft.base === page.version ? draft.doc : mergeContent(draft.baseDoc ?? this.base, draft.doc, this.base)
+    if (sameContent(merged, this.base)) {
       this.clearDraft()
       return
     }
-    this.doc = draft.doc
+    this.doc = merged
     this.dirty = true
-    this.version = draft.base
-    this.status = draft.base === page.version ? { state: 'saving' } : { state: 'conflict', theirs: page }
+    this.status = { state: 'saving' }
   }
 
-  start(onStatus: (status: SaveStatus) => void, onSaved: (page: TeamPage) => void) {
+  start(onStatus: (status: SaveStatus) => void, onSaved: (page: TeamPage) => void, onMerged: (doc: PageDoc) => void = () => {}) {
     this.onStatus = onStatus
     this.onSaved = onSaved
+    this.onMerged = onMerged
     this.started = true
     window.addEventListener('online', this.retryNow)
-    if (this.dirty && this.status.state !== 'conflict') this.schedule(0)
+    if (this.dirty) this.schedule(0)
+  }
+
+  /** Others are on the page, so save a little sooner. */
+  setTogether(together: boolean) {
+    this.debounce = together ? TOGETHER_DEBOUNCE_MS : DEBOUNCE_MS
   }
 
   /** Leaving the page: one last try now. Anything unsent stays on the device for next time. */
@@ -91,48 +108,46 @@ export class PageSaver {
     this.started = false
     window.removeEventListener('online', this.retryNow)
     this.clearTimer()
-    if (this.dirty && this.status.state !== 'conflict') void this.send()
+    if (this.dirty) void this.send()
   }
 
   edit(doc: PageDoc) {
     this.doc = doc
     this.dirty = true
     this.writeDraft()
-    if (this.status.state === 'conflict') return
     this.setStatus({ state: 'saving' })
     this.attempt = 0
-    this.schedule(DEBOUNCE_MS)
+    this.schedule(this.debounce)
   }
 
-  /** Someone else changed it, and you chose your version. */
-  keepMine() {
-    if (this.status.state !== 'conflict') return
-    this.version = this.status.theirs.version
-    this.dirty = true
-    this.writeDraft()
-    this.setStatus({ state: 'saving' })
-    this.schedule(0)
-  }
-
-  /** Someone else changed it, and you chose theirs. Returns what to show. */
-  useTheirs(): PageDoc {
-    if (this.status.state === 'conflict') {
-      const { theirs } = this.status
-      this.doc = { title: theirs.title, blocks: theirs.blocks }
-      this.version = theirs.version
+  /** A newer copy from the server: anything of yours still waiting is merged into it, then sent. */
+  receive(page: TeamPage) {
+    if (page.version <= this.version) return
+    if (this.sending) {
+      if (!this.held || page.version > this.held.version) this.held = page
+      return
     }
-    this.dirty = false
-    this.clearDraft()
-    this.setStatus({ state: 'saved' })
-    return this.doc
+    this.absorb(page)
   }
 
-  /** A newer copy from the server. Taken only when there's nothing of yours waiting. */
-  adopt(page: TeamPage): PageDoc | null {
-    if (this.dirty || this.sending || page.version <= this.version) return null
+  private absorb(page: TeamPage) {
+    const theirs = docOf(page)
+    const merged = this.dirty ? mergeContent(this.base, this.doc, theirs) : theirs
+    this.base = theirs
     this.version = page.version
-    this.doc = { title: page.title, blocks: page.blocks }
-    return this.doc
+    this.doc = merged
+    this.onMerged(merged)
+    this.onSaved(page)
+    if (!this.dirty) return
+    if (sameContent(merged, theirs)) {
+      this.dirty = false
+      this.clearTimer()
+      this.clearDraft()
+      this.setStatus({ state: 'saved' })
+      return
+    }
+    this.writeDraft()
+    if (this.started) this.schedule(this.debounce)
   }
 
   /** The page is being deleted: nothing left to save. */
@@ -164,6 +179,7 @@ export class PageSaver {
     try {
       const page = await this.transport(this.version, sent)
       this.version = page.version
+      this.base = docOf(page)
       this.attempt = 0
       this.onSaved(page)
       if (this.doc === sent) {
@@ -172,31 +188,26 @@ export class PageSaver {
         this.setStatus({ state: 'saved' })
       } else {
         this.writeDraft()
-        if (this.started) this.schedule(DEBOUNCE_MS)
+        if (this.started) this.schedule(this.debounce)
       }
     } catch (err) {
-      this.handleFailure(err, sent)
+      this.handleFailure(err)
     } finally {
       this.sending = false
+      const held = this.held
+      this.held = null
+      if (held) this.receive(held)
     }
   }
 
-  private handleFailure(err: unknown, sent: PageDoc) {
+  private handleFailure(err: unknown) {
     const status = statusOf(err)
     if (status === 409) {
       const theirs = (err as { data?: { current?: TeamPage } }).data?.current
-      if (theirs) {
-        // Our last save did arrive; only the answer got lost. Nothing is really in conflict.
-        if (sameDoc({ title: theirs.title, blocks: theirs.blocks }, sent)) {
-          this.version = theirs.version
-          if (this.doc === sent) {
-            this.dirty = false
-            this.clearDraft()
-            this.setStatus({ state: 'saved' })
-          } else if (this.started) this.schedule(DEBOUNCE_MS)
-          return
-        }
-        this.setStatus({ state: 'conflict', theirs })
+      if (theirs && theirs.version > this.version) {
+        // Someone saved first (or our own save arrived and only its answer got lost). Merge and go again.
+        this.attempt = 0
+        this.absorb(theirs)
         return
       }
     }
@@ -226,7 +237,7 @@ export class PageSaver {
 
   private writeDraft() {
     try {
-      const draft: Draft = { ...this.ids, base: this.version, doc: this.doc }
+      const draft: Draft = { ...this.ids, base: this.version, baseDoc: this.base, doc: this.doc }
       this.store?.setItem(this.key, JSON.stringify(draft))
     } catch {
       // Storage full or blocked: it still saves while this page stays open.

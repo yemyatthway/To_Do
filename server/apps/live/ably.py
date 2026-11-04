@@ -6,6 +6,7 @@ apps update at once. Channels:
     user:<id>      events for one person (new chat message, tasks changed, friend request...)
     online:<id>    nothing but that person's presence, which their friends can see
     chat:<id>      one conversation: new / deleted messages, "typing", "seen"
+    workspace:<id> an open page or table: saved changes, who's here, and letters as they're typed
     admin          staff only: new sign-ups and logins
 
 Each browser gets a short-lived pass (a signed "token request") that only allows its own channels.
@@ -29,7 +30,7 @@ from django.db import close_old_connections
 logger = logging.getLogger(__name__)
 
 REST = "https://rest.ably.io"
-TOKEN_TTL_MS = 60 * 60 * 1000  # the app renews it by itself
+TOKEN_TTL_MS = 15 * 60 * 1000  # the app renews it by itself; someone removed from a workspace loses it by then
 
 
 def enabled():
@@ -114,6 +115,10 @@ def to_users(user_ids, name, data=None):
 
 def to_chat(conversation_id, name, data=None):
     publish([(f"chat:{conversation_id}", name, data or {})])
+
+
+def to_workspace(workspace_id, name, data=None):
+    publish([(f"workspace:{workspace_id}", name, data or {})])
 
 
 def to_admins(name, data=None):

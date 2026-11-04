@@ -1,3 +1,4 @@
+import json
 import math
 import re
 import secrets
@@ -28,6 +29,7 @@ MAX_WORKSPACES = 20
 MAX_MEMBERS = 50
 INVITE_DAYS = 14
 MAX_PAGES = 500
+MAX_LIVE_BYTES = 48_000  # Ably's limit is 64 KB a message
 MAX_BLOCKS = 2000
 MAX_BLOCK_TEXT = 10_000
 MAX_PAGE_CHARS = 200_000
@@ -56,6 +58,11 @@ def _members(workspace):
 def _tell_members(workspace, *also):
     ids = list(workspace.memberships.values_list("user_id", flat=True)) + list(also)
     ably.to_users(ids, "workspaces")
+
+
+def _tell_open(workspace_id, name, data):
+    """For whoever has this workspace open. Sent once it's really saved, so a reload finds the same."""
+    transaction.on_commit(lambda: ably.to_workspace(workspace_id, name, data))
 
 
 def membership_for(me, workspace_id, lock=False):
@@ -354,6 +361,17 @@ def create_page(me, workspace_id, title):
     return page
 
 
+def _page_event(me, page):
+    """The whole page when it fits in a live message; otherwise open apps fetch it."""
+    data = {
+        "id": page.pk, "version": page.version, "by": me.pk, "updated_by": _name(me), "updated_at": page.updated_at.isoformat(),
+        "title": page.title, "blocks": page.blocks,
+    }
+    if len(json.dumps(data, ensure_ascii=False).encode()) > MAX_LIVE_BYTES:
+        return {key: data[key] for key in ("id", "version", "by")}
+    return data
+
+
 class PageConflict(Exception):
     """Someone saved a newer version than the one this edit started from."""
 
@@ -381,8 +399,8 @@ def update_page(me, workspace_id, page_id, base_version, title=None, blocks=None
         page.version += 1
         page.updated_by = me
         page.save()
-    # Saves come every second or so while typing, so open pages check for changes themselves.
-    # Only what changes other people's lists is announced.
+    _tell_open(workspace_id, "page", _page_event(me, page))
+    # Saves come every second or so while typing, so only what changes other people's lists goes further.
     _log(membership.workspace, me, "page.edited", "page", page.pk, page.title, coalesce=True)
     if renamed:
         _tell_members(membership.workspace)
@@ -513,9 +531,15 @@ def _table_for(me, workspace_id, table_id, action=perms.READ, lock=False):
     return table
 
 
-def _touch(table, me):
+def _tell_table(table):
+    _tell_open(table.workspace_id, "table", {"id": table.pk, "version": table.version})
+
+
+def _touch(table, me, announce=True):
     Table.objects.filter(pk=table.pk).update(version=F("version") + 1, updated_by=me, updated_at=timezone.now())
     table.refresh_from_db(fields=["version", "updated_by", "updated_at"])
+    if announce:
+        _tell_table(table)
 
 
 def tables_of(me, workspace_id):
@@ -555,6 +579,7 @@ def update_table(me, workspace_id, table_id, title=None, description=None):
         if description is not None:
             table.description = _clean_description(description)
         table.version += 1
+        _tell_table(table)
         table.updated_by = me
         table.save()
     if renamed:
@@ -594,6 +619,7 @@ def add_column(me, workspace_id, table_id, name, column_type):
             raise ValidationError({"name": [f"A table can have up to {MAX_COLUMNS} columns."]})
         table.columns = [*table.columns, _new_column(name, column_type)]
         table.version += 1
+        _tell_table(table)
         table.updated_by = me
         table.save()
     _log(table.workspace, me, "column.added", "table", table.pk, table.title, {"column": name})
@@ -622,6 +648,7 @@ def update_column(me, workspace_id, table_id, column_id, name=None, position=Non
             columns.insert(max(0, min(position, len(columns))), column)
         table.columns = columns
         table.version += 1
+        _tell_table(table)
         table.updated_by = me
         table.save()
     if name is not None and _clean_column_name(name) != old_name:
@@ -635,6 +662,7 @@ def delete_column(me, workspace_id, table_id, column_id):
         removed = table.columns[_column_index(table, column_id)]["name"]
         table.columns = [c for c in table.columns if c["id"] != column_id]
         table.version += 1
+        _tell_table(table)
         table.updated_by = me
         table.save()
     _log(table.workspace, me, "column.removed", "table", table.pk, table.title, {"column": removed})
@@ -649,6 +677,7 @@ def create_row(me, workspace_id, table_id, values=None):
         row = TableRow.objects.create(table=table, no=table.next_no, values=_clean_cells(table, values or {}), created_by=me, updated_by=me)
         table.next_no += 1
         table.version += 1
+        _tell_table(table)
         table.updated_by = me
         table.save()
     _log(table.workspace, me, "row.created", "row", row.pk, table.title, _row_detail(row))
@@ -694,7 +723,9 @@ def update_row(me, workspace_id, table_id, row_id, values=None, base=None, highl
             row.highlighted = highlighted
         row.updated_by = me
         row.save()
-        _touch(table, me)
+        _touch(table, me, announce=False)
+        # One cell's new words go straight to open tables, with no need for them to fetch anything.
+        _tell_open(table.workspace_id, "row", {"table": table.pk, "version": table.version, "row": row.pk, "values": cleaned, "highlighted": row.highlighted, "by": me.pk})
     names = [c["name"] for c in table.columns if c["id"] in cleaned and before.get(c["id"]) != cleaned[c["id"]]]
     if names:
         _log(table.workspace, me, "row.edited", "row", row.pk, table.title, {**_row_detail(row), "columns": names}, coalesce=True)

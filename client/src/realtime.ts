@@ -7,6 +7,7 @@ import { live as liveApi, type LivePass } from './api'
  *   user:<me>    "tasks" / "social" / "chat" events
  *   online:<id>  presence only: I enter mine, and watch my friends' (are they online?)
  *   chat:<id>    a conversation: messages (sent by the server), "typing" and "read"
+ *   workspace:<id> an open page or table: saved changes, who's here, and letters as they're typed
  *   admin        staff: new sign-ups and logins
  * "tasks", "social" and admin events also fire the page-wide refresh event, so screens that
  * already refresh on a timer update at once. Without a key on the server, nothing connects.
@@ -228,5 +229,102 @@ export function watchTyping(chats: { id: number; friendId: number }[], onTyping:
   return () => {
     stopped = true
     listeners.forEach(([channel, listener]) => channel.unsubscribe('typing', listener))
+  }
+}
+
+/** Where someone is in a workspace, down to the line or cell they're in. */
+export interface Place {
+  page?: number
+  table?: number
+  block?: string
+  row?: number
+  column?: string
+}
+
+export interface Peer {
+  id: number
+  place: Place
+}
+
+export interface WorkspaceHandlers {
+  /** Saved changes, from the server: "page", "row", "table". */
+  onEvent: (name: string, data: unknown) => void
+  /** Letters someone is typing, not saved yet. */
+  onDraft: (from: number, data: unknown) => void
+  onPeople: (people: Peer[]) => void
+}
+
+const DRAFT_EVERY_MS = 150
+
+/** Open a workspace's channel while a page or table is on screen. */
+export function joinWorkspace(workspaceId: number, me: number, place: Place, handlers: WorkspaceHandlers) {
+  const name = `workspace:${workspaceId}`
+  let channel: RealtimeChannel | null = null
+  let left = false
+  let where = place
+  let refresh = () => {}
+  let waiting: unknown = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let lastSent = 0
+
+  const onMessage = (message: import('ably').InboundMessage) => {
+    if (!message.clientId) handlers.onEvent(message.name ?? '', message.data)
+    else if (message.name === 'draft' && message.clientId !== String(me)) handlers.onDraft(Number(message.clientId), message.data)
+  }
+
+  void (async () => {
+    await starting
+    const live = client
+    if (!live || left) return
+    await ensureAccess([name])
+    if (left) return
+    const ch = live.channels.get(name)
+    channel = ch
+    ch.subscribe(onMessage).catch(() => undefined)
+    refresh = () =>
+      void ch.presence
+        .get()
+        .then((members) => {
+          const people = new Map<number, Peer>()
+          for (const member of members) {
+            const id = Number(member.clientId)
+            if (id !== me) people.set(id, { id, place: (member.data ?? {}) as Place })
+          }
+          handlers.onPeople([...people.values()])
+        })
+        .catch(() => undefined)
+    ch.presence.subscribe(refresh).catch(() => undefined)
+    ch.presence.enter(where).catch(() => undefined)
+    refresh()
+  })()
+
+  const flush = () => {
+    timer = null
+    if (!channel || waiting === null) return
+    lastSent = Date.now()
+    channel.publish('draft', waiting).catch(() => undefined)
+    waiting = null
+  }
+
+  return {
+    /** Tell the others where I am now. */
+    move(next: Place) {
+      where = next
+      channel?.presence.update(next).catch(() => undefined)
+    },
+    /** Send letters as they're typed: the newest only, a few times a second. */
+    draft(data: unknown) {
+      waiting = data
+      if (timer) return
+      timer = setTimeout(flush, Math.max(0, DRAFT_EVERY_MS - (Date.now() - lastSent)))
+    },
+    leave() {
+      left = true
+      if (timer) clearTimeout(timer)
+      if (!channel) return
+      channel.presence.leave().catch(() => undefined)
+      channel.unsubscribe(onMessage)
+      channel.presence.unsubscribe(refresh)
+    },
   }
 }

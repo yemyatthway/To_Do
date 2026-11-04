@@ -124,43 +124,25 @@ describe('PageSaver', () => {
     expect(saver.status.state).toBe('saved')
   })
 
-  it('asks when someone saved first, and never overwrites by itself', async () => {
-    const theirs = page({ ...doc('theirs'), version: 5 })
-    save.mockRejectedValue(failure(409, { current: theirs }))
-    const saver = make()
-    saver.edit(doc('mine'))
-    await vi.advanceTimersByTimeAsync(800)
-    expect(saver.status).toEqual({ state: 'conflict', theirs })
-    // More typing while it's asking is kept but not sent.
-    saver.edit(doc('mine 2'))
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(save).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(store.getItem(KEY)!).doc.title).toBe('mine 2')
-
+  it('merges and goes again when someone saved first, without asking', async () => {
+    const two = (one: string, other: string): PageDoc => ({ title: 'Plan', blocks: [{ id: 'a', type: 'p', text: one }, { id: 'b', type: 'p', text: other }] })
+    const start = page({ ...two('one', 'two'), version: 1 })
+    save.mockRejectedValueOnce(failure(409, { current: page({ ...two('one', 'two theirs'), version: 5 }) }))
     saved()
-    saver.keepMine()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(save.mock.calls[1][0]).toBe(5)
-    expect(save.mock.calls[1][1].title).toBe('mine 2')
-    expect(saver.status.state).toBe('saved')
-  })
-
-  it('can take the other version instead', async () => {
-    const theirs = page({ ...doc('theirs'), version: 5 })
-    save.mockRejectedValue(failure(409, { current: theirs }))
-    const saver = make()
-    saver.edit(doc('mine'))
+    const merges: PageDoc[] = []
+    const saver = new PageSaver(start, 5, USER, save as never, store)
+    saver.start((s) => statuses.push(s.state), () => {}, (d) => merges.push(d))
+    saver.edit(two('one mine', 'two'))
     await vi.advanceTimersByTimeAsync(800)
-    expect(saver.useTheirs().title).toBe('theirs')
+    expect(merges[0].blocks.map((b) => b.text)).toEqual(['one mine', 'two theirs'])
+    await vi.advanceTimersByTimeAsync(800)
+    expect(save.mock.calls[1][0]).toBe(5)
+    expect(save.mock.calls[1][1].blocks.map((b: { text: string }) => b.text)).toEqual(['one mine', 'two theirs'])
     expect(saver.status.state).toBe('saved')
     expect(store.getItem(KEY)).toBeNull()
-    saved()
-    saver.edit(doc('next'))
-    await vi.advanceTimersByTimeAsync(800)
-    expect(save.mock.calls[1][0]).toBe(5)
   })
 
-  it('does not call it a conflict when only the answer to its own save got lost', async () => {
+  it('is simply saved when only the answer to its own save got lost', async () => {
     const sent = doc('mine')
     save.mockRejectedValueOnce(failure(0))
     save.mockRejectedValueOnce(failure(409, { current: page({ ...sent, version: 2 }) }))
@@ -169,7 +151,37 @@ describe('PageSaver', () => {
     await vi.advanceTimersByTimeAsync(800)
     await vi.advanceTimersByTimeAsync(2000)
     expect(saver.status.state).toBe('saved')
+    expect(save).toHaveBeenCalledTimes(2)
     expect(store.getItem(KEY)).toBeNull()
+  })
+
+  it('holds a newer copy that arrives during a save, then merges it', async () => {
+    const two = (one: string, other: string): PageDoc => ({ title: 'Plan', blocks: [{ id: 'a', type: 'p', text: one }, { id: 'b', type: 'p', text: other }] })
+    let finish: (p: TeamPage) => void = () => {}
+    save.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    const merges: PageDoc[] = []
+    const saver = new PageSaver(page({ ...two('one', 'two'), version: 1 }), 5, USER, save as never, store)
+    saver.start((s) => statuses.push(s.state), () => {}, (d) => merges.push(d))
+    saver.edit(two('one!', 'two'))
+    await vi.advanceTimersByTimeAsync(800)
+    saver.receive(page({ ...two('one', 'two?'), version: 2 })) // someone else's save, on top of the old one
+    expect(merges).toEqual([])
+    finish(page({ ...two('one!', 'two'), version: 3 }))
+    await vi.advanceTimersByTimeAsync(0)
+    // It's older than what our save just made, so a newer copy from the server will follow.
+    expect(merges).toEqual([])
+    expect(saver.status.state).toBe('saved')
+    saver.receive(page({ ...two('one!', 'two?'), version: 4 }))
+    expect(merges[0].blocks.map((b) => b.text)).toEqual(['one!', 'two?'])
+  })
+
+  it('saves sooner with others on the page', async () => {
+    saved()
+    const saver = make()
+    saver.setTogether(true)
+    saver.edit(doc('one'))
+    await vi.advanceTimersByTimeAsync(350)
+    expect(save).toHaveBeenCalledTimes(1)
   })
 
   it('stops and says why when the server refuses, keeping too-long text to fix', async () => {
@@ -206,25 +218,29 @@ describe('PageSaver', () => {
     expect(saver.status.state).toBe('saved')
   })
 
-  it('asks about left-over words when the page has moved on', () => {
-    store.setItem(KEY, JSON.stringify({ workspaceId: 5, pageId: 1, base: 1, doc: doc('left over') }))
-    const newer = page({ ...doc('newer'), version: 4 })
-    const saver = make(newer)
-    expect(saver.status).toEqual({ state: 'conflict', theirs: newer })
-    expect(saver.doc.title).toBe('left over')
-    expect(save).not.toHaveBeenCalled()
+  it('merges left-over words into a page that has moved on', async () => {
+    const line = (text: string, other = 'x'): PageDoc => ({ title: 'Plan', blocks: [{ id: 'a', type: 'p', text }, { id: 'b', type: 'p', text: other }] })
+    store.setItem(KEY, JSON.stringify({ workspaceId: 5, pageId: 1, base: 1, baseDoc: line('old'), doc: line('old mine') }))
+    saved()
+    const saver = make(page({ ...line('old', 'x newer'), version: 4 }))
+    expect(saver.doc.blocks.map((b) => b.text)).toEqual(['old mine', 'x newer'])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(save.mock.calls[0][0]).toBe(4)
+    expect(saver.status.state).toBe('saved')
   })
 
-  it('takes a newer copy only when nothing of yours is waiting', async () => {
+  it('shows a newer copy at once, and ignores older ones', async () => {
     saved()
-    const saver = make()
-    expect(saver.adopt(page({ title: 'same version', version: 1 }))).toBeNull()
-    expect(saver.adopt(page({ title: 'newer', version: 2 }))?.title).toBe('newer')
-    saver.edit(doc('mine'))
-    expect(saver.adopt(page({ title: 'newest', version: 3 }))).toBeNull()
-    expect(saver.doc.title).toBe('mine')
-    await vi.advanceTimersByTimeAsync(800)
-    expect(save.mock.calls[0][0]).toBe(2)
+    const merges: PageDoc[] = []
+    const saver = new PageSaver(page(), 5, USER, save as never, store)
+    saver.start(() => {}, () => {}, (d) => merges.push(d))
+    saver.receive(page({ title: 'same version', version: 1 }))
+    expect(merges).toEqual([])
+    saver.receive(page({ title: 'newer', version: 2 }))
+    expect(merges[0].title).toBe('newer')
+    saver.receive(page({ title: 'old', version: 2 }))
+    expect(merges).toHaveLength(1)
+    expect(saver.status.state).toBe('saved')
   })
 
   it('makes one last try when leaving the page', async () => {

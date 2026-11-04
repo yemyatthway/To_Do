@@ -16,6 +16,8 @@ export function startMonitoring() {
         dsn,
         maxBreadcrumbs: 0, // they'd include clicks, console output and addresses
         defaultIntegrations: false,
+        // Browsers say this when a resize takes one extra frame to settle. Nothing is broken and nobody sees it.
+        ignoreErrors: [/ResizeObserver loop/],
         integrations: [module.globalHandlersIntegration(), module.linkedErrorsIntegration(), module.dedupeIntegration()],
         beforeSend(event) {
           delete event.user

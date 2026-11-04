@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom'
 import { ApiError, workspaces as api, type CellValue, type ColumnType, type Member, type TableColumn, type TableRowData, type TeamTable } from '../api'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
+import { isLive, type Peer } from '../realtime'
+import { peerColor, useWorkspaceLive } from '../workspaceLive'
+import { PeerTag, Peers } from './Peers'
 import { pageStorage } from '../pageSaver'
 import { RowSaver, type RowSaveState } from '../rowSaver'
 import {
@@ -92,16 +95,21 @@ export function TableView(props: TableViewProps) {
   const { workspaceId, tableId, onGone } = props
   const [table, setTable] = useState<TeamTable | null>(null)
   const [error, setError] = useState('')
+  // Kept aside: the screen around this redraws with every save, and that's no reason to load again.
+  const gone = useRef(onGone)
+  useEffect(() => {
+    gone.current = onGone
+  })
 
   const load = useCallback(async () => {
     try {
       setTable((await api.getTable(workspaceId, tableId)) as TeamTable)
       setError('')
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) onGone()
+      if (err instanceof ApiError && err.status === 404) gone.current()
       else setError(errorMessage(err))
     }
-  }, [workspaceId, tableId, onGone])
+  }, [workspaceId, tableId])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect
@@ -165,6 +173,7 @@ function TableScreen({
   const [groupBy, setGroupBy] = useState<string | null>(null)
   const [openRow, setOpenRow] = useState<number | null>(rowId ?? null)
   const [editing, setEditing] = useState<{ row: number; column: string } | null>(null)
+  const [drafts, setDrafts] = useState<Record<string, { text: string; at: number }>>({})
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [deletingTable, setDeletingTable] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -206,7 +215,55 @@ function TableScreen({
       if (err instanceof ApiError && err.status === 404) onGone()
     }
   }, [workspaceId, tableId, setTable, onSaved, onGone])
-  useLiveRefresh(poll, 10_000)
+  useLiveRefresh(poll, isLive() ? 60_000 : 10_000)
+
+  // Other people's cells, the moment they're saved. Anything not understood falls back to a fresh look.
+  const onEvent = (name: string, data: unknown) => {
+    if (name === 'table') {
+      const event = data as { id: number; version: number }
+      if (event.id === tableId && event.version > versionRef.current) void poll()
+      return
+    }
+    if (name !== 'row') return
+    const event = data as { table: number; version: number; row: number; values: Record<string, CellValue>; highlighted: boolean }
+    if (event.table !== tableId || event.version <= versionRef.current) return
+    if (event.version !== versionRef.current + 1 || !table.rows.some((r) => r.id === event.row)) {
+      void poll()
+      return
+    }
+    versionRef.current = event.version
+    setTable((t) => t && { ...t, version: event.version, rows: t.rows.map((r) => (r.id === event.row ? { ...r, values: { ...r.values, ...event.values }, highlighted: event.highlighted } : r)) })
+    setDrafts((all) => {
+      const left = Object.entries(all).filter(([key]) => !Object.keys(event.values).some((column) => key === `${event.row}:${column}`))
+      return left.length === Object.keys(all).length ? all : Object.fromEntries(left)
+    })
+  }
+  const onDraft = (_from: number, data: unknown) => {
+    const draft = data as { table?: number; row?: number; column?: string; text?: string }
+    if (draft.table !== tableId || typeof draft.text !== 'string') return
+    setDrafts((all) => ({ ...all, [`${draft.row}:${draft.column}`]: { text: draft.text!, at: Date.now() } }))
+  }
+  const { people, sendDraft } = useWorkspaceLive(
+    workspaceId,
+    userId,
+    editing ? { table: tableId, row: editing.row, column: editing.column } : openRow ? { table: tableId, row: openRow } : { table: tableId },
+    onEvent,
+    onDraft,
+  )
+  const others = people.filter((peer) => peer.place.table === tableId)
+  const typing = (row: number, column: string, text: string) => {
+    if (others.length) sendDraft({ table: tableId, row, column, text })
+  }
+
+  // Letters stop showing if their save never comes (they pressed Escape, or lost their connection).
+  useEffect(() => {
+    if (!Object.keys(drafts).length) return
+    const timer = setTimeout(() => {
+      const fresh = Date.now() - 4000
+      setDrafts((all) => Object.fromEntries(Object.entries(all).filter(([, draft]) => draft.at > fresh)))
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [drafts])
 
   // A notification tapped while this table is already open.
   const linkedRow = useRef(rowId)
@@ -243,8 +300,8 @@ function TableScreen({
     if (rowId) onRowClosed()
   }
 
-  function setCells(row: TableRowData, values: Record<string, CellValue>) {
-    saver.edit(row.id, values, row.values)
+  function setCells(row: TableRowData, values: Record<string, CellValue>, seen: Record<string, CellValue> = row.values) {
+    saver.edit(row.id, values, seen)
     redraw((n) => n + 1)
   }
 
@@ -402,6 +459,7 @@ function TableScreen({
             </span>
           </>
         )}
+        <Peers people={others} members={members} />
         <span className={`page-status${saveState === 'waiting' ? ' wide' : ''}`} role="status">
           {saveText(saveState, canEdit)}
         </span>
@@ -472,8 +530,11 @@ function TableScreen({
                   </span>
                 )}
               </button>
-              {columns.map((column) => (
-                <div key={column.id} className={`grid-cell grid-${column.type}`} role="cell">
+              {columns.map((column) => {
+                const peer = others.find((other) => other.place.row === row.id && other.place.column === column.id)
+                return (
+                <div key={column.id} className={`grid-cell grid-${column.type}${peer ? ' has-peer' : ''}`} style={peer ? { ['--peer' as string]: peerColor(peer.id) } : undefined} role="cell">
+                  {peer && <PeerTag id={peer.id} members={members} />}
                   <GridCell
                     row={row}
                     column={column}
@@ -484,10 +545,13 @@ function TableScreen({
                     editing={editing?.row === row.id && editing.column === column.id}
                     onEdit={() => setEditing({ row: row.id, column: column.id })}
                     onDone={() => setEditing(null)}
-                    onChange={(value) => setCells(row, { [column.id]: value })}
+                    onChange={(value, was) => setCells(row, { [column.id]: value }, was === undefined ? row.values : { [column.id]: was })}
+                    draft={drafts[`${row.id}:${column.id}`]?.text}
+                    onTyping={(text) => typing(row.id, column.id, text)}
                   />
                 </div>
-              ))}
+                )
+              })}
               {canEdit && (
                 <button type="button" className="grid-delete" aria-label={tr('Delete row {no}', { no: row.no })} onClick={() => setDeletingRow(row)}>
                   <Icon name="trash" />
@@ -531,6 +595,8 @@ function TableScreen({
           onCommentsChanged={() => void poll()}
           onClose={closeRow}
           onCells={(values) => setCells(opened, values)}
+          onTyping={(column, text) => typing(opened.id, column, text)}
+          others={others.filter((peer) => peer.place.row === opened.id)}
           onHighlight={(on) => {
             saver.edit(opened.id, {}, {}, on)
             redraw((n) => n + 1)
@@ -617,7 +683,11 @@ interface GridCellProps {
   editing: boolean
   onEdit: () => void
   onDone: () => void
-  onChange: (value: CellValue) => void
+  /** `was` is what the cell held when this edit began, so someone else's change meanwhile isn't overwritten. */
+  onChange: (value: CellValue, was?: CellValue) => void
+  /** What someone else is typing here right now. */
+  draft?: string
+  onTyping: (text: string) => void
 }
 
 /** Cells read as plain text until clicked, so a long table stays quick. */
@@ -698,11 +768,11 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
   )
 }
 
-function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange }: GridCellProps) {
+function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange, draft, onTyping }: GridCellProps) {
   const value = row.values[column.id]
   if (column.type === 'file') return <CellFiles workspaceId={workspaceId} value={value} canEdit={canEdit} columnName={column.name} onChange={onChange} />
   if (column.type === 'checkbox') return <RowCheck row={row} column={column} canEdit={canEdit} onChange={onChange} />
-  const text = displayValue(column, value, members)
+  const text = draft ?? displayValue(column, value, members)
   if (!canEdit) return <span className="grid-text">{text}</span>
   if (!editing) {
     return (
@@ -711,7 +781,7 @@ function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, o
       </button>
     )
   }
-  return <CellEditor column={column} value={value} rows={rows} members={members} autoFocus onChange={onChange} onDone={onDone} />
+  return <CellEditor column={column} value={value} rows={rows} members={members} autoFocus onChange={onChange} onDone={onDone} onTyping={onTyping} />
 }
 
 interface CellEditorProps {
@@ -723,15 +793,25 @@ interface CellEditorProps {
   label?: string
   /** Inside the row sheet, every keystroke counts; in the grid, Escape can still take it back. */
   live?: boolean
-  onChange: (value: CellValue) => void
+  onChange: (value: CellValue, was?: CellValue) => void
   onDone?: () => void
+  onTyping?: (text: string) => void
 }
 
-function CellEditor({ column, value, rows, members, autoFocus, label, live, onChange, onDone }: CellEditorProps) {
+function CellEditor({ column, value, rows, members, autoFocus, label, live, onChange, onDone, onTyping }: CellEditorProps) {
   const [draft, setDraft] = useState<string>(() => (column.type === 'date' ? toLocalInput(value) : value === null || value === undefined ? '' : String(value)))
   const cancelled = useRef(false)
+  const startedFrom = useRef(value)
+  const input = useRef<HTMLElement | null>(null)
   const listId = `options-${column.id}`
-  const common = { className: 'field cell-input', 'aria-label': label ?? column.name, autoFocus }
+  const common = { className: 'field cell-input', 'aria-label': label ?? column.name, autoFocus, ref: (el: HTMLElement | null) => void (input.current = el) }
+
+  // Someone else changed it while this sits open in the row sheet: show theirs, unless you're in it.
+  useEffect(() => {
+    if (document.activeElement === input.current) return
+    // oxlint-disable-next-line react/set-state-in-effect
+    setDraft(column.type === 'date' ? toLocalInput(value) : value === null || value === undefined ? '' : String(value))
+  }, [value, column.type])
 
   const parse = (text: string): CellValue => {
     if (column.type === 'number') {
@@ -745,10 +825,11 @@ function CellEditor({ column, value, rows, members, autoFocus, label, live, onCh
   const commit = (text: string) => {
     if (cancelled.current) return
     const next = parse(text)
-    if ((next ?? '') !== (value ?? '')) onChange(next)
+    if ((next ?? '') !== (value ?? '')) onChange(next, live ? undefined : (startedFrom.current ?? null))
   }
   const type = (text: string) => {
     setDraft(text)
+    onTyping?.(text)
     if (live) commit(text)
   }
   const finish = () => {
@@ -870,6 +951,8 @@ function RowSheet({
   onCommentsChanged,
   onClose,
   onCells,
+  onTyping,
+  others,
   onHighlight,
   onAddToTasks,
   onDelete,
@@ -878,6 +961,8 @@ function RowSheet({
   columns: TableColumn[]
   rows: TableRowData[]
   members: Member[]
+  onTyping: (column: string, text: string) => void
+  others: Peer[]
   canEdit: boolean
   canComment: boolean
   now: Date
@@ -904,6 +989,7 @@ function RowSheet({
           <div className="grabber" aria-hidden="true" />
           <div className="sheet-head">
             <h2>{tr('No. {no}', { no: row.no })}</h2>
+            <Peers people={others} members={members} />
             <div style={{ display: 'flex', gap: 10 }}>
               {canEdit && (
                 <button type="button" className="icon-btn" aria-label={tr('Delete this row')} onClick={() => setDeleting(true)}>
@@ -927,7 +1013,7 @@ function RowSheet({
                   <RowCheck row={row} column={column} canEdit={canEdit} onChange={(value) => onCells({ [column.id]: value })} />
                 </div>
               ) : canEdit ? (
-                <CellEditor key={column.id} column={column} value={row.values[column.id]} rows={rows} members={members} label={column.name} live onChange={(value) => onCells({ [column.id]: value })} />
+                <CellEditor key={column.id} column={column} value={row.values[column.id]} rows={rows} members={members} label={column.name} live onChange={(value) => onCells({ [column.id]: value })} onTyping={(text) => onTyping(column.id, text)} />
               ) : (
                 <p className="sheet-read">{displayValue(column, row.values[column.id], members) || '—'}</p>
               )}

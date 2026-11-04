@@ -477,12 +477,20 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
     const el = scroller.current
     if (!el) return
     scrollerHeight.current = el.clientHeight
+    let frame = 0
     const observer = new ResizeObserver(() => {
       scrollerHeight.current = el.clientHeight
-      if (stick.current) el.scrollTop = el.scrollHeight
+      // On the next frame: moving things during this callback makes the browser warn about a loop.
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (stick.current) el.scrollTop = el.scrollHeight
+      })
     })
     observer.observe(el)
-    return () => observer.disconnect()
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
   }, [])
 
   // New messages rise in, big emoji with a bounce. Not the ones already there when the chat opens.
