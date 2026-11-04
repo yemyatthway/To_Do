@@ -49,6 +49,7 @@ export function backspaceAtStart(blocks: Block[], id: string): Edit | null {
   if (block.type !== 'p') return { blocks: blocks.map((b) => (b.id === id ? setType(b, 'p') : b)), caret: { id, at: 0 } }
   if (index === 0) return null
   const above = blocks[index - 1]
+  if (above.type === 'file') return null
   const merged = { ...above, text: above.text + block.text }
   return { blocks: [...blocks.slice(0, index - 1), merged, ...blocks.slice(index + 1)], caret: { id: above.id, at: above.text.length } }
 }
@@ -76,4 +77,15 @@ export function insertBlock(blocks: Block[], afterId: string | null, type: Block
   const next = makeBlock(type)
   const at = index >= 0 ? index + 1 : blocks.length
   return { blocks: [...blocks.slice(0, at), next, ...blocks.slice(at)], caret: { id: next.id, at: 0 } }
+}
+
+/** A file goes below the current line, or takes its place if that's empty. There's always a line after it to keep writing on. */
+export function insertFileBlock(blocks: Block[], afterId: string | null, file: number): { blocks: Block[]; anchor: string } {
+  const found = blocks.findIndex((b) => b.id === afterId)
+  const index = found >= 0 ? found : blocks.length - 1
+  const current = blocks[index]
+  const block: Block = { id: newBlockId(), type: 'file', text: '', file }
+  const replaces = current && current.type === 'p' && !current.text
+  const next = [...blocks.slice(0, replaces ? index : index + 1), block, ...blocks.slice(index + 1)]
+  return { blocks: next[next.length - 1].type === 'file' ? [...next, makeBlock()] : next, anchor: block.id }
 }

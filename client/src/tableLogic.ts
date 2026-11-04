@@ -54,6 +54,10 @@ export function displayValue(column: TableColumn, value: CellValue | undefined, 
       return formatDate(value)
     case 'checkbox':
       return value ? 'Yes' : 'No'
+    case 'file': {
+      const count = Array.isArray(value) ? value.length : 0
+      return count ? `${count} ${count === 1 ? 'file' : 'files'}` : ''
+    }
     default:
       return value === null || value === undefined ? '' : String(value)
   }
@@ -84,7 +88,7 @@ export function matchesSearch(row: TableRowData, columns: TableColumn[], query: 
   const q = query.trim().toLowerCase()
   if (!q) return true
   if (String(row.no) === q) return true
-  return columns.some((column) => column.type !== 'checkbox' && displayValue(column, row.values[column.id], members).toLowerCase().includes(q))
+  return columns.some((column) => column.type !== 'checkbox' && column.type !== 'file' && displayValue(column, row.values[column.id], members).toLowerCase().includes(q))
 }
 
 export function matchesFilters(row: TableRowData, columns: TableColumn[], filters: Filters) {

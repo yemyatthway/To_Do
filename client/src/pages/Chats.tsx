@@ -456,6 +456,21 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
     if (el && stick.current) el.scrollTop = el.scrollHeight
   }, [shown, typing])
 
+  // When the keyboard opens the box gets shorter but stays scrolled the same, which would hide
+  // the newest messages behind it. Stay on them, unless you'd scrolled up to read older ones.
+  const scrollerHeight = useRef(0)
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    scrollerHeight.current = el.clientHeight
+    const observer = new ResizeObserver(() => {
+      scrollerHeight.current = el.clientHeight
+      if (stick.current) el.scrollTop = el.scrollHeight
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   // New messages rise in, big emoji with a bounce. Not the ones already there when the chat opens.
   const seenBubbles = useRef<Set<string> | null>(null)
   const seenChips = useRef(new Set<string>())
@@ -675,6 +690,8 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
         ref={scroller}
         onScroll={(e) => {
           const el = e.currentTarget
+          // The box itself is changing size (the keyboard): that's not someone scrolling away.
+          if (el.clientHeight !== scrollerHeight.current) return
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
         }}
       >

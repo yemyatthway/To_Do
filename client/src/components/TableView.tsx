@@ -23,14 +23,17 @@ import {
   type Filters,
   type SortChoice,
 } from '../tableLogic'
+import { pickFiles, uploads } from '../filesClient'
 import { Comments, HistoryFold } from './Comments'
 import { ConfirmAction } from './ConfirmAction'
+import { FileThumbs, FileView } from './Files'
 import { Loading, SkeletonRows } from './Loading'
 import { OptionsMenu } from './OptionsMenu'
 import { SearchField } from './SearchField'
 import type { ToastData } from './Toast'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const MAX_CELL_FILES = 10
 const COLUMN_TYPES: { type: ColumnType; label: string; hint: string }[] = [
   { type: 'text', label: 'Text', hint: 'Words and sentences' },
   { type: 'select', label: 'Choice', hint: 'Pick from a list, like Login or Sidebar' },
@@ -38,6 +41,7 @@ const COLUMN_TYPES: { type: ColumnType; label: string; hint: string }[] = [
   { type: 'date', label: 'Date and time', hint: 'A row can land on your clock' },
   { type: 'checkbox', label: 'Checkbox', hint: 'Yes or no, like Done' },
   { type: 'number', label: 'Number', hint: 'Amounts and counts' },
+  { type: 'file', label: 'Images and files', hint: 'Screenshots, PDFs and more' },
 ]
 const typeLabel = (type: ColumnType) => COLUMN_TYPES.find((t) => t.type === type)?.label ?? type
 const COLUMN_ICONS: Record<ColumnType, string> = {
@@ -47,6 +51,7 @@ const COLUMN_ICONS: Record<ColumnType, string> = {
   date: 'M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z',
   checkbox: 'M5 12l5 5L20 7',
   number: 'M5 9h14M5 15h14M10 4L8 20M16 4l-2 16',
+  file: 'M21 11l-9 9a5 5 0 0 1-7-7l9-9a3.500 3.500 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8',
 }
 
 function usePhoneLayout() {
@@ -302,6 +307,9 @@ function TableScreen({
     }
   }
 
+  const filesColumn = columns.find((c) => c.type === 'file')
+  const firstFile = (row: TableRowData) => (filesColumn ? fileIds(row.values[filesColumn.id])[0] : undefined)
+
   const sortBy = (column: string) =>
     setSort((s) => (s.column !== column ? { column, descending: false } : s.descending ? { column: 'no', descending: false } : { column, descending: true }))
 
@@ -409,6 +417,7 @@ function TableScreen({
             return (
               <li key={row.id}>
                 <button type="button" className="flat-row" onClick={() => setOpenRow(row.id)}>
+                  {firstFile(row) !== undefined && <FileThumbs workspaceId={workspaceId} ids={[firstFile(row)!]} limit={1} still />}
                   <span className="row-main">
                     <span className={`person-name${row.highlighted ? ' row-red' : ''}${done ? ' is-done' : ''}`}>{rowTitle(row, columns)}</span>
                     <span className="row-sub">
@@ -468,6 +477,7 @@ function TableScreen({
                     rows={rows}
                     members={members}
                     canEdit={canEdit}
+                    workspaceId={workspaceId}
                     editing={editing?.row === row.id && editing.column === column.id}
                     onEdit={() => setEditing({ row: row.id, column: column.id })}
                     onDone={() => setEditing(null)}
@@ -579,6 +589,7 @@ interface GridCellProps {
   rows: TableRowData[]
   members: Member[]
   canEdit: boolean
+  workspaceId: number
   editing: boolean
   onEdit: () => void
   onDone: () => void
@@ -586,8 +597,81 @@ interface GridCellProps {
 }
 
 /** Cells read as plain text until clicked, so a long table stays quick. */
-function GridCell({ row, column, rows, members, canEdit, editing, onEdit, onDone, onChange }: GridCellProps) {
+const fileIds = (value: CellValue | undefined) => (Array.isArray(value) ? value : [])
+
+/** The files in a cell: small squares in the grid, full cards in the row sheet. */
+function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange }: { workspaceId: number; value: CellValue | undefined; canEdit: boolean; columnName: string; expanded?: boolean; onChange: (value: CellValue) => void }) {
+  const ids = fileIds(value)
+  const [error, setError] = useState('')
+  const latest = useRef(ids)
+  useEffect(() => {
+    latest.current = fileIds(value)
+  }, [value])
+
+  async function add(files: File[]) {
+    setError('')
+    for (const file of files) {
+      if (latest.current.length >= MAX_CELL_FILES) {
+        setError(`A cell can hold up to ${MAX_CELL_FILES} files.`)
+        return
+      }
+      try {
+        const record = await uploads.start(workspaceId, file)
+        latest.current = [...latest.current, record.id]
+        onChange(latest.current)
+      } catch (err) {
+        setError(`${file.name}: ${errorMessage(err)}`)
+      }
+    }
+  }
+
+  const errorLine = error && (
+    <span className="field-error" role="alert">
+      {error}
+    </span>
+  )
+  if (!expanded) {
+    return (
+      <span className="cell-files">
+        <FileThumbs workspaceId={workspaceId} ids={ids} />
+        {canEdit && (
+          <button type="button" className="cell-add" aria-label={`Add to ${columnName}`} title={error || undefined} onClick={() => pickFiles((files) => void add(files))}>
+            <Icon name="plus" />
+          </button>
+        )}
+        {errorLine}
+      </span>
+    )
+  }
+  return (
+    <div
+      className="sheet-files"
+      onPaste={(e) => {
+        const files = Array.from(e.clipboardData.files)
+        if (canEdit && files.length) {
+          e.preventDefault()
+          void add(files)
+        }
+      }}
+    >
+      {ids.map((id) => (
+        <FileView key={id} workspaceId={workspaceId} id={id} compact onRemove={canEdit ? () => onChange((latest.current = latest.current.filter((other) => other !== id))) : undefined} />
+      ))}
+      {ids.length === 0 && !canEdit && <p className="sheet-read">—</p>}
+      {canEdit && (
+        <button type="button" className="text-btn" onClick={() => pickFiles((files) => void add(files))}>
+          <Icon name="attach" />
+          Add screenshot or file
+        </button>
+      )}
+      {errorLine}
+    </div>
+  )
+}
+
+function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange }: GridCellProps) {
   const value = row.values[column.id]
+  if (column.type === 'file') return <CellFiles workspaceId={workspaceId} value={value} canEdit={canEdit} columnName={column.name} onChange={onChange} />
   if (column.type === 'checkbox') return <RowCheck row={row} column={column} canEdit={canEdit} onChange={onChange} />
   const text = displayValue(column, value, members)
   if (!canEdit) return <span className="grid-text">{text}</span>
@@ -808,7 +892,9 @@ function RowSheet({
           {columns.map((column) => (
             <div key={column.id} className="field-group">
               <span className="label">{column.name}</span>
-              {column.type === 'checkbox' ? (
+              {column.type === 'file' ? (
+                <CellFiles workspaceId={workspaceId} value={row.values[column.id]} canEdit={canEdit} columnName={column.name} expanded onChange={(value) => onCells({ [column.id]: value })} />
+              ) : column.type === 'checkbox' ? (
                 <div className="sheet-check" style={{ ['--cat' as string]: 'var(--work)' }}>
                   <RowCheck row={row} column={column} canEdit={canEdit} onChange={(value) => onCells({ [column.id]: value })} />
                 </div>

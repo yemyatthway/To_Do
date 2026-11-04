@@ -6789,3 +6789,352 @@ li:first-child > .flat-row {
 .admin-tabs button {
   flex: 1;
 }
+
+/* ---------- Screenshots and files ---------- */
+
+.page-editor.is-dropping {
+  outline: 2px dashed var(--accSoft);
+  outline-offset: -6px;
+}
+
+.page-block.is-file {
+  display: block;
+  margin: 8px 0;
+}
+
+.file-image-wrap {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.file-image-wrap.compact {
+  width: 150px;
+}
+
+.file-image {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--glassB);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--glassSolid);
+  box-shadow: 0 8px 22px var(--glassSh);
+  cursor: zoom-in;
+}
+
+.file-image img {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: 460px;
+}
+
+.file-image-wrap.compact img {
+  width: 150px;
+  height: 104px;
+  object-fit: cover;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: var(--row);
+  border: 1px solid var(--glassB);
+  position: relative;
+}
+
+.file-card.compact {
+  min-height: 56px;
+}
+
+.file-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-card .person-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 12px;
+  opacity: 0.7;
+}
+
+.file-card.missing {
+  color: var(--sub);
+}
+
+.file-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--glassSolid);
+  color: var(--sub);
+  box-shadow: 0 2px 8px var(--glassSh);
+}
+
+/* A bigger area to press than it looks. */
+.file-remove::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.file-remove .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.upload-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.upload-track {
+  flex: 1;
+  height: 6px;
+  min-width: 40px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.upload-track > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--acc);
+  transition: width 0.3s ease;
+}
+
+.upload-text {
+  flex: none;
+  max-width: 100%;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sub);
+}
+
+.upload-status.failed {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.upload-status.failed .upload-text {
+  flex: 1;
+  min-width: 120px;
+  color: var(--dIcon);
+}
+
+.file-thumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.file-thumb {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: inset 2px 2px 5px var(--inD), inset -2px -2px 5px var(--shL);
+  color: var(--sub);
+}
+
+.file-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+button.file-thumb {
+  cursor: zoom-in;
+}
+
+.file-thumb.busy img {
+  opacity: 0.5;
+}
+
+.file-thumb.failed {
+  outline: 2px solid var(--dIcon);
+}
+
+.file-more {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.flat-row .file-thumb {
+  width: 50px;
+  height: 50px;
+}
+
+.cell-files {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cell-add {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--accT);
+  background: var(--chipOff);
+}
+
+.cell-add .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.grid-file {
+  min-width: 170px;
+}
+
+.sheet-files {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sheet-files .file-image-wrap.compact,
+.comment-files .file-image-wrap.compact {
+  width: 150px;
+}
+
+.comment-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.comment-files .file-card {
+  width: min(100%, 280px);
+}
+
+.composer-files {
+  flex: 1 0 100%;
+  margin: 4px 0;
+}
+
+.comment-attach {
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+
+.viewer {
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+  background: rgba(10, 16, 30, 0.82);
+}
+
+.viewer-bar {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 1;
+}
+
+.viewer-name {
+  flex: 1;
+  min-width: 0;
+  color: #fff;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-image {
+  max-width: 100%;
+  max-height: calc(100% - 80px);
+  margin-top: 56px;
+  border-radius: 14px;
+  object-fit: contain;
+}
+
+/* In the narrow comments column the box gets its own line. */
+.page-side .comment-input {
+  flex: 1 0 100%;
+  order: 1;
+}
+
+.page-side .comment-attach {
+  order: 2;
+  margin-right: auto;
+}
+
+.page-side .comment-composer > .primary-btn {
+  order: 3;
+}
+
+.page-side .comment-error {
+  order: 4;
+}
+
+/* On a phone an open page is one long scroll, with its comments below. While typing, the page
+   can't move (see keyboard.ts), so then the panel scrolls by itself. */
+@container (max-width: 759px) {
+  :root:not(.keyboard-open) .page-grid > .page-editor {
+    max-height: none;
+    overflow: visible;
+  }
+
+  :root:not(.keyboard-open) .page-editor .page-blocks {
+    overflow: visible;
+    min-height: 120px;
+  }
+}
+
+.file-card:has(.file-remove) {
+  padding-right: 42px;
+}

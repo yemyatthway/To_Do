@@ -2,10 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { ApiError, workspaces as api, type Block, type BlockType, type Member, type TeamPage } from '../api'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
-import { applyShortcut, backspaceAtStart, insertBlock, makeBlock, pasteLines, splitAt, type Caret } from '../pageBlocks'
+import { pickFiles, uploads } from '../filesClient'
+import { applyShortcut, backspaceAtStart, insertBlock, insertFileBlock, makeBlock, pasteLines, splitAt, type Caret } from '../pageBlocks'
 import { PageSaver, pageStorage, type PageDoc, type SaveStatus } from '../pageSaver'
 import { Comments, HistoryFold } from './Comments'
 import { ConfirmAction } from './ConfirmAction'
+import { FileView } from './Files'
 import { Loading, SkeletonRows } from './Loading'
 import { OptionsMenu } from './OptionsMenu'
 
@@ -89,6 +91,8 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(false)
+  const [fileError, setFileError] = useState('')
+  const [dropping, setDropping] = useState(false)
   const inputs = useRef(new Map<string, HTMLTextAreaElement>())
   const caret = useRef<Caret | null>(null)
 
@@ -142,6 +146,27 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
     change(edit.blocks)
   }
 
+  // Each file takes a moment to get ready, so they're added to the page as it is by then.
+  const latest = useRef({ blocks, activeId, change })
+  useEffect(() => {
+    latest.current = { blocks, activeId, change }
+  })
+
+  async function addFiles(files: File[]) {
+    setFileError('')
+    for (const file of files) {
+      try {
+        const record = await uploads.start(workspaceId, file)
+        const edit = insertFileBlock(latest.current.blocks, latest.current.activeId, record.id)
+        latest.current.change(edit.blocks)
+        latest.current.blocks = edit.blocks
+        latest.current.activeId = edit.anchor
+      } catch (err) {
+        setFileError(`${file.name}: ${errorMessage(err)}`)
+      }
+    }
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>, block: Block, index: number) {
     if (e.nativeEvent.isComposing) return
     const { selectionStart: start, selectionEnd: end, value } = e.currentTarget
@@ -167,7 +192,7 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
     }
   }
 
-  const addOptions: { type: BlockType; label: string; icon: 'text' | 'heading' | 'check' }[] = [
+  const addOptions: { type: Exclude<BlockType, 'file'>; label: string; icon: 'text' | 'heading' | 'check' }[] = [
     { type: 'p', label: 'Text', icon: 'text' },
     { type: 'h', label: 'Heading', icon: 'heading' },
     { type: 'todo', label: 'Checklist', icon: 'check' },
@@ -175,7 +200,24 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
 
   return (
     <>
-    <section className="card glass panel page-editor" aria-label={title || 'Untitled'}>
+    <section
+      className={`card glass panel page-editor${dropping ? ' is-dropping' : ''}`}
+      aria-label={title || 'Untitled'}
+      onDragOver={(e) => {
+        if (!canEdit || !e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setDropping(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false)
+      }}
+      onDrop={(e) => {
+        if (!canEdit || !e.dataTransfer.files.length) return
+        e.preventDefault()
+        setDropping(false)
+        void addFiles(Array.from(e.dataTransfer.files))
+      }}
+    >
       {canEdit ? (
         <input
           className="page-title"
@@ -207,7 +249,10 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
                   Add
                 </>
               }
-              options={addOptions.map(({ type, label, icon }) => ({ icon, label, run: () => apply(insertBlock(blocks, activeId, type)) }))}
+              options={[
+                ...addOptions.map(({ type, label, icon }) => ({ icon, label, run: () => apply(insertBlock(blocks, activeId, type)) })),
+                { icon: 'attach' as const, label: 'Screenshot or file', run: () => pickFiles((files) => void addFiles(files)) },
+              ]}
             />
             <OptionsMenu label="Page options" options={[{ icon: 'trash', label: 'Delete page', danger: true, run: () => setDeleting(true) }]} />
           </>
@@ -229,9 +274,19 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
         </div>
       )}
 
+      {fileError && (
+        <span className="field-error" role="alert">
+          {fileError}
+        </span>
+      )}
+
       <div className="panel-scroll page-blocks">
         {blocks.map((block, index) =>
-          canEdit ? (
+          block.type === 'file' ? (
+            <div key={block.id} className="page-block is-file">
+              <FileView workspaceId={workspaceId} id={block.file!} onRemove={canEdit ? () => change(blocks.filter((b) => b.id !== block.id)) : undefined} />
+            </div>
+          ) : canEdit ? (
             <div key={block.id} className={`page-block is-${block.type}${block.done ? ' done' : ''}`} style={{ ['--cat' as string]: 'var(--work)' }}>
               {block.type === 'todo' && (
                 <button
@@ -257,6 +312,12 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
                 onChange={(text) => change(blocks.map((b) => (b.id === block.id ? applyShortcut(b, text) : b)))}
                 onKeyDown={(e) => onKeyDown(e, block, index)}
                 onPaste={(e) => {
+                  const files = Array.from(e.clipboardData.files)
+                  if (files.length) {
+                    e.preventDefault()
+                    void addFiles(files)
+                    return
+                  }
                   const edit = pasteLines(blocks, block.id, e.currentTarget.selectionStart, e.currentTarget.selectionEnd, e.clipboardData.getData('text'))
                   if (edit) {
                     e.preventDefault()

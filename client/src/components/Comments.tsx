@@ -5,10 +5,13 @@ import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
 import { memberName } from '../tableLogic'
 import { initials, timeAgo } from '../user'
+import { pickFiles, uploads, useUploads } from '../filesClient'
 import { ConfirmAction } from './ConfirmAction'
+import { FileView } from './Files'
 import { Loading, SkeletonRows } from './Loading'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+const MAX_COMMENT_FILES = 6
 
 export type CommentTarget = { workspaceId: number; pageId: number } | { workspaceId: number; tableId: number; rowId: number }
 
@@ -47,8 +50,8 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
   }, [load])
   useLiveRefresh(load, 15_000)
 
-  async function send(body: string) {
-    const comment = pageId ? await api.addPageComment(workspaceId, pageId, body) : await api.addRowComment(workspaceId, tableId!, rowId!, body)
+  async function send(body: string, files: number[]) {
+    const comment = pageId ? await api.addPageComment(workspaceId, pageId, body, files) : await api.addRowComment(workspaceId, tableId!, rowId!, body, files)
     setComments((list) => [...(list ?? []), comment])
     onChanged?.()
   }
@@ -78,21 +81,30 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
                 </button>
               )}
             </div>
-            <p className="comment-body">
-              {splitMentions(comment.body, usernames).map((part, index) =>
-                part.mention ? (
-                  <span key={index} className="mention">
-                    {part.text}
-                  </span>
-                ) : (
-                  part.text
-                ),
-              )}
-            </p>
+            {comment.body && (
+              <p className="comment-body">
+                {splitMentions(comment.body, usernames).map((part, index) =>
+                  part.mention ? (
+                    <span key={index} className="mention">
+                      {part.text}
+                    </span>
+                  ) : (
+                    part.text
+                  ),
+                )}
+              </p>
+            )}
+            {comment.files.length > 0 && (
+              <div className="comment-files">
+                {comment.files.map((id) => (
+                  <FileView key={id} workspaceId={workspaceId} id={id} compact />
+                ))}
+              </div>
+            )}
           </div>
         </article>
       ))}
-      {canComment && <Composer members={members} onSend={send} />}
+      {canComment && <Composer workspaceId={workspaceId} members={members} onSend={send} />}
       {deleting && (
         <ConfirmAction
           danger
@@ -114,7 +126,23 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
   )
 }
 
-function Composer({ members, onSend }: { members: Member[]; onSend: (body: string) => Promise<void> }) {
+function Composer({ workspaceId, members, onSend }: { workspaceId: number; members: Member[]; onSend: (body: string, files: number[]) => Promise<void> }) {
+  const [attached, setAttached] = useState<number[]>([])
+  const running = useUploads()
+  const stillSending = attached.some((id) => running.has(id))
+
+  async function attach(files: File[]) {
+    setError('')
+    for (const file of files) {
+      try {
+        const record = await uploads.start(workspaceId, file)
+        setAttached((list) => (list.length >= MAX_COMMENT_FILES ? list : [...list, record.id]))
+      } catch (err) {
+        setError(`${file.name}: ${errorMessage(err)}`)
+      }
+    }
+  }
+
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -150,13 +178,14 @@ function Composer({ members, onSend }: { members: Member[]; onSend: (body: strin
   }
 
   async function send() {
-    if (busy || !text.trim()) return
+    if (busy || stillSending || (!text.trim() && !attached.length)) return
     setBusy(true)
     setError('')
     try {
-      await onSend(text)
+      await onSend(text, attached)
       setText('')
       setCaret(0)
+      setAttached([])
     } catch (err) {
       // Your words stay in the box to try again.
       setError(errorMessage(err))
@@ -186,6 +215,16 @@ function Composer({ members, onSend }: { members: Member[]; onSend: (body: strin
           ))}
         </div>
       )}
+      {attached.length > 0 && (
+        <div className="comment-files composer-files">
+          {attached.map((id) => (
+            <FileView key={id} workspaceId={workspaceId} id={id} compact onRemove={() => setAttached((list) => list.filter((other) => other !== id))} />
+          ))}
+        </div>
+      )}
+      <button type="button" className="icon-btn comment-attach" aria-label="Add a screenshot or file" disabled={attached.length >= MAX_COMMENT_FILES} onClick={() => pickFiles((files) => void attach(files))}>
+        <Icon name="attach" />
+      </button>
       <textarea
         ref={ref}
         className="field comment-input"
@@ -201,6 +240,13 @@ function Composer({ members, onSend }: { members: Member[]; onSend: (body: strin
           setError('')
         }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData.files)
+          if (files.length) {
+            e.preventDefault()
+            void attach(files)
+          }
+        }}
         onKeyDown={(e) => {
           if (matches.length) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -225,8 +271,8 @@ function Composer({ members, onSend }: { members: Member[]; onSend: (body: strin
           }
         }}
       />
-      <button type="button" className="primary-btn" disabled={busy || !text.trim()} onClick={() => void send()}>
-        {busy ? 'Sending…' : 'Send'}
+      <button type="button" className="primary-btn" disabled={busy || stillSending || (!text.trim() && !attached.length)} onClick={() => void send()}>
+        {busy ? 'Sending…' : stillSending ? 'Uploading…' : 'Send'}
       </button>
       {error && (
         <span className="field-error comment-error" role="alert">

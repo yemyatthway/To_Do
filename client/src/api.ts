@@ -1,3 +1,4 @@
+import type { PreparedUpload, UploadMeta, UploadTarget } from './uploads'
 import { Outbox } from './outbox'
 
 export type Category = 'work' | 'personal' | 'health'
@@ -527,7 +528,7 @@ export interface WorkspaceDetail extends WorkspaceSummary {
   invitations: { id: number; label: string; role: Role; created_at: string; expires_at: string }[]
 }
 
-export type BlockType = 'p' | 'h' | 'todo'
+export type BlockType = 'p' | 'h' | 'todo' | 'file'
 
 export interface Block {
   id: string
@@ -535,6 +536,8 @@ export interface Block {
   text: string
   /** Checklist items only. */
   done?: boolean
+  /** File blocks only: which file. */
+  file?: number
 }
 
 export interface TeamPageSummary {
@@ -549,8 +552,8 @@ export interface TeamPage extends TeamPageSummary {
   blocks: Block[]
 }
 
-export type ColumnType = 'text' | 'number' | 'select' | 'person' | 'date' | 'checkbox'
-export type CellValue = string | number | boolean | null
+export type ColumnType = 'text' | 'number' | 'select' | 'person' | 'date' | 'checkbox' | 'file'
+export type CellValue = string | number | boolean | number[] | null
 
 export interface TableColumn {
   id: string
@@ -589,6 +592,23 @@ export interface Comment {
   /** Null once their account is erased. */
   author: { id: number; name: string; username: string } | null
   can_delete: boolean
+  /** Files attached to it. */
+  files: number[]
+}
+
+export interface TeamFile {
+  id: number
+  name: string
+  size: number
+  status: 'pending' | 'ready'
+  is_image: boolean
+  width: number | null
+  height: number | null
+  uploaded_by: number | null
+  url: string | null
+  thumb_url: string | null
+  download_url: string | null
+  expires_at: string
 }
 
 export interface ActivityItem {
@@ -638,9 +658,14 @@ export const workspaces = {
   deletePage: (id: number, pageId: number) => request<void>(`/api/workspaces/${id}/pages/${pageId}/`, { method: 'DELETE' }),
   restorePage: (id: number, pageId: number) => request<TeamPage>(`/api/workspaces/${id}/pages/${pageId}/restore/`, json('POST', {})),
   pageComments: (id: number, pageId: number) => request<Comment[]>(`/api/workspaces/${id}/pages/${pageId}/comments/`),
-  addPageComment: (id: number, pageId: number, body: string) => request<Comment>(`/api/workspaces/${id}/pages/${pageId}/comments/`, json('POST', { body })),
+  addPageComment: (id: number, pageId: number, body: string, files: number[] = []) => request<Comment>(`/api/workspaces/${id}/pages/${pageId}/comments/`, json('POST', { body, files })),
   rowComments: (id: number, tableId: number, rowId: number) => request<Comment[]>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/comments/`),
-  addRowComment: (id: number, tableId: number, rowId: number, body: string) => request<Comment>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/comments/`, json('POST', { body })),
+  addRowComment: (id: number, tableId: number, rowId: number, body: string, files: number[] = []) => request<Comment>(`/api/workspaces/${id}/tables/${tableId}/rows/${rowId}/comments/`, json('POST', { body, files })),
+  files: (id: number, ids: number[]) => request<TeamFile[]>(`/api/workspaces/${id}/files/?ids=${ids.join(',')}`),
+  prepareFile: (id: number, meta: UploadMeta) => request<PreparedUpload<TeamFile>>(`/api/workspaces/${id}/files/`, json('POST', meta)),
+  restartFile: (id: number, fileId: number) => request<PreparedUpload<TeamFile>>(`/api/workspaces/${id}/files/${fileId}/`, json('POST', {})),
+  finishFile: (id: number, fileId: number) => request<TeamFile>(`/api/workspaces/${id}/files/${fileId}/done/`, json('POST', {})),
+  cancelFile: (id: number, fileId: number) => request<void>(`/api/workspaces/${id}/files/${fileId}/`, { method: 'DELETE' }),
   deleteComment: (id: number, commentId: number) => request<void>(`/api/workspaces/${id}/comments/${commentId}/`, { method: 'DELETE' }),
   activity: (id: number, options: { before?: number; page?: number; row?: number } = {}) => {
     const query = new URLSearchParams(Object.entries(options).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])))
@@ -686,4 +711,20 @@ export function createOutbox(userId: number) {
     store,
     navigator.locks ?? null,
   )
+}
+
+/** Sends a file straight to storage. Not through `request`: this needs real progress, and the link is its own pass. */
+export function putFile(target: UploadTarget, blob: Blob, onProgress: (loaded: number) => void, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', target.url)
+    Object.entries(target.headers).forEach(([name, value]) => xhr.setRequestHeader(name, value))
+    xhr.upload.onprogress = (e) => onProgress(e.loaded)
+    // 409: it already arrived on an earlier try.
+    xhr.onload = () => (xhr.status < 300 || xhr.status === 409 ? resolve() : reject(new Error(xhr.status === 413 ? 'That file is too big.' : "The upload didn't finish. Try again.")))
+    xhr.onerror = () => reject(new Error("Can't reach the file storage. Check your connection and try again."))
+    xhr.onabort = () => reject(new Error('Cancelled'))
+    signal.addEventListener('abort', () => xhr.abort())
+    xhr.send(blob)
+  })
 }

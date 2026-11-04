@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from './api'
-import { applyShortcut, backspaceAtStart, pasteLines, setType, splitAt, insertBlock } from './pageBlocks'
+import { applyShortcut, backspaceAtStart, pasteLines, setType, splitAt, insertBlock, insertFileBlock } from './pageBlocks'
 
 const p = (id: string, text = ''): Block => ({ id, type: 'p', text })
 const h = (id: string, text = ''): Block => ({ id, type: 'h', text })
@@ -89,5 +89,31 @@ describe('adding from the Add menu', () => {
   it('goes to the end when no line is active', () => {
     const edit = insertBlock([line('a', 'one')], null, 'h')
     expect(edit.blocks.map((b) => b.type)).toEqual(['p', 'h'])
+  })
+})
+
+describe('putting a file on a page', () => {
+  const line = (id: string, text: string) => ({ id, type: 'p' as const, text })
+
+  it('goes below the line you were on', () => {
+    const { blocks, anchor } = insertFileBlock([line('a', 'one'), line('b', 'two')], 'a', 7)
+    expect(blocks.map((b) => b.type)).toEqual(['p', 'file', 'p'])
+    expect(blocks[1]).toMatchObject({ id: anchor, file: 7, text: '' })
+  })
+
+  it('takes the place of an empty line and leaves one to keep writing', () => {
+    const { blocks } = insertFileBlock([line('a', '')], 'a', 7)
+    expect(blocks.map((b) => b.type)).toEqual(['file', 'p'])
+  })
+
+  it('several files stay in order', () => {
+    const first = insertFileBlock([line('a', 'one')], 'a', 1)
+    const second = insertFileBlock(first.blocks, first.anchor, 2)
+    expect(second.blocks.map((b) => b.file ?? b.type)).toEqual(['p', 1, 2, 'p'])
+  })
+
+  it("backspace can't merge text into a file", () => {
+    const { blocks } = insertFileBlock([line('a', 'one')], 'a', 1)
+    expect(backspaceAtStart(blocks, blocks[2].id)).toBeNull()
   })
 })
