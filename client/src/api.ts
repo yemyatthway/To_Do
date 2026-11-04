@@ -5,6 +5,13 @@ import { tr } from './i18n'
 export type Category = 'work' | 'personal' | 'health'
 export type Priority = 'low' | 'medium' | 'high'
 
+export interface TaskPage {
+  results: Task[]
+  counts: { todo: number; overdue: number; done: number }
+  page: number
+  pages: number
+}
+
 export interface Task {
   id: number
   title: string
@@ -290,6 +297,9 @@ export const auth = {
   resendLogin: (challenge: string) => postPublic<{ resend_in: number; expires_at: string | null }>('/api/auth/login/resend/', { challenge }),
   register: (input: { full_name: string; username: string; email: string; password: string; timezone: string; language: 'en' | 'my' }) =>
     startSession('/api/auth/register/', input) as Promise<User>,
+  forgotPassword: (email: string) => postPublic<{ resend_in: number; expires_at: string | null }>('/api/auth/password/forgot/', { email }),
+  resetCode: (email: string, code: string) => postPublic<{ ticket: string }>('/api/auth/password/code/', { email, code }).then((answer) => answer.ticket),
+  resetPassword: (ticket: string, password: string) => startSession('/api/auth/password/reset/', { ticket, password }) as Promise<User>,
   checkEmail: (email: string) => postPublic<EmailCheck>('/api/auth/check-email/', { email }),
   /** Signed in, your own current username counts as free. */
   checkUsername: (username: string, signedIn: boolean) =>
@@ -320,6 +330,15 @@ export const api = {
     return request<Task[]>(`/api/tasks/?${params}`)
   },
   /** Unfinished tasks due before `before` (start of today), newest first. */
+  browseTasks(input: { list: string; page: number; now: Date; q: string; category: string; priority: string; from?: Date; to?: Date }) {
+    const params = new URLSearchParams({ list: input.list, page: String(input.page), now: input.now.toISOString() })
+    if (input.q) params.set('q', input.q)
+    if (input.category) params.set('category', input.category)
+    if (input.priority) params.set('priority', input.priority)
+    if (input.from) params.set('from', input.from.toISOString())
+    if (input.to) params.set('to', input.to.toISOString())
+    return request<TaskPage>(`/api/tasks/browse/?${params}`)
+  },
   overdueTasks: (before: Date) => request<Task[]>(`/api/tasks/?${new URLSearchParams({ overdue_before: before.toISOString() })}`),
   /** `clientId` makes sending it again safe: the server returns the task it already saved. */
   createTask: (input: TaskInput, clientId?: string) => request<Task>('/api/tasks/', json('POST', { ...input, client_id: clientId })),
@@ -685,6 +704,14 @@ export const workspaces = {
   activity: (id: number, options: { before?: number; page?: number; row?: number } = {}) => {
     const query = new URLSearchParams(Object.entries(options).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])))
     return request<{ items: ActivityItem[]; more: boolean }>(`/api/workspaces/${id}/activity/?${query}`)
+  },
+  activityPage: (id: number, options: { number: number; q?: string; actor?: string; kind?: string; since?: Date }) => {
+    const query = new URLSearchParams({ number: String(options.number) })
+    if (options.q) query.set('q', options.q)
+    if (options.actor) query.set('actor', options.actor)
+    if (options.kind) query.set('kind', options.kind)
+    if (options.since) query.set('since', options.since.toISOString())
+    return request<{ items: ActivityItem[]; number: number; pages: number }>(`/api/workspaces/${id}/activity/?${query}`)
   },
   notifications: (before?: number) => request<{ items: WorkspaceNotification[]; unread: number; more: boolean }>(`/api/workspaces/notifications/${before ? `?before=${before}` : ''}`),
   readNotifications: (ids?: number[]) => request<void>('/api/workspaces/notifications/read/', json('POST', ids ? { ids } : {})),

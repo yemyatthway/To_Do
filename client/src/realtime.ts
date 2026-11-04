@@ -239,6 +239,8 @@ export interface Place {
   block?: string
   row?: number
   column?: string
+  /** Writing a comment on this page or row. */
+  commenting?: boolean
 }
 
 export interface Peer {

@@ -4,7 +4,6 @@ import { social, type Person, type Task } from '../api'
 import { Icon } from '../icons'
 import { gsap, useGsap } from '../motion'
 import { dueDate, formatShortDay, formatTime } from '../time'
-import { initials } from '../user'
 import { Loading, SkeletonRows } from './Loading'
 import { tr } from '../i18n'
 
@@ -32,6 +31,8 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
   const [mode, setMode] = useState<Mode>('remind')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // The list of tasks stays folded unless nothing is chosen yet.
+  const [picking, setPicking] = useState(() => !initialTaskIds?.length)
   const cardRef = useRef<HTMLFormElement>(null)
 
   useGsap(cardRef, () => {
@@ -60,6 +61,8 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
     .sort((a, b) => (dueDate(a)?.getTime() ?? Infinity) - (dueDate(b)?.getTime() ?? Infinity))
 
   const allSelected = choices.length > 0 && choices.every((t) => selected.has(t.id))
+  const chosen = choices.filter((t) => selected.has(t.id))
+  const picked = chosen.length === 0 ? tr('Choose tasks') : chosen.length === 1 ? chosen[0].title : tr('{n} task{value}', { n: chosen.length, value: 's' })
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -113,114 +116,101 @@ export function SendTasksDialog({ tasks, initialFriendId, initialTaskIds, onClos
             <Icon name="x" />
           </button>
         </div>
-        <div className="segmented" role="group" aria-label={tr('How to share')}>
-          <button type="button" aria-pressed={mode === 'remind'} onClick={() => setMode('remind')}>
-            {tr('Add & remind')}
-          </button>
-          <button type="button" aria-pressed={mode === 'copy'} onClick={() => setMode('copy')}>
-            {tr('Send a copy')}
-          </button>
-        </div>
-        <p className="list-sub" style={{ margin: 0 }}>
-          {mode === 'remind'
-            ? tr('It goes straight into their list with a reminder, as a shared plan: changes either of you make reach the other, with a notification.')
-            : tr('They get a copy in their inbox and choose whether to add it. Later changes stay separate.')}{' '}{tr('They never see the rest of your tasks.')}
-        </p>
-
-        <div className="field-group">
-          <span className="label">{tr('To')}</span>
-          {friends === null ? (
-            <Loading active={!error} skeleton={<SkeletonRows count={2} avatar />} />
-          ) : friends.length === 0 ? (
-            <p className="hint">{tr('You don\'t have any friends here yet. Add some on the Friends screen first.')}</p>
-          ) : (
-            <div className="chips" role="radiogroup" aria-label={tr('Friend')}>
-              {friends.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={friendId === f.id}
-                  aria-pressed={friendId === f.id}
-                  className="chip friend-chip"
-                  onClick={() => {
-                    setFriendId(f.id)
-                    setError('')
-                  }}
-                >
-                  <span className="avatar" aria-hidden="true">
-                    {initials(f)}
-                  </span>
-                  {nameOf(f)}
-                  {/* Two friends with the same name: the username tells them apart. */}
-                  {friends.some((o) => o.id !== f.id && nameOf(o) === nameOf(f)) && <span className="task-meta">@{f.username}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <fieldset className="field-group send-tasks">
-          <div className="send-tasks-head">
-            <legend className="label">
-              {tr('Tasks')}{' '}<span className="hint">{tr('({size} of {length} selected)', { size: selected.size, length: choices.length })}</span>
-            </legend>
-            {choices.length > 1 && (
-              <button
-                type="button"
-                className="text-btn small-btn"
-                onClick={() => {
-                  setSelected(allSelected ? new Set() : new Set(choices.map((t) => t.id)))
-                  setError('')
-                }}
-              >
-                {allSelected ? tr('Clear') : tr('Select all')}
-              </button>
-            )}
-          </div>
-          {choices.length === 0 ? (
-            <p className="hint">{tr('You have no open tasks to send.')}</p>
-          ) : (
-            <ul>
-              {choices.map((t) => {
-                const due = dueDate(t)
-                const on = selected.has(t.id)
-                return (
-                  <li key={t.id}>
-                    <label className={`send-task${on ? ' on' : ''}`} style={{ ['--cat' as string]: `var(--${t.category})` }}>
-                      <input type="checkbox" className="sr-only" checked={on} onChange={() => toggle(t.id)} />
-                      <span className={`check${on ? ' on' : ''}`} aria-hidden="true">
-                        {on && <Icon name="check" />}
-                      </span>
-                      <span className="person-main">
-                        <span className="task-title">{t.title}</span>
-                        <span className="task-meta">{due ? `${formatShortDay(due)} · ${formatTime(due)}` : tr('Anytime')}</span>
-                      </span>
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </fieldset>
-
-        {mode === 'copy' && (
+        {friends === null ? (
+          <Loading active={!error} skeleton={<SkeletonRows count={1} />} />
+        ) : friends.length === 0 ? (
+          <p className="hint">{tr('You don\'t have any friends here yet. Add some on the Friends screen first.')}</p>
+        ) : (
           <label className="field-group">
-            <span className="label">{tr('Note (optional)')}</span>
-            <textarea className="field" rows={2} maxLength={280} placeholder={tr('Want to join me?')} value={message} onChange={(e) => setMessage(e.target.value)} />
+            <span className="label">{tr('To')}</span>
+            <select
+              className="field"
+              value={friendId ?? ''}
+              onChange={(e) => {
+                setFriendId(e.target.value ? Number(e.target.value) : null)
+                setError('')
+              }}
+            >
+              <option value="">{tr('Choose a friend')}</option>
+              {friends.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {/* Two friends with the same name: the username tells them apart. */}
+                  {friends.some((o) => o.id !== f.id && nameOf(o) === nameOf(f)) ? `${nameOf(f)} (@${f.username})` : nameOf(f)}
+                </option>
+              ))}
+            </select>
           </label>
         )}
+
+        {choices.length === 0 ? (
+          <p className="hint">{tr('You have no open tasks to send.')}</p>
+        ) : (
+          <fieldset className="field-group send-tasks">
+            <legend className="sr-only">{tr('Tasks')}</legend>
+            <button type="button" className="more-row send-tasks-toggle" aria-expanded={picking} onClick={() => setPicking(!picking)}>
+              <span className="person-main">
+                <span className="label">{tr('Tasks')}</span>
+                <span className="task-title">{picked}</span>
+              </span>
+              <Icon name="chevron" className={`more-go${picking ? ' is-open' : ''}`} />
+            </button>
+            {picking && (
+              <>
+                {choices.length > 1 && (
+                  <button
+                    type="button"
+                    className="link-btn send-all"
+                    onClick={() => {
+                      setSelected(allSelected ? new Set() : new Set(choices.map((t) => t.id)))
+                      setError('')
+                    }}
+                  >
+                    {allSelected ? tr('Clear') : tr('Select all')}
+                  </button>
+                )}
+                <ul>
+                  {choices.map((t) => {
+                    const due = dueDate(t)
+                    const on = selected.has(t.id)
+                    return (
+                      <li key={t.id}>
+                        <label className={`send-task${on ? ' on' : ''}`} style={{ ['--cat' as string]: `var(--${t.category})` }}>
+                          <input type="checkbox" className="sr-only" checked={on} onChange={() => toggle(t.id)} />
+                          <span className={`check${on ? ' on' : ''}`} aria-hidden="true">
+                            {on && <Icon name="check" />}
+                          </span>
+                          <span className="person-main">
+                            <span className="task-title">{t.title}</span>
+                            <span className="task-meta">{due ? `${formatShortDay(due)} · ${formatTime(due)}` : tr('Anytime')}</span>
+                          </span>
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+          </fieldset>
+        )}
+
+        <div className="toggle-row send-mode">
+          <span>
+            {tr('Keep in sync')}
+            <small className="hint">{mode === 'remind' ? tr('Added to their list with a reminder. Changes reach you both.') : tr('They get a copy and choose whether to add it.')}</small>
+          </span>
+          <button type="button" className="switch" role="switch" aria-checked={mode === 'remind'} aria-label={tr('Keep in sync')} onClick={() => setMode(mode === 'remind' ? 'copy' : 'remind')} />
+        </div>
+
+        {mode === 'copy' && <input className="field" maxLength={280} aria-label={tr('Note (optional)')} placeholder={tr('Note (optional)')} value={message} onChange={(e) => setMessage(e.target.value)} />}
 
         {error && (
           <span className="field-error" role="alert">
             {error}
           </span>
         )}
-        <button type="submit" className="primary-btn" disabled={busy || !friends?.length}>
-          <Icon name={mode === 'remind' ? 'bell' : 'send'} />
-          {busy
-            ? tr('Sending…')
-            : `${mode === 'remind' ? tr('Add & remind') : tr('Send')}${selected.size ? tr(' {size} task{value}', { size: selected.size, value: selected.size === 1 ? '' : 's' }) : ''}`}
+        <button type="submit" className="primary-btn" disabled={busy || !friends?.length || !choices.length}>
+          <Icon name="send" />
+          {busy ? tr('Sending…') : selected.size ? `${tr('Send')}${tr(' {size} task{value}', { size: selected.size, value: selected.size === 1 ? '' : 's' })}` : tr('Send')}
         </button>
       </form>
     </div>,

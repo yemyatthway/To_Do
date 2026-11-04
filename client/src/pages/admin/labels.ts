@@ -6,5 +6,6 @@ export const EVENT_LABEL = {
   logout: tr('Logged out'),
   deleted: tr('Deleted account'),
   restored: tr('Restored account'),
+  password: tr('Reset password'),
 } as const
-export const EVENT_ICON = { signup: 'plus', login: 'user', logout: 'logout', deleted: 'trash', restored: 'undo' } as const
+export const EVENT_ICON = { signup: 'plus', login: 'user', logout: 'logout', deleted: 'trash', restored: 'undo', password: 'lock' } as const

@@ -103,6 +103,7 @@ class EmailCode(models.Model):
     class Purpose(models.TextChoices):
         VERIFY_EMAIL = "verify", "Verify email"
         LOGIN = "login", "New device sign-in"
+        RESET = "reset", "Password reset"
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_codes")
     purpose = models.CharField(max_length=10, choices=Purpose.choices)
@@ -144,6 +145,7 @@ class AuthEvent(models.Model):
         LOGOUT = "logout", "Logged out"
         DELETED = "deleted", "Deleted account"
         RESTORED = "restored", "Restored account"
+        PASSWORD = "password", "Reset password"
 
     # Kept (with the email) if the user is deleted later, so the log stays complete.
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="auth_events")

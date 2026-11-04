@@ -7,6 +7,8 @@ import { TimePicker } from './TimePicker'
 import { gsap, useGsap } from '../motion'
 import { addDays, dueDate, formatLead, fromInputs, REMINDER_LEADS, startOfDay, toDateInput, toTimeInput } from '../time'
 import { formatDate, tr } from '../i18n'
+import { describeChanges } from '../taskChanges'
+import { ConfirmAction } from './ConfirmAction'
 
 const parseDate = (value: string) => {
   const [y, m, d] = value.split('-').map(Number)
@@ -90,6 +92,8 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   // Reopening a change the server refused: say why.
   const [error, setError] = useState(task?.syncError ?? '')
   const [saving, setSaving] = useState(false)
+  const [confirming, setConfirming] = useState<TaskInput | null>(null)
+  const [confirmingClose, setConfirmingClose] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
   const scrimRef = useRef<HTMLDivElement>(null)
   const sheetRef = useRef<HTMLFormElement>(null)
@@ -152,10 +156,38 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
 
   useEffect(() => {
     if (!task) titleRef.current?.focus({ preventScroll: true })
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
+    const onKey = (e: KeyboardEvent) => {
+      // A warning on top of the sheet handles Escape by itself.
+      if (e.key === 'Escape' && !document.querySelector('.confirm-card')) tryCloseRef.current()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [task, close])
+  }, [task])
+
+  function currentInput(): TaskInput {
+    return {
+      title: title.trim(),
+      notes: notes.trim(),
+      // The form only knows minutes. A task that also has seconds hasn't moved just by being opened.
+      due_at: date && time ? (due && toDateInput(due) === date && toTimeInput(due) === time ? task!.due_at : fromInputs(date, time).toISOString()) : null,
+      category,
+      priority,
+      // With reminders off account-wide the switch is locked, so keep whatever the task already had.
+      remind_before_minutes: !remindersOn ? (task?.remind_before_minutes ?? null) : time && remind ? lead : null,
+      done,
+    }
+  }
+
+  // Closing with something unsaved asks first, so a stray tap outside can't lose it.
+  const unsaved = () => (task ? describeChanges(task, currentInput()).length > 0 : Boolean(title.trim() || notes.trim()))
+  const tryClose = () => {
+    if (unsaved()) setConfirmingClose(true)
+    else close()
+  }
+  const tryCloseRef = useRef(tryClose)
+  useEffect(() => {
+    tryCloseRef.current = tryClose
+  })
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -173,18 +205,19 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
       setError(tr('Pick today or a later date.'))
       return
     }
+    const input = currentInput()
+    // Saving a refused change again without edits just tries again; nothing new to confirm.
+    if (task && describeChanges(task, input).length) {
+      setConfirming(input)
+      return
+    }
+    await finish(input)
+  }
+
+  async function finish(input: TaskInput) {
     setSaving(true)
     try {
-      await onSave({
-        title: title.trim(),
-        notes: notes.trim(),
-        due_at: time ? fromInputs(date, time).toISOString() : null,
-        category,
-        priority,
-        // With reminders off account-wide the switch is locked, so keep whatever the task already had.
-        remind_before_minutes: !remindersOn ? (task?.remind_before_minutes ?? null) : time && remind ? lead : null,
-        done,
-      })
+      await onSave(input)
       leave(onClose)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -193,7 +226,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   }
 
   return (
-    <div ref={scrimRef} className="scrim" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <div ref={scrimRef} className="scrim" onMouseDown={(e) => e.target === e.currentTarget && tryClose()}>
       <form ref={sheetRef} className="sheet" role="dialog" aria-modal="true" aria-labelledby={headingId} onSubmit={submit} noValidate>
         <div className="sheet-top">
         <div className="grabber" aria-hidden="true" />
@@ -201,11 +234,11 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
           <h2 id={headingId}>{task ? tr('Edit task') : tr('New task')}</h2>
           <div style={{ display: 'flex', gap: 10 }}>
             {task && (
-              <button type="button" className="icon-btn danger" aria-label={tr('Delete task')} onClick={() => leave(() => onDelete(task))}>
+              <button type="button" className="icon-btn danger" aria-label={tr('Delete task')} onClick={() => onDelete(task)}>
                 <Icon name="trash" />
               </button>
             )}
-            <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={close}>
+            <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={tryClose}>
               <Icon name="x" />
             </button>
           </div>
@@ -433,6 +466,45 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
           </button>
         </div>
       </form>
+      {confirming && task && (
+        <ConfirmAction
+          icon={null}
+          title={tr('Save these changes?')}
+          confirmLabel={tr('Save changes')}
+          onCancel={() => setConfirming(null)}
+          onConfirm={async () => {
+            const input = confirming
+            setConfirming(null)
+            await finish(input)
+          }}
+        >
+          <ul className="change-list">
+            {describeChanges(task, confirming).map((change) => (
+              <li key={change.label}>
+                <span className="label">{change.label}</span>
+                <span className="change-from">{change.from}</span>
+                <span className="change-to">{change.to}</span>
+              </li>
+            ))}
+          </ul>
+        </ConfirmAction>
+      )}
+      {confirmingClose && (
+        <ConfirmAction
+          danger
+          icon={null}
+          title={task ? tr('Discard your changes?') : tr('Discard this task?')}
+          confirmLabel={tr('Discard')}
+          cancelLabel={tr('Keep editing')}
+          onCancel={() => setConfirmingClose(false)}
+          onConfirm={async () => {
+            setConfirmingClose(false)
+            close()
+          }}
+        >
+          <p>{tr('What you typed here won\'t be saved.')}</p>
+        </ConfirmAction>
+      )}
     </div>
   )
 }

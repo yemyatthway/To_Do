@@ -7615,3 +7615,241 @@ button.file-thumb:focus-visible .thumb-open {
   box-shadow: inset 0 0 0 1.5px var(--peer);
   border-radius: 6px;
 }
+
+/* ---------- All tasks ---------- */
+
+.tasks-panel {
+  /* The page's own bottom spacing is a little more than --screen-room allows for: stops a second scroll. */
+  height: calc(var(--screen-room) - 24px);
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.tasks-scroll {
+  gap: 16px;
+}
+
+.tasks-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+}
+
+.tasks-day {
+  margin: 0;
+}
+
+.tasks-pager {
+  flex: none;
+  justify-content: center;
+}
+
+.chip-late[aria-pressed='false'] {
+  color: var(--dIcon);
+}
+
+.change-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.change-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.change-list .label {
+  width: 100%;
+}
+
+.change-from {
+  color: var(--sub);
+  text-decoration: line-through;
+  overflow-wrap: anywhere;
+}
+
+.change-to {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.change-to::before {
+  content: '→ ';
+  color: var(--sub);
+  font-weight: 400;
+}
+
+.auth-forgot {
+  align-self: flex-end;
+  font-size: 13px;
+}
+
+/* ---------- Share with a friend ---------- */
+
+.send-tasks-toggle {
+  width: 100%;
+  padding: 8px 14px;
+  min-height: 0;
+  border: 0;
+  border-radius: 16px;
+  background: var(--row);
+  box-shadow: none;
+  text-align: left;
+}
+
+.send-tasks-toggle .task-title {
+  display: block;
+}
+
+.send-tasks-toggle .label {
+  display: block;
+}
+
+.send-tasks-toggle .more-go {
+  transition: transform var(--hover-dur) var(--hover-ease);
+}
+
+.send-tasks-toggle .more-go.is-open {
+  transform: rotate(90deg);
+}
+
+.send-all {
+  align-self: flex-end;
+  font-size: 13px;
+}
+
+.send-mode > span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.send-mode .hint {
+  font-weight: 400;
+}
+
+/* ---------- Activity ---------- */
+
+.activity-panel {
+  height: calc(var(--screen-room) - 24px);
+}
+
+.activity-panel .tasks-pager {
+  flex: none;
+}
+
+/* ---------- Held by someone else ---------- */
+
+.page-title-wrap,
+.sheet-field {
+  position: relative;
+}
+
+.page-text.is-held,
+.page-title[readonly] {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.grid-text.is-held {
+  display: block;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+/* ---------- Writing a comment ---------- */
+
+.comment-writing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--sub);
+  font-size: 13px;
+}
+
+.writing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.writing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: writing-dot 1.2s infinite ease-in-out;
+}
+
+.writing-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.writing-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes writing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .writing-dots span {
+    animation: none;
+  }
+}
+
+/* ---------- Friends to invite ---------- */
+
+.invite-friends {
+  max-height: 188px;
+  margin: 2px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.invite-friend {
+  width: 100%;
+  min-height: 46px;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-top: 1px solid var(--line, rgba(127, 140, 170, 0.18));
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.invite-friends li:first-child .invite-friend {
+  border-top: 0;
+}
+
+@media (hover: hover) {
+  .invite-friend:hover .person-name {
+    color: var(--accT);
+  }
+}

@@ -72,7 +72,7 @@ def ban_user(*, user, by, reason=""):
     user.ban_reason = reason.strip()[:255]
     user.save(update_fields=["is_active", "banned_at", "ban_reason"])
     # Refresh tokens die now; access tokens stop working on the next request (inactive users are rejected).
-    _end_sessions(user)
+    end_sessions(user)
     return user
 
 
@@ -86,7 +86,7 @@ def unban_user(*, user):
     return user
 
 
-def _end_sessions(user):
+def end_sessions(user):
     RotatedRefresh.objects.filter(user=user).delete()
     for token in OutstandingToken.objects.filter(user=user):
         BlacklistedToken.objects.get_or_create(token=token)
@@ -102,7 +102,7 @@ def delete_account(*, user, password):
     within ACCOUNT_RESTORE_DAYS. After that the daily clean-up erases it and everything it owns."""
     if not user.check_password(password):
         raise ValidationError({"password": "Password is incorrect."})
-    _end_sessions(user)
+    end_sessions(user)
     user.deleted_at = timezone.now()
     user.is_active = False
     user.save(update_fields=["deleted_at", "is_active"])
@@ -122,5 +122,5 @@ def restore_account(*, user):
 
 def purge_account(user):
     """Erase for good: tasks, friendships, shares cascade; the auth log keeps its rows (user set to null)."""
-    _end_sessions(user)
+    end_sessions(user)
     user.delete()

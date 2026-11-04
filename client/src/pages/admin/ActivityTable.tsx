@@ -13,6 +13,7 @@ const KIND_OPTIONS = [
   ['signup', tr('Created account')],
   ['login', tr('Logged in')],
   ['logout', tr('Logged out')],
+  ['password', tr('Reset password')],
   ['deleted', tr('Deleted account')],
   ['restored', tr('Restored account')],
 ] as const

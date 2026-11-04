@@ -1,3 +1,4 @@
+import { tr } from './i18n'
 /** Reading and typing @mentions. No screen here, so it can be tested. */
 
 export type CommentPart = { text: string; mention?: boolean }
@@ -39,4 +40,14 @@ export function mentionAt(text: string, caret: number): MentionQuery | null {
 export function insertMention(text: string, at: MentionQuery, caret: number, username: string) {
   const inserted = `@${username} `
   return { text: text.slice(0, at.start) + inserted + text.slice(caret), caret: at.start + inserted.length }
+}
+
+/** "Aung is writing…", or empty when nobody is. */
+export function writingLine(writers: number[], members: { id: number; full_name: string; username: string }[]) {
+  const names = writers.flatMap((id) => {
+    const member = members.find((m) => m.id === id)
+    return member ? [(member.full_name || `@${member.username}`).split(/\s+/)[0]] : []
+  })
+  if (!names.length) return ''
+  return names.length === 1 ? tr('{name} is writing…', { name: names[0] }) : tr('{count} people are writing…', { count: names.length })
 }

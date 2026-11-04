@@ -123,6 +123,50 @@ def read_challenge(token):
     return user, data["n"], restoring
 
 
+# --- forgotten passwords -------------------------------------------------------------------
+
+RESET_SALT = "password-reset"
+
+
+def send_reset_code(email):
+    """Whether or not this address has an account, and however often it's asked, the caller sees the
+    same thing: nobody can use this to find out who has an account. Waits and caps apply silently."""
+    user = User.objects.filter(email__iexact=email, is_active=True).first()
+    if user is None:
+        return
+    try:
+        issue_code(user, EmailCode.Purpose.RESET)
+    except ValidationError:
+        pass
+
+
+def check_reset_code(email, code):
+    """Trade the right code for a short-lived ticket to choose a new password. Every wrong answer
+    reads the same, again so an address can't be tested."""
+    wrong = ValidationError({"code": ["That code isn't right, or it has expired. Check it, or send a new one."]})
+    user = User.objects.filter(email__iexact=email, is_active=True).first()
+    if user is None:
+        raise wrong
+    try:
+        check_code(user, EmailCode.Purpose.RESET, code)
+    except ValidationError:
+        raise wrong
+    return signing.dumps({"u": user.pk, "p": _hash(user.password)[:16]}, salt=RESET_SALT)
+
+
+def read_reset_ticket(ticket):
+    """The ticket stops working once the password has changed, so it can only ever be used once."""
+    expired = ValidationError({"detail": "This reset has expired. Start again."})
+    try:
+        data = signing.loads(ticket or "", salt=RESET_SALT, max_age=settings.OTP_TTL_MINUTES * 60)
+    except signing.BadSignature:
+        raise expired
+    user = User.objects.filter(pk=data["u"], is_active=True).first()
+    if user is None or not hmac.compare_digest(_hash(user.password)[:16], data["p"]):
+        raise expired
+    return user
+
+
 # --- trusted devices ----------------------------------------------------------------------
 
 def device_name(user_agent):

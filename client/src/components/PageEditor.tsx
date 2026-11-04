@@ -6,7 +6,9 @@ import { pickFiles, uploads } from '../filesClient'
 import { applyShortcut, backspaceAtStart, insertBlock, insertFileBlock, makeBlock, pasteLines, splitAt, type Caret } from '../pageBlocks'
 import { PageSaver, pageStorage, type PageDoc, type SaveStatus } from '../pageSaver'
 import { mapOffset } from '../pageMerge'
-import { useWorkspaceLive } from '../workspaceLive'
+import { writingLine } from '../commentText'
+import { useEditHold, useWorkspaceLive } from '../workspaceLive'
+import { memberName } from '../tableLogic'
 import { isLive } from '../realtime'
 import { PeerTag, Peers } from './Peers'
 import { Comments, HistoryFold } from './Comments'
@@ -182,9 +184,19 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
     if (draft.page !== page.id || !draft.block || typeof draft.text !== 'string') return
     setDrafts((all) => ({ ...all, [draft.block!]: { text: draft.text!, at: Date.now() } }))
   }
-  const { people, sendDraft } = useWorkspaceLive(workspaceId, userId, focusId && focusId !== TITLE ? { page: page.id, block: focusId } : { page: page.id }, onEvent, onDraft)
+  const { idle, touch } = useEditHold()
+  const [commenting, setCommenting] = useState(false)
+  const { people, sendDraft } = useWorkspaceLive(workspaceId, userId, { page: page.id, ...(focusId && !idle ? { block: focusId } : {}), ...(commenting ? { commenting } : {}) }, onEvent, onDraft)
   const others = people.filter((peer) => peer.place.page === page.id)
+  // Someone's in this line: it's theirs until they finish or go idle. Everything else stays open.
+  const holder = (id: string) => (focusId === id ? undefined : others.find((peer) => peer.place.block === id))
+  const heldBy = (id: string) => {
+    const peer = holder(id)
+    const member = peer && members.find((m) => m.id === peer.id)
+    return member ? tr('{name} is editing this', { name: memberName(member) }) : undefined
+  }
   const together = others.length > 0
+  const writers = others.filter((peer) => peer.place.commenting).map((peer) => peer.id)
   useEffect(() => saver.setTogether(together), [saver, together])
 
   // Letters stop showing if their save never comes.
@@ -199,6 +211,7 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
   }, [drafts])
 
   const typed = (id: string, text: string) => {
+    touch()
     if (together) sendDraft({ page: page.id, block: id, text })
   }
   const endComposing = () => {
@@ -311,14 +324,22 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
       }}
     >
       {canEdit ? (
+        <div className="page-title-wrap">
+          {holder(TITLE) && <PeerTag id={holder(TITLE)!.id} members={members} />}
         <input
           ref={titleInput}
+          readOnly={Boolean(holder(TITLE))}
+          title={heldBy(TITLE)}
           className="page-title"
           aria-label={tr('Page name')}
           placeholder={tr('Untitled')}
           maxLength={120}
           value={focusId !== TITLE && drafts[TITLE] ? drafts[TITLE].text : title}
-          onFocus={() => setFocusId(TITLE)}
+          onFocus={() => {
+            if (holder(TITLE)) return
+            setFocusId(TITLE)
+            touch()
+          }}
           onBlur={() => setFocusId(null)}
           onCompositionStart={() => (composing.current = true)}
           onCompositionEnd={endComposing}
@@ -328,6 +349,7 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
             typed(TITLE, e.target.value)
           }}
         />
+        </div>
       ) : (
         <h2 className="page-title">{drafts[TITLE]?.text ?? title}</h2>
       )}
@@ -372,14 +394,13 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
             </div>
           ) : canEdit ? (
             <div key={block.id} className={`page-block is-${block.type}${block.done ? ' done' : ''}`} style={{ ['--cat' as string]: 'var(--work)' }}>
-              {others.filter((peer) => peer.place.block === block.id).slice(0, 1).map((peer) => (
-                <PeerTag key={peer.id} id={peer.id} members={members} />
-              ))}
+              {holder(block.id) && <PeerTag id={holder(block.id)!.id} members={members} />}
               {block.type === 'todo' && (
                 <button
                   type="button"
                   className={`check${block.done ? ' on' : ''}`}
                   role="checkbox"
+                  disabled={Boolean(holder(block.id))}
                   aria-checked={Boolean(block.done)}
                   aria-label={`${block.done ? tr('Mark not done') : tr('Mark done')}: ${block.text || 'empty item'}`}
                   onClick={() => change(blocks.map((b) => (b.id === block.id ? { ...b, done: !b.done } : b)))}
@@ -395,9 +416,13 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
                 label={block.type === 'h' ? tr('Heading') : block.type === 'todo' ? tr('Checklist item') : tr('Text')}
                 placeholder={index === 0 && blocks.length === 1 ? tr('Start writing. Type # for a heading or [] for a checklist.') : ''}
                 value={focusId !== block.id && drafts[block.id] ? drafts[block.id].text : block.text}
+                readOnly={Boolean(holder(block.id))}
+                hint={heldBy(block.id)}
                 onFocus={() => {
                   setActiveId(block.id)
+                  if (holder(block.id)) return
                   setFocusId(block.id)
+                  touch()
                 }}
                 onBlur={() => setFocusId(null)}
                 onCompositionStart={() => (composing.current = true)}
@@ -406,8 +431,18 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
                   change(blocks.map((b) => (b.id === block.id ? applyShortcut(b, text) : b)))
                   typed(block.id, text)
                 }}
-                onKeyDown={(e) => onKeyDown(e, block, index)}
+                onKeyDown={(e) => {
+                  if (holder(block.id)) {
+                    if (e.key === 'Enter' || e.key === 'Backspace') e.preventDefault()
+                    return
+                  }
+                  onKeyDown(e, block, index)
+                }}
                 onPaste={(e) => {
+                  if (holder(block.id)) {
+                    e.preventDefault()
+                    return
+                  }
                   const files = Array.from(e.clipboardData.files)
                   if (files.length) {
                     e.preventDefault()
@@ -450,10 +485,11 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
     <aside className="card glass page-side" aria-label={tr('Comments and history')}>
       <button type="button" className="flat-row page-side-toggle" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((v) => !v)}>
         <span className="row-main person-name">{tr('Comments and history')}</span>
+        {!commentsOpen && writers.length > 0 && <span className="task-meta">{writingLine(writers, members)}</span>}
         <Icon name="chevron" className="more-go" />
       </button>
       <div className={`page-side-body${commentsOpen ? ' open' : ''}`}>
-        <Comments target={{ workspaceId, pageId: page.id }} now={now} members={members} canComment={canComment} />
+        <Comments target={{ workspaceId, pageId: page.id }} now={now} members={members} canComment={canComment} writers={writers} onWriting={setCommenting} />
         <HistoryFold workspaceId={workspaceId} now={now} pageId={page.id} />
       </div>
     </aside>
@@ -481,6 +517,9 @@ interface AutoGrowProps {
   label: string
   placeholder: string
   value: string
+  readOnly: boolean
+  /** Why it can't be edited right now. */
+  hint?: string
   onFocus: () => void
   onBlur: () => void
   onCompositionStart: () => void
@@ -491,7 +530,7 @@ interface AutoGrowProps {
 }
 
 /** A line of the page: as tall as its text, so the page reads as one piece of writing. */
-function AutoGrowText({ ref, label, placeholder, value, onFocus, onBlur, onCompositionStart, onCompositionEnd, onChange, onKeyDown, onPaste }: AutoGrowProps) {
+function AutoGrowText({ ref, label, placeholder, value, readOnly, hint, onFocus, onBlur, onCompositionStart, onCompositionEnd, onChange, onKeyDown, onPaste }: AutoGrowProps) {
   const own = useRef<HTMLTextAreaElement | null>(null)
   useLayoutEffect(() => {
     const el = own.current
@@ -516,7 +555,9 @@ function AutoGrowText({ ref, label, placeholder, value, onFocus, onBlur, onCompo
         own.current = el
         ref(el)
       }}
-      className="page-text"
+      className={`page-text${readOnly ? ' is-held' : ''}`}
+      readOnly={readOnly}
+      title={hint}
       rows={1}
       maxLength={10_000}
       aria-label={label}

@@ -36,6 +36,8 @@ import {
   startOfWeek,
 } from './time'
 import { chooseLanguage, hasChosenLanguage, language, tr } from './i18n'
+import type { TaskList } from './taskGroups'
+import { ConfirmAction } from './components/ConfirmAction'
 
 // Phone: screens reached through More, which get a back button.
 const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace', 'notifications']
@@ -44,6 +46,7 @@ const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'ad
 const Profile = lazy(() => import('./pages/Profile').then((m) => ({ default: m.Profile })))
 const Progress = lazy(() => import('./pages/Progress').then((m) => ({ default: m.Progress })))
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
+const Tasks = lazy(() => import('./pages/Tasks').then((m) => ({ default: m.Tasks })))
 const Timer = lazy(() => import('./pages/Timer').then((m) => ({ default: m.Timer })))
 const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.Friends })))
 const Notifications = lazy(() => import('./pages/Notifications').then((m) => ({ default: m.Notifications })))
@@ -312,6 +315,11 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const sync = useSyncExternalStore(outbox.subscribe, outbox.getSnapshot)
   // Deleted, but the Undo window is still open.
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set())
+  const [taskChanges, setTaskChanges] = useState(0)
+  const [taskList, setTaskList] = useState<TaskList>('todo')
+  // The warnings before anything hard to take back.
+  const [deleting, setDeleting] = useState<Task | null>(null)
+  const [loggingOut, setLoggingOut] = useState(false)
   const tasks = useMemo(() => overlayTasks(serverTasks, sync).filter((t) => !hidden.has(t.id)), [serverTasks, sync, hidden])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -456,8 +464,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
         const title = op.kind === 'task.create' ? op.input.title : (tasksRef.current.find((t) => t.id === op.taskId)?.title ?? tr('your task'))
         showToast({ title: tr('Couldn\'t save "{title}"', { title }), detail: tr('{message} Tap the task to fix it.', { message }), action: { label: tr('Discard'), onClick: () => outbox.discard(op.key) } })
       },
-      onDrained: () => void load(),
-      onExternalChange: () => void load(),
+      onDrained: () => {
+        void load()
+        setTaskChanges((n) => n + 1)
+      },
+      onExternalChange: () => {
+        void load()
+        setTaskChanges((n) => n + 1)
+      },
     }
   })
 
@@ -788,6 +802,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     admin: [tr('Staff only'), tr('Admin dashboard')],
     friends: route.view === 'friends' && route.username ? [tr('Friends'), friendName ?? `@${route.username}`] : [tr('People'), tr('Friends')],
     chats: [tr('Messages'), tr('Chats')],
+    tasks: [tr('Your list'), tr('Tasks')],
     more: [tr('Everything else'), tr('More')],
     workspaces: [tr('Teams'), tr('Workspaces')],
     notifications: [tr('For you'), tr('Notifications')],
@@ -945,6 +960,20 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             <Reveal key="more">
               <More user={user} inviteBadge={inviteBadge + unreadNotices} noticeBadge={unreadNotices} onGo={go} />
             </Reveal>
+          ) : view === 'tasks' ? (
+            <Reveal key="tasks">
+              <Tasks
+                now={now}
+                hidden={hidden}
+                changes={taskChanges}
+                list={taskList}
+                onList={setTaskList}
+                onToggle={toggle}
+                onMoveToToday={moveToToday}
+                onOpen={(task) => setSheet({ task, defaults: { date: day, time: '' }, opened: Date.now() })}
+                onDelete={setDeleting}
+              />
+            </Reveal>
           ) : view === 'notifications' ? (
             <Reveal key="notifications">
               <Notifications now={now} notify={notify} onOpen={openUrl} onUnread={setUnreadNotices} />
@@ -1020,7 +1049,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onThemeChange={theme.choose}
               onReplayTutorial={startTour}
               onOpenAdmin={user.is_staff ? () => go('admin') : undefined}
-              onLogout={() => void logout()}
+              onLogout={() => setLoggingOut(true)}
               onDeleteAccount={deleteAccount}
               onTasksRestored={load}
               notify={notify}
@@ -1039,10 +1068,14 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onToggle={toggle}
               onMoveToToday={moveToToday}
               onOpen={(task) => setSheet({ task, defaults: { date: day, time: '' }, opened: Date.now() })}
-              onDelete={remove}
+              onDelete={setDeleting}
               onCreateAt={(d, time) => openCreate(d, time)}
               onAddOnDay={(d) => openCreate(d)}
               onShowProgress={() => go('progress')}
+              onSeeOverdue={() => {
+                setTaskList('overdue')
+                go('tasks')
+              }}
             />
             </Reveal>
           ) : (
@@ -1100,7 +1133,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           remindersOn={remindersOn}
           onClose={closeSheet}
           onSave={save}
-          onDelete={remove}
+          onDelete={setDeleting}
           onSend={(task) => {
             const id = outbox.resolve(task.id)
             if (id < 0) {
@@ -1111,6 +1144,37 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             setSendDialog({ taskIds: [id] })
           }}
         />
+      )}
+
+      {deleting && (
+        <ConfirmAction
+          danger
+          icon="trash"
+          title={tr('Delete {title}?', { title: deleting.title })}
+          confirmLabel={tr('Delete')}
+          onCancel={() => setDeleting(null)}
+          onConfirm={async () => {
+            remove(deleting)
+            setDeleting(null)
+          }}
+        >
+          <p>{tr('It stays in Recently deleted for 7 days, so you can bring it back.')}</p>
+        </ConfirmAction>
+      )}
+
+      {loggingOut && (
+        <ConfirmAction
+          icon="logout"
+          title={tr('Log out?')}
+          confirmLabel={tr('Log out')}
+          onCancel={() => setLoggingOut(false)}
+          onConfirm={async () => {
+            await logout()
+            setLoggingOut(false)
+          }}
+        >
+          <p>{tr('You\'ll need your email and password to log back in, and this device stops getting reminders until you do.')}</p>
+        </ConfirmAction>
       )}
 
       {sendDialog && (

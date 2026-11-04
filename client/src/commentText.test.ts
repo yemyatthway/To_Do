@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insertMention, mentionAt, splitMentions } from './commentText'
+import { insertMention, mentionAt, splitMentions, writingLine } from './commentText'
 
 describe('splitMentions', () => {
   const members = ['aung_dev', 'mia']
@@ -42,5 +42,18 @@ describe('typing a mention', () => {
     const text = 'hi @mi there'
     const at = mentionAt(text, 6)!
     expect(insertMention(text, at, 6, 'mia')).toEqual({ text: 'hi @mia  there', caret: 8 })
+  })
+})
+
+describe('who is writing', () => {
+  const members = [{ id: 1, full_name: 'Aung Kyaw', username: 'aung' }, { id: 2, full_name: '', username: 'mia' }]
+  it('names one person by first name, and counts more', () => {
+    expect(writingLine([], members)).toBe('')
+    expect(writingLine([1], members)).toBe('Aung is writing…')
+    expect(writingLine([2], members)).toBe('@mia is writing…')
+    expect(writingLine([1, 2], members)).toBe('2 people are writing…')
+  })
+  it('ignores someone no longer in the workspace', () => {
+    expect(writingLine([9], members)).toBe('')
   })
 })

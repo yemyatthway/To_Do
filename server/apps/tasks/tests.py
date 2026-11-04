@@ -228,3 +228,88 @@ class SafeRetryTests(APITestCase):
             response = self.client.patch(f"/api/tasks/{task_id}/", {"title": "Half saved?"}, format="json")
         self.assertEqual(response.status_code, 500)
         self.assertEqual(Task.objects.get(pk=task_id).title, "Call the dentist")
+
+
+class BrowseTasksTests(APITestCase):
+    """The Tasks page: three separate lists, a page at a time, each person's own."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("mia@example.com", "Sunny-Clock-2026", full_name="Mia", email_verified_at=timezone.now())
+        self.client.force_authenticate(self.user)
+        self.now = timezone.now()
+
+    def make(self, title, hours=None, **extra):
+        due = None if hours is None else self.now + timedelta(hours=hours)
+        return Task.objects.create(owner=self.user, title=title, due_at=due, **extra)
+
+    def browse(self, **params):
+        response = self.client.get("/api/tasks/browse/", {"now": self.now.isoformat(), **params})
+        self.assertEqual(response.status_code, 200)
+        return response.data
+
+    def titles(self, **params):
+        return [task["title"] for task in self.browse(**params)["results"]]
+
+    def test_each_task_lands_in_exactly_one_list(self):
+        self.make("later", 2)
+        self.make("anytime")
+        self.make("expired an hour ago", -1)
+        self.make("from yesterday", -26)
+        self.make("finished", -3, done=True)
+        self.make("finished later", 3, done=True)
+        self.assertCountEqual(self.titles(list="todo"), ["later", "anytime"])
+        self.assertCountEqual(self.titles(list="overdue"), ["expired an hour ago", "from yesterday"])
+        self.assertCountEqual(self.titles(list="done"), ["finished", "finished later"])
+        self.assertEqual(self.browse()["counts"], {"todo": 2, "overdue": 2, "done": 2})
+
+    def test_order_soonest_first_with_anytime_last_and_newest_overdue_first(self):
+        self.make("anytime")
+        self.make("in five", 5)
+        self.make("in one", 1)
+        self.assertEqual(self.titles(list="todo"), ["in one", "in five", "anytime"])
+        self.make("long ago", -50)
+        self.make("just now", -1)
+        self.assertEqual(self.titles(list="overdue"), ["just now", "long ago"])
+
+    def test_same_time_goes_by_priority(self):
+        self.make("low", 1, priority="low")
+        self.make("high", 1, priority="high")
+        self.assertEqual(self.titles(list="todo")[0], "high")
+
+    def test_pages(self):
+        for i in range(45):
+            self.make(f"task {i:02}", i + 1)
+        first = self.browse(list="todo")
+        self.assertEqual((len(first["results"]), first["page"], first["pages"]), (20, 1, 3))
+        last = self.browse(list="todo", page=3)
+        self.assertEqual(len(last["results"]), 5)
+        self.assertEqual(last["results"][-1]["title"], "task 44")
+        # A page that's gone (tasks were finished) shows the last one instead of nothing.
+        self.assertEqual(self.browse(list="todo", page=99)["page"], 3)
+
+    def test_search_and_filters_also_change_the_counts(self):
+        self.make("Pay rent", 1, category="personal", priority="high")
+        self.make("Team call", 2, category="work", notes="about rent")
+        self.make("Rent receipt", -2, category="personal")
+        self.assertCountEqual(self.titles(q="rent"), ["Pay rent", "Team call"])
+        self.assertEqual(self.browse(q="rent")["counts"], {"todo": 2, "overdue": 1, "done": 0})
+        self.assertEqual(self.titles(category="work"), ["Team call"])
+        self.assertEqual(self.titles(priority="high"), ["Pay rent"])
+
+    def test_a_date_range(self):
+        self.make("soon", 1)
+        self.make("next week", 24 * 8)
+        self.make("no date")
+        self.assertEqual(self.titles(**{"from": self.now.isoformat(), "to": (self.now + timedelta(days=7)).isoformat()}), ["soon"])
+
+    def test_only_your_own_and_nothing_deleted(self):
+        other = User.objects.create_user("ko@example.com", "Sunny-Clock-2026", full_name="Ko")
+        Task.objects.create(owner=other, title="not yours", due_at=self.now + timedelta(hours=1))
+        self.make("deleted", 1, deleted_at=self.now)
+        self.make("mine", 1)
+        self.assertEqual(self.titles(), ["mine"])
+
+    def test_nonsense_is_refused_clearly(self):
+        self.assertEqual(self.client.get("/api/tasks/browse/", {"list": "nope"}).status_code, 400)
+        self.assertEqual(self.client.get("/api/tasks/browse/", {"page": "x"}).status_code, 400)
+        self.assertEqual(self.client.get("/api/tasks/browse/", {"now": "soon"}).status_code, 400)

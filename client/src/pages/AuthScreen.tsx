@@ -3,6 +3,7 @@ import { ApiError, auth, isChallenge, isDeletedAccount, type DeletedAccount, typ
 import { AuthScene } from '../components/AuthScene'
 import { Banner } from '../components/Banner'
 import { CodeEntry } from '../components/CodeEntry'
+import { ForgotPassword } from '../components/ForgotPassword'
 import { Rule, type RuleState } from '../components/CheckRule'
 import { UsernameField } from '../components/UsernameField'
 import { usernameBlocks, useUsernameCheck } from '../components/usernameCheck'
@@ -33,6 +34,9 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
   // Set when the password was right for an account its owner deleted recently.
   const [deleted, setDeleted] = useState<DeletedAccount | null>(null)
   const [restoring, setRestoring] = useState(false)
+  const [forgot, setForgot] = useState(false)
+  const [stepTick, setStepTick] = useState(0)
+  const forgotSubmit = useRef<() => void>(() => {})
   // Server checks for the address as typed (kept with the value they're for).
   const [emailHint, setEmailHint] = useState<(EmailCheck & { for: string }) | null>(null)
   const [emailTouched, setEmailTouched] = useState(false)
@@ -51,7 +55,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
   // (instead of jumping), while the fields settle in just behind it.
   const shownMode = useRef<string>(mode)
   const heightBefore = useRef(0)
-  const step = challenge ? 'code' : deleted ? 'restore' : mode
+  const step = forgot ? `forgot-${stepTick}` : challenge ? 'code' : deleted ? 'restore' : mode
   useGsap(cardRef, () => {
     if (shownMode.current === step) return
     shownMode.current = step
@@ -125,6 +129,10 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (forgot) {
+      forgotSubmit.current()
+      return
+    }
     setFormError('')
     setNoticeText('')
     if (!validate()) return
@@ -189,6 +197,11 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
     }
   }
 
+  const glide = () => {
+    heightBefore.current = cardRef.current?.offsetHeight ?? 0
+    setStepTick((n) => n + 1)
+  }
+
   function backToLogin() {
     heightBefore.current = cardRef.current?.offsetHeight ?? 0
     setChallenge(null)
@@ -222,7 +235,19 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
       </div>
 
       <form ref={cardRef} className="auth-card glass" onSubmit={submit} noValidate aria-labelledby="auth-title">
-        {deleted ? (
+        {forgot ? (
+          <ForgotPassword
+            email={email}
+            onEmail={setEmail}
+            onBack={() => {
+              glide()
+              setForgot(false)
+            }}
+            onDone={onAuthenticated}
+            onSubmitReady={(run) => (forgotSubmit.current = run)}
+            onStep={glide}
+          />
+        ) : deleted ? (
           <>
             <div>
               <h1 id="auth-title" className="auth-title">
@@ -398,6 +423,19 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
                 </button>
               </div>
               {fieldError('password')}
+              {!registering && (
+                <button
+                  type="button"
+                  className="link-btn auth-forgot"
+                  onClick={() => {
+                    glide()
+                    setFormError('')
+                    setForgot(true)
+                  }}
+                >
+                  {tr('Forgot password?')}
+                </button>
+              )}
               {registering && (
                 <ul className="password-rules" aria-label={tr('Password requirements')}>
                   {PASSWORD_RULES.map((rule) => {

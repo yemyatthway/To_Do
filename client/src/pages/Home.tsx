@@ -12,6 +12,8 @@ import { tr } from '../i18n'
 
 const HOUR = 3600_000
 const CLOCK_STYLE_KEY = 'todo:clockStyle'
+/** Today stays about today: the rest of a long overdue list is on the Tasks page. */
+const OVERDUE_SHOWN = 3
 
 interface HomeProps {
   tasks: Task[]
@@ -27,6 +29,7 @@ interface HomeProps {
   onCreateAt: (day: Date, time: string) => void
   onAddOnDay: (day: Date) => void
   onShowProgress: () => void
+  onSeeOverdue: () => void
 }
 
 const time = (task: Task) => dueDate(task)!.getTime()
@@ -41,7 +44,7 @@ function dayLabel(date: Date, now: Date) {
   return formatShortDay(date)
 }
 
-export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveToToday, onOpen, onDelete, onCreateAt, onAddOnDay, onShowProgress }: HomeProps) {
+export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveToToday, onOpen, onDelete, onCreateAt, onAddOnDay, onShowProgress, onSeeOverdue }: HomeProps) {
   const [selectedHour, setSelectedHour] = useState<number | null>(null)
   const listRef = useRef<HTMLElement>(null)
 
@@ -195,14 +198,20 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
                 <h3 id="overdue-h" className="section-label">
                   <Icon name="clock" />
                   {tr('Overdue · {length}', { length: overdue.length })}</h3>
-                {overdue.length > 1 && (
-                  <button type="button" className="text-btn" onClick={() => onMoveToToday(overdue)}>
-                    {tr('Move all to today')}
+                {overdue.length > OVERDUE_SHOWN ? (
+                  <button type="button" className="text-btn" onClick={onSeeOverdue}>
+                    {tr('See all')}
                   </button>
+                ) : (
+                  overdue.length > 1 && (
+                    <button type="button" className="text-btn" onClick={() => onMoveToToday(overdue)}>
+                      {tr('Move all to today')}
+                    </button>
+                  )
                 )}
               </div>
               <ul className="task-list">
-                {overdue.map((task) => (
+                {overdue.slice(0, OVERDUE_SHOWN).map((task) => (
                   <TaskRow
                     key={task.id}
                     task={task}

@@ -19,16 +19,18 @@ interface TaskRowProps {
   onDelete: () => void
   /** An extra button before the trash (e.g. "Move to today" in the Overdue section). */
   action?: ReactNode
+  /** Already under a heading with its date, so only the time is needed. */
+  timeOnly?: boolean
 }
 
-export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }: TaskRowProps) {
+export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action, timeOnly }: TaskRowProps) {
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
   const drag = useRef<{ x: number; y: number; base: number; moved: boolean } | null>(null)
 
   const due = dueDate(task)
   // From another day (an overdue task), say which day too.
-  const when = due ? (sameDay(due, now) ? formatTime(due) : `${formatShortDay(due)}, ${formatTime(due)}`) : tr('Anytime')
+  const when = due ? (timeOnly || sameDay(due, now) ? formatTime(due) : `${formatShortDay(due)}, ${formatTime(due)}`) : tr('Anytime')
   // "Remind a friend": who put it in your list, or who you added yours for.
   const people = task.added_by_name
     ? tr('from {value}', { value: task.added_by_name.split(' ')[0] })
@@ -111,7 +113,7 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action }
           </span>
         </button>
         {fresh && <span className="badge badge-new">{tr('New')}</span>}
-        {!fresh && relative && (
+        {!fresh && relative && !(timeOnly && relative === tr('Overdue')) && (
           <span className={`badge ${relative === tr('Overdue') ? 'badge-late' : 'badge-soon'}`}>{relative}</span>
         )}
         {!fresh && !relative && task.priority === 'high' && !task.done && <span className="badge badge-high">{tr('High')}</span>}

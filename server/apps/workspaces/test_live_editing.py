@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from unittest import mock
 
 from django.test import override_settings
@@ -7,7 +8,7 @@ from rest_framework.test import APITestCase
 
 from apps.users.models import User
 
-from .models import Membership, Page, Table, Workspace
+from .models import ActivityEvent, Membership, Page, Table, Workspace
 
 PASSWORD = "Sunny-Clock-2026"
 
@@ -100,3 +101,94 @@ class LiveEditingTests(APITestCase):
     def test_passes_are_short_lived(self):
         self.client.force_authenticate(self.editor)
         self.assertLessEqual(self.client.get("/api/live/token/").data["token_request"]["ttl"], 15 * 60 * 1000)
+
+
+@override_settings(ABLY_API_KEY="", LIVE_SEND_ASYNC=False)
+class AssigningYourselfTests(APITestCase):
+    def setUp(self):
+        self.owner, self.admin, self.editor = person("olivia"), person("adam"), person("eve")
+        self.workspace = Workspace.objects.create(name="Dev Team")
+        for user, role in ((self.owner, "owner"), (self.admin, "admin"), (self.editor, "editor")):
+            Membership.objects.create(workspace=self.workspace, user=user, role=role)
+        self.base = f"/api/workspaces/{self.workspace.pk}"
+        self.client.force_authenticate(self.owner)
+        self.table = self.client.post(f"{self.base}/tables/", {"title": "Bugs"}, format="json").data
+        self.person_column = next(c["id"] for c in self.table["columns"] if c["type"] == "person")
+        self.rows = f"{self.base}/tables/{self.table['id']}/rows/"
+        self.row = self.client.post(self.rows, {}, format="json").data["id"]
+
+    def assign(self, who, to):
+        self.client.force_authenticate(who)
+        return self.client.patch(f"{self.rows}{self.row}/", {"values": {self.person_column: to.pk}}, format="json")
+
+    def test_the_owner_and_admins_cannot_assign_themselves(self):
+        self.assertEqual(self.assign(self.owner, self.owner).status_code, 400)
+        self.assertEqual(self.assign(self.admin, self.admin).status_code, 400)
+
+    def test_nor_on_a_new_row(self):
+        response = self.client.post(self.rows, {"values": {self.person_column: self.owner.pk}}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_they_can_assign_other_people(self):
+        self.assertEqual(self.assign(self.owner, self.editor).status_code, 200)
+
+    def test_an_editor_can_take_work_themselves(self):
+        self.assertEqual(self.assign(self.editor, self.editor).status_code, 200)
+
+    def test_a_row_already_theirs_can_still_be_edited(self):
+        self.assertEqual(self.assign(self.editor, self.owner).status_code, 200)
+        self.client.force_authenticate(self.owner)
+        text = next(c["id"] for c in self.table["columns"] if c["type"] == "text")
+        response = self.client.patch(f"{self.rows}{self.row}/", {"values": {text: "hi", self.person_column: self.owner.pk}}, format="json")
+        self.assertEqual(response.status_code, 200)
+
+
+class ActivityScreenTests(APITestCase):
+    def setUp(self):
+        self.owner, self.editor = person("olivia"), person("eve")
+        self.workspace = Workspace.objects.create(name="Dev Team")
+        for user, role in ((self.owner, "owner"), (self.editor, "editor")):
+            Membership.objects.create(workspace=self.workspace, user=user, role=role)
+        self.url = f"/api/workspaces/{self.workspace.pk}/activity/"
+        self.client.force_authenticate(self.owner)
+        now = timezone.now()
+        for i in range(25):
+            ActivityEvent.objects.create(workspace=self.workspace, actor=self.owner, verb="page.edited", target_kind="page", target_id=1, title=f"Notes {i}", created_at=now - timedelta(minutes=i))
+        ActivityEvent.objects.create(workspace=self.workspace, actor=self.editor, verb="comment.row", target_kind="row", target_id=1, title="Bugs", detail={"no": 3, "table_id": 1}, created_at=now - timedelta(days=9))
+        ActivityEvent.objects.create(workspace=self.workspace, actor=self.editor, verb="column.added", target_kind="table", target_id=1, title="Bugs", detail={"column": "Size"}, created_at=now - timedelta(days=9))
+
+    def screen(self, **params):
+        response = self.client.get(self.url, {"number": 1, **params})
+        self.assertEqual(response.status_code, 200)
+        return response.data
+
+    def test_pages(self):
+        first = self.screen()
+        self.assertEqual((len(first["items"]), first["number"], first["pages"]), (20, 1, 2))
+        self.assertIn("Notes 0", first["items"][0]["text"])
+        last = self.screen(number=2)
+        self.assertEqual(len(last["items"]), 7)
+        self.assertEqual(self.screen(number=99)["number"], 2)
+
+    def test_filters(self):
+        self.assertEqual(len(self.screen(actor=self.editor.pk)["items"]), 2)
+        self.assertIn("commented on row 3", self.screen(kind="comments")["items"][0]["text"])
+        self.assertIn("added the column", self.screen(kind="tables")["items"][0]["text"])
+        self.assertEqual(self.screen(kind="people")["items"], [])
+        self.assertEqual(len(self.screen(q="Bugs")["items"]), 2)
+        self.assertEqual(len(self.screen(q="eve")["items"]), 2)
+        self.assertEqual(self.screen(since=timezone.now().isoformat())["items"], [])
+
+    def test_the_reader_gets_their_own_language(self):
+        User.objects.filter(pk=self.owner.pk).update(language="my")
+        self.owner.refresh_from_db()
+        self.client.force_authenticate(self.owner)
+        self.assertIn("ပြင်လိုက်သည်", self.screen()["items"][0]["text"])
+
+    def test_the_older_view_still_works(self):
+        data = self.client.get(self.url).data
+        self.assertIn("more", data)
+
+    def test_outsiders_see_nothing(self):
+        self.client.force_authenticate(person("otto"))
+        self.assertEqual(self.client.get(self.url, {"number": 1}).status_code, 404)

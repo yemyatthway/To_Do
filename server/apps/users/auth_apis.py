@@ -9,6 +9,8 @@ from datetime import timedelta
 from urllib.parse import urlsplit
 
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from django.utils import timezone
@@ -31,6 +33,9 @@ from .serializers import (
     CodeSerializer,
     DeleteAccountSerializer,
     EmailCheckSerializer,
+    ForgotPasswordSerializer,
+    ResetCodeSerializer,
+    ResetPasswordSerializer,
     UsernameCheckSerializer,
     LoginCodeSerializer,
     LoginSerializer,
@@ -38,7 +43,7 @@ from .serializers import (
     TrustedDeviceSerializer,
     UserSerializer,
 )
-from .services import change_password, delete_account, restore_account, restore_deadline, user_login
+from .services import change_password, delete_account, end_sessions, restore_account, restore_deadline, user_login
 
 
 def _client_ip(request):
@@ -211,6 +216,81 @@ class LoginResendApi(APIView):
         return Response({"resend_in": resend_in, "expires_at": otp.code_expires_at(user, EmailCode.Purpose.LOGIN, nonce)})
 
 
+class ForgotPasswordApi(APIView):
+    """Forgot your password? Body: {email}. Always the same answer, account or not."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "otp"
+
+    def post(self, request):
+        if not _trusted_origin(request):
+            return _forbidden_origin()
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        otp.send_reset_code(serializer.validated_data["email"])
+        return Response(
+            {
+                "resend_in": settings.OTP_RESEND_SECONDS,
+                "expires_at": timezone.now() + timedelta(minutes=settings.OTP_TTL_MINUTES),
+            }
+        )
+
+
+class ResetCodeApi(APIView):
+    """The emailed code. Body: {email, code}. Answers with a ticket for choosing a new password."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "otp"
+
+    def post(self, request):
+        if not _trusted_origin(request):
+            return _forbidden_origin()
+        serializer = ResetCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response({"ticket": otp.check_reset_code(serializer.validated_data["email"], serializer.validated_data["code"])})
+
+
+class ResetPasswordApi(APIView):
+    """The new password. Body: {ticket, password}. Every other device is logged out and forgotten,
+    in case someone else was in the account, and this one is signed straight in."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_scope = "otp"
+
+    def post(self, request):
+        if not _trusted_origin(request):
+            return _forbidden_origin()
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = otp.read_reset_ticket(serializer.validated_data["ticket"])
+        password = serializer.validated_data["password"]
+        try:
+            validate_password(password, user=user)
+        except DjangoValidationError as error:
+            raise ValidationError({"password": list(error.messages)})
+        user.set_password(password)
+        # They proved the mailbox is theirs, which also clears any lock from wrong guesses.
+        user.email_verified_at = user.email_verified_at or timezone.now()
+        user.failed_login_count = 0
+        user.locked_until = None
+        user.save(update_fields=["password", "email_verified_at", "failed_login_count", "locked_until"])
+        end_sessions(user)
+        TrustedDevice.objects.filter(user=user).delete()
+        ip = _client_ip(request)
+        user.last_login_at = timezone.now()
+        user.last_login_ip = ip
+        user.save(update_fields=["last_login_at", "last_login_ip"])
+        events.record(user, AuthEvent.Kind.PASSWORD)
+        events.record(user, AuthEvent.Kind.LOGIN, ip=ip)
+        mail.send_password_changed(user)
+        response = _session_response(user)
+        otp.trust_device(request, response, user, ip=ip)
+        return response
+
+
 class VerifyEmailApi(APIView):
     """Confirm your email with the code we sent. Body: {code}."""
 
@@ -342,6 +422,9 @@ class RefreshApi(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         payload = _read_refresh_token(token)
+        # An account erased for good can leave a still-valid cookie behind in someone's browser.
+        if payload and not User.all_objects.filter(pk=payload["user_id"]).exists():
+            return _session_over()
         if payload and _is_blacklisted(payload["jti"]):
             # Rotated a moment ago: the same request twice, not a stolen token. Answering with a
             # new token, rather than clearing the cookie, also keeps the one the first answer set.

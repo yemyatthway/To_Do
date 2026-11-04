@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, workspaces as api, type ActivityItem, type Comment, type Member } from '../api'
-import { insertMention, mentionAt, splitMentions } from '../commentText'
+import { insertMention, mentionAt, splitMentions, writingLine } from '../commentText'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
 import { memberName } from '../tableLogic'
@@ -13,6 +13,7 @@ import { tr } from '../i18n'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 const MAX_COMMENT_FILES = 6
+const WRITING_LASTS_MS = 5000
 
 export type CommentTarget = { workspaceId: number; pageId: number } | { workspaceId: number; tableId: number; rowId: number }
 
@@ -23,10 +24,14 @@ interface CommentsProps {
   canComment: boolean
   /** Comments changed, so anything counting them can catch up. */
   onChanged?: () => void
+  /** Who else is writing a comment here right now. */
+  writers?: number[]
+  /** Whether I am. */
+  onWriting?: (writing: boolean) => void
 }
 
 /** The comments on a page or a table row. */
-export function Comments({ target, now, members, canComment, onChanged }: CommentsProps) {
+export function Comments({ target, now, members, canComment, onChanged, writers = [], onWriting }: CommentsProps) {
   const [comments, setComments] = useState<Comment[] | null>(null)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<Comment | null>(null)
@@ -105,7 +110,17 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
           </div>
         </article>
       ))}
-      {canComment && <Composer workspaceId={workspaceId} members={members} onSend={send} />}
+      {writingLine(writers, members) && (
+        <p className="comment-writing" role="status">
+          {writingLine(writers, members)}
+          <span className="writing-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </p>
+      )}
+      {canComment && <Composer workspaceId={workspaceId} members={members} onSend={send} onWriting={onWriting} />}
       {deleting && (
         <ConfirmAction
           danger
@@ -127,7 +142,25 @@ export function Comments({ target, now, members, canComment, onChanged }: Commen
   )
 }
 
-function Composer({ workspaceId, members, onSend }: { workspaceId: number; members: Member[]; onSend: (body: string, files: number[]) => Promise<void> }) {
+function Composer({ workspaceId, members, onSend, onWriting }: { workspaceId: number; members: Member[]; onSend: (body: string, files: number[]) => Promise<void>; onWriting?: (writing: boolean) => void }) {
+  // Others see "is writing…" only while the words are really coming.
+  const writingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const tellWriting = (writing: boolean) => {
+    clearTimeout(writingTimer.current)
+    onWriting?.(writing)
+    if (writing) writingTimer.current = setTimeout(() => onWriting?.(false), WRITING_LASTS_MS)
+  }
+  const stopWriting = useRef(onWriting)
+  useEffect(() => {
+    stopWriting.current = onWriting
+  })
+  useEffect(
+    () => () => {
+      clearTimeout(writingTimer.current)
+      stopWriting.current?.(false)
+    },
+    [],
+  )
   const [attached, setAttached] = useState<number[]>([])
   const running = useUploads()
   const stillSending = attached.some((id) => running.has(id))
@@ -185,6 +218,7 @@ function Composer({ workspaceId, members, onSend }: { workspaceId: number; membe
     try {
       await onSend(text, attached)
       setText('')
+      tellWriting(false)
       setCaret(0)
       setAttached([])
     } catch (err) {
@@ -239,6 +273,7 @@ function Composer({ workspaceId, members, onSend }: { workspaceId: number; membe
           setCaret(e.target.selectionStart)
           setPicked(0)
           setError('')
+          tellWriting(Boolean(e.target.value.trim()))
         }}
         onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
         onPaste={(e) => {
@@ -355,35 +390,42 @@ export function ActivityList({ workspaceId, now, pageId, rowId, onOpen }: Activi
   return (
     <>
       {items.length === 0 && <p className="empty">{tr('Nothing has happened here yet.')}</p>}
-      <ul className="activity-list">
-        {items.map((item) => {
-          const line = (
-            <>
-              <span className="activity-text">
-                <strong>{item.actor}</strong> {item.text}
-              </span>
-              <span className="task-meta">{timeAgo(item.created_at, now)}</span>
-            </>
-          )
-          return (
-            <li key={item.id}>
-              {onOpen && item.url ? (
-                <button type="button" className="activity-row" onClick={() => onOpen(item.url!)}>
-                  {line}
-                </button>
-              ) : (
-                <div className="activity-row">{line}</div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      <ActivityRows items={items} now={now} onOpen={onOpen} />
       {more && (
         <button type="button" className="text-btn activity-more" disabled={loadingMore} onClick={() => void showMore()}>
           {loadingMore ? tr('Loading…') : tr('Show more')}
         </button>
       )}
     </>
+  )
+}
+
+/** History as rows: each one opens the thing it's about, while that still exists. */
+export function ActivityRows({ items, now, onOpen }: { items: ActivityItem[]; now: Date; onOpen?: (url: string) => void }) {
+  return (
+    <ul className="activity-list">
+      {items.map((item) => {
+        const line = (
+          <>
+            <span className="activity-text">
+              <strong>{item.actor}</strong> {item.text}
+            </span>
+            <span className="task-meta">{timeAgo(item.created_at, now)}</span>
+          </>
+        )
+        return (
+          <li key={item.id}>
+            {onOpen && item.url ? (
+              <button type="button" className="activity-row" onClick={() => onOpen(item.url!)}>
+                {line}
+              </button>
+            ) : (
+              <div className="activity-row">{line}</div>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

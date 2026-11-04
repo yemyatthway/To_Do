@@ -2,7 +2,8 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Case, Count, F, IntegerField, Prefetch, Q, Value, When
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -26,6 +27,8 @@ def _parse_bound(request, name):
 
 
 OVERDUE_LIMIT = 100
+BROWSE_PAGE_SIZE = 20
+MAX_SEARCH = 100
 
 
 def _same(field, a, b):
@@ -43,6 +46,8 @@ class TaskViewSet(viewsets.ModelViewSet):
       ?anytime=1              also include tasks without a due time
       ?overdue_before=<iso>   only unfinished tasks due before then (the client's start of today),
                               newest first, at most OVERDUE_LIMIT
+
+    GET /browse/ is the Tasks page: one of the three lists (todo, overdue, done), a page at a time.
 
     DELETE moves a task to "Recently deleted" (soft delete). From there:
       GET  /trash/              deleted tasks you can still restore (newest first)
@@ -120,6 +125,50 @@ class TaskViewSet(viewsets.ModelViewSet):
             task.save(update_fields=["deleted_at"])
             cancel_copies(task)
         self._changed()
+
+    @action(detail=False)
+    def browse(self, request):
+        """?list=todo|overdue|done&now=<iso>&page=1, plus q, category, priority, from and to.
+        The counts are for all three lists under the same search and filters."""
+        params = request.query_params
+        now = _parse_bound(request, "now") or timezone.now()
+        lists = {
+            "todo": Q(done=False) & (Q(due_at__gte=now) | Q(due_at__isnull=True)),
+            "overdue": Q(done=False, due_at__lt=now),
+            "done": Q(done=True),
+        }
+        chosen = params.get("list", "todo")
+        if chosen not in lists:
+            raise ValidationError({"list": "Use one of: todo, overdue, done."})
+        try:
+            page = max(int(params.get("page", 1)), 1)
+        except ValueError:
+            raise ValidationError({"page": "That isn't valid."})
+
+        tasks = self.get_queryset()
+        if query := params.get("q", "").strip()[:MAX_SEARCH]:
+            tasks = tasks.filter(Q(title__icontains=query) | Q(notes__icontains=query))
+        if params.get("category"):
+            tasks = tasks.filter(category=params["category"])
+        if params.get("priority"):
+            tasks = tasks.filter(priority=params["priority"])
+        if (after := _parse_bound(request, "from")) is not None:
+            tasks = tasks.filter(due_at__gte=after)
+        if (before := _parse_bound(request, "to")) is not None:
+            tasks = tasks.filter(due_at__lt=before)
+
+        counts = tasks.aggregate(**{name: Count("pk", filter=rule) for name, rule in lists.items()})
+        rank = Case(When(priority="high", then=Value(0)), When(priority="medium", then=Value(1)), default=Value(2), output_field=IntegerField())
+        order = {
+            # Soonest first, and tasks with no time after every dated one.
+            "todo": [F("due_at").asc(nulls_last=True), rank, "pk"],
+            "overdue": [F("due_at").desc(), rank, "pk"],
+            "done": [Coalesce("due_at", "completed_at", "updated_at").desc(), "-pk"],
+        }[chosen]
+        pages = max((counts[chosen] + BROWSE_PAGE_SIZE - 1) // BROWSE_PAGE_SIZE, 1)
+        page = min(page, pages)
+        rows = tasks.filter(lists[chosen]).order_by(*order)[(page - 1) * BROWSE_PAGE_SIZE : page * BROWSE_PAGE_SIZE]
+        return Response({"results": self.get_serializer(rows, many=True).data, "counts": counts, "page": page, "pages": pages})
 
     def _trash(self):
         cutoff = timezone.now() - timedelta(days=settings.TASK_RESTORE_DAYS)

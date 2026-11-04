@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, workspaces as api, type Member, type Role, type TeamPage, type TeamTable, type WorkspaceDetail, type WorkspaceList } from '../api'
 import { ConfirmAction } from '../components/ConfirmAction'
-import { ActivityList } from '../components/Comments'
+import { ActivityScreen } from '../components/ActivityScreen'
+import { InviteField } from '../components/InviteField'
 import { CardsSkeleton, Loading, SkeletonRows } from '../components/Loading'
 import { PageEditor } from '../components/PageEditor'
 import { TableView } from '../components/TableView'
@@ -470,11 +471,7 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
       )}
 
       {section === 'activity' && (
-        <section className="card glass panel" aria-label={tr('Activity')}>
-          <div className="panel-scroll">
-            <ActivityList workspaceId={id} now={now} onOpen={onOpenUrl} />
-          </div>
-        </section>
+        <ActivityScreen workspaceId={id} userId={myId} members={data.members} now={now} onOpen={onOpenUrl} />
       )}
 
       {section === 'home' && itemsPanel}
@@ -713,10 +710,10 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
             }
           }}
         >
-          <label className="field-group" style={leftField}>
+          <div className="field-group" style={leftField}>
             <span className="label">{tr('@username or email')}</span>
-            <input data-autofocus className="field" value={text} placeholder="@username" autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => setText(e.target.value)} />
-          </label>
+            <InviteField value={text} onChange={setText} members={data.members} invited={data.invitations.map((i) => i.label)} />
+          </div>
           <label className="field-group" style={leftField}>
             <span className="label">{tr('Role')}</span>
             <select className="field" value={role} onChange={(e) => setRole(e.target.value as Role)}>

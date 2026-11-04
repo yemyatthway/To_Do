@@ -165,6 +165,19 @@ class ChallengeSerializer(serializers.Serializer):
     challenge = serializers.CharField(max_length=300)
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=160)
+
+
+class ResetCodeSerializer(ForgotPasswordSerializer):
+    code = serializers.CharField(max_length=12)
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    ticket = serializers.CharField(max_length=500)
+    password = serializers.CharField(trim_whitespace=False, write_only=True)
+
+
 class EmailCheckSerializer(serializers.Serializer):
     email = serializers.CharField(max_length=200, allow_blank=True)
 

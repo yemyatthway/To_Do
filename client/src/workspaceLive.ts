@@ -38,3 +38,19 @@ export function useWorkspaceLive(workspaceId: number, me: number, place: Place, 
 /** The same colour for the same person on every screen. */
 const PEER_COLORS = ['#e0676b', '#2fa597', '#8c7df5', '#e39a3b', '#4a86f0', '#c868b8']
 export const peerColor = (id: number) => PEER_COLORS[Math.abs(id) % PEER_COLORS.length]
+
+/** A line or cell is held only while someone's really working in it, so walking away never blocks anyone. */
+const HOLD_MS = 30_000
+
+/** `touch` on every keystroke; `idle` turns true when they stop for a while. */
+export function useEditHold() {
+  const [idle, setIdle] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const touch = useCallback(() => {
+    setIdle(false)
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setIdle(true), HOLD_MS)
+  }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  return { idle, touch }
+}

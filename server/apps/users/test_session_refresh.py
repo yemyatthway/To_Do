@@ -66,13 +66,18 @@ class RefreshCollisionTests(TestCase):
 
     def test_banning_ends_the_grace_period_at_once(self):
         self.client.post("/api/auth/refresh/")
-        services._end_sessions(self.user)
+        services.end_sessions(self.user)
         self.assertEqual(self.resend_old().status_code, 401)
 
     def test_a_banned_account_gets_no_grace(self):
         self.client.post("/api/auth/refresh/")
         User.objects.filter(pk=self.user.pk).update(is_active=False)
         self.assertEqual(self.resend_old().status_code, 401)
+
+    def test_an_account_erased_for_good_is_a_clean_sign_out(self):
+        User.all_objects.filter(pk=self.user.pk).delete()
+        self.client.cookies[COOKIE] = self.old
+        self.assertEqual(self.client.post("/api/auth/refresh/").status_code, 401)
 
     def test_a_made_up_token_is_refused(self):
         self.client.cookies[COOKIE] = "not-a-token"

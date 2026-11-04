@@ -76,6 +76,7 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
       label: '',
       items: [
         { id: 'home', label: tr('Today'), icon: 'clock' },
+        { id: 'tasks', label: tr('Tasks'), icon: 'check' },
         { id: 'notifications', label: tr('Notifications'), icon: 'inbox', badge: noticeBadge },
       ],
     },

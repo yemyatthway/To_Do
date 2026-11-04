@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { tr } from './i18n'
 
-export type View = 'home' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace' | 'notifications'
+export type View = 'home' | 'tasks' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace' | 'notifications'
 
 export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles' | 'activity'
 export type WorkspaceChild = WorkspaceSection | 'page' | 'table'
@@ -28,6 +28,7 @@ export type Route =
 
 const PLAIN: Partial<Record<string, Route>> = {
   chats: { view: 'chats' },
+  tasks: { view: 'tasks' },
   more: { view: 'more' },
   progress: { view: 'progress' },
   timer: { view: 'timer' },

@@ -12,11 +12,19 @@
 /** Anything less than this is the address bar moving, not a keyboard. */
 const KEYBOARD_MIN_HEIGHT = 120
 const LOCK_INSIDE = '.panel, .thread, .scrim, .menu-layer'
+const SETTLE_AFTER_MS = [50, 150, 300, 600, 1000]
 
 export function isKeyboardOpen(fullHeight: number, visibleHeight: number, scale: number, typing: boolean) {
   // Pinch-zooming also shrinks the visible area, but that's not a keyboard.
   return typing && scale < 1.05 && fullHeight - visibleHeight > KEYBOARD_MIN_HEIGHT
 }
+
+/**
+ * How far to shift things to stay on screen. Only a keyboard or a pinch-zoom can truly move the visible
+ * area. iPhones can report a leftover offset after the keyboard closes, which would push a whole screen
+ * down by the keyboard's height, so anything else counts as no shift at all.
+ */
+export const visibleTop = (open: boolean, scale: number, offsetTop: number) => (open || scale >= 1.05 ? Math.round(offsetTop) : 0)
 
 const isTyping = (el: Element | null) => {
   if (!(el instanceof HTMLElement)) return false
@@ -31,6 +39,9 @@ export function watchKeyboard() {
   let fullHeight = view.height
   let width = view.width
   let lockedFromScroll: number | null = null
+  let settling: ReturnType<typeof setTimeout>[] = []
+  // Where the page belongs after the keyboard, held until iPhone has finished moving it around.
+  let restoreScroll: number | null = null
 
   const update = () => {
     if (view.width !== width) {
@@ -42,7 +53,7 @@ export function watchKeyboard() {
     const open = isKeyboardOpen(fullHeight, view.height, view.scale, isTyping(active))
     if (!open) fullHeight = Math.max(fullHeight, view.height)
     root.style.setProperty('--vvh', `${Math.round(view.height)}px`)
-    root.style.setProperty('--vv-top', `${Math.round(view.offsetTop)}px`)
+    root.style.setProperty('--vv-top', `${visibleTop(open, view.scale, view.offsetTop)}px`)
     root.classList.toggle('keyboard-open', open)
 
     const lock = open && Boolean(active?.closest(LOCK_INSIDE))
@@ -53,14 +64,31 @@ export function watchKeyboard() {
     if (lock && view.offsetTop > 0) window.scrollTo(0, 0)
     if (!lock && lockedFromScroll !== null) {
       root.classList.remove('keyboard-lock')
-      window.scrollTo(0, lockedFromScroll)
+      restoreScroll = lockedFromScroll
       lockedFromScroll = null
     }
+    if (open) restoreScroll = null
+    if (restoreScroll !== null) window.scrollTo(0, restoreScroll)
   }
 
-  view.addEventListener('resize', update)
+  /** The keyboard slides for a while and the last events can be missing, so look again until it's done. */
+  const updateAndSettle = () => {
+    update()
+    settling.forEach(clearTimeout)
+    settling = SETTLE_AFTER_MS.map((ms) => setTimeout(update, ms))
+    settling.push(
+      setTimeout(() => {
+        update()
+        restoreScroll = null
+      }, SETTLE_AFTER_MS.at(-1)! + 100),
+    )
+  }
+
+  view.addEventListener('resize', updateAndSettle)
   view.addEventListener('scroll', update)
   document.addEventListener('focusin', update)
-  document.addEventListener('focusout', () => setTimeout(update, 50))
+  document.addEventListener('focusout', updateAndSettle)
+  window.addEventListener('pageshow', updateAndSettle)
+  document.addEventListener('visibilitychange', updateAndSettle)
   update()
 }

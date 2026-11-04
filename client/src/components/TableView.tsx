@@ -4,8 +4,9 @@ import { ApiError, workspaces as api, type CellValue, type ColumnType, type Memb
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
 import { isLive, type Peer } from '../realtime'
-import { peerColor, useWorkspaceLive } from '../workspaceLive'
+import { peerColor, useEditHold, useWorkspaceLive } from '../workspaceLive'
 import { PeerTag, Peers } from './Peers'
+import { Sheet } from './Sheet'
 import { pageStorage } from '../pageSaver'
 import { RowSaver, type RowSaveState } from '../rowSaver'
 import {
@@ -243,15 +244,26 @@ function TableScreen({
     if (draft.table !== tableId || typeof draft.text !== 'string') return
     setDrafts((all) => ({ ...all, [`${draft.row}:${draft.column}`]: { text: draft.text!, at: Date.now() } }))
   }
+  const { idle, touch } = useEditHold()
+  const [sheetColumn, setSheetColumn] = useState<string | null>(null)
+  const [commenting, setCommenting] = useState(false)
   const { people, sendDraft } = useWorkspaceLive(
     workspaceId,
     userId,
-    editing ? { table: tableId, row: editing.row, column: editing.column } : openRow ? { table: tableId, row: openRow } : { table: tableId },
+    editing
+      ? { table: tableId, row: editing.row, column: idle ? undefined : editing.column }
+      : openRow
+        ? { table: tableId, row: openRow, column: idle || !sheetColumn ? undefined : sheetColumn, commenting: commenting || undefined }
+        : { table: tableId },
     onEvent,
     onDraft,
   )
   const others = people.filter((peer) => peer.place.table === tableId)
+  // Owners and admins hand work out, so they aren't offered themselves (the server refuses it too).
+  const myRole = members.find((m) => m.id === userId)?.role
+  const notAssignable = myRole === 'owner' || myRole === 'admin' ? userId : null
   const typing = (row: number, column: string, text: string) => {
+    touch()
     if (others.length) sendDraft({ table: tableId, row, column, text })
   }
 
@@ -543,10 +555,15 @@ function TableScreen({
                     canEdit={canEdit}
                     workspaceId={workspaceId}
                     editing={editing?.row === row.id && editing.column === column.id}
-                    onEdit={() => setEditing({ row: row.id, column: column.id })}
+                    onEdit={() => {
+                      setEditing({ row: row.id, column: column.id })
+                      touch()
+                    }}
+                    heldBy={peer && !(editing?.row === row.id && editing.column === column.id) ? members.find((m) => m.id === peer.id) : undefined}
                     onDone={() => setEditing(null)}
                     onChange={(value, was) => setCells(row, { [column.id]: value }, was === undefined ? row.values : { [column.id]: was })}
                     draft={drafts[`${row.id}:${column.id}`]?.text}
+                    notAssignable={notAssignable}
                     onTyping={(text) => typing(row.id, column.id, text)}
                   />
                 </div>
@@ -596,7 +613,13 @@ function TableScreen({
           onClose={closeRow}
           onCells={(values) => setCells(opened, values)}
           onTyping={(column, text) => typing(opened.id, column, text)}
+          notAssignable={notAssignable}
+          onField={(column) => {
+            setSheetColumn(column)
+            if (column) touch()
+          }}
           others={others.filter((peer) => peer.place.row === opened.id)}
+          onWriting={setCommenting}
           onHighlight={(on) => {
             saver.edit(opened.id, {}, {}, on)
             redraw((n) => n + 1)
@@ -688,6 +711,9 @@ interface GridCellProps {
   /** What someone else is typing here right now. */
   draft?: string
   onTyping: (text: string) => void
+  notAssignable: number | null
+  /** Someone else is in this cell right now, so it's theirs until they finish. */
+  heldBy?: Member
 }
 
 /** Cells read as plain text until clicked, so a long table stays quick. */
@@ -768,12 +794,13 @@ function CellFiles({ workspaceId, value, canEdit, columnName, expanded, onChange
   )
 }
 
-function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange, draft, onTyping }: GridCellProps) {
+function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, onEdit, onDone, onChange, draft, onTyping, notAssignable, heldBy }: GridCellProps) {
   const value = row.values[column.id]
   if (column.type === 'file') return <CellFiles workspaceId={workspaceId} value={value} canEdit={canEdit} columnName={column.name} onChange={onChange} />
   if (column.type === 'checkbox') return <RowCheck row={row} column={column} canEdit={canEdit} onChange={onChange} />
   const text = draft ?? displayValue(column, value, members)
   if (!canEdit) return <span className="grid-text">{text}</span>
+  if (heldBy) return <span className="grid-text is-held" title={tr('{name} is editing this', { name: memberName(heldBy) })}>{text}</span>
   if (!editing) {
     return (
       <button type="button" className={`grid-text grid-edit${text ? '' : ' empty-cell'}`} aria-label={tr('{name}, row {no}: {value}. Edit', { name: column.name, no: row.no, value: text || 'empty' })} onClick={onEdit}>
@@ -781,7 +808,7 @@ function GridCell({ row, column, rows, members, canEdit, workspaceId, editing, o
       </button>
     )
   }
-  return <CellEditor column={column} value={value} rows={rows} members={members} autoFocus onChange={onChange} onDone={onDone} onTyping={onTyping} />
+  return <CellEditor column={column} value={value} rows={rows} members={members} autoFocus onChange={onChange} onDone={onDone} onTyping={onTyping} notAssignable={notAssignable} />
 }
 
 interface CellEditorProps {
@@ -796,9 +823,11 @@ interface CellEditorProps {
   onChange: (value: CellValue, was?: CellValue) => void
   onDone?: () => void
   onTyping?: (text: string) => void
+  /** Someone the person list leaves out, unless the cell already holds them. */
+  notAssignable: number | null
 }
 
-function CellEditor({ column, value, rows, members, autoFocus, label, live, onChange, onDone, onTyping }: CellEditorProps) {
+function CellEditor({ column, value, rows, members, autoFocus, label, live, onChange, onDone, onTyping, notAssignable }: CellEditorProps) {
   const [draft, setDraft] = useState<string>(() => (column.type === 'date' ? toLocalInput(value) : value === null || value === undefined ? '' : String(value)))
   const cancelled = useRef(false)
   const startedFrom = useRef(value)
@@ -861,7 +890,7 @@ function CellEditor({ column, value, rows, members, autoFocus, label, live, onCh
         onKeyDown={onKey}
       >
         <option value="">{tr('Nobody')}</option>
-        {members.map((m) => (
+        {members.filter((m) => m.id !== notAssignable || m.id === value).map((m) => (
           <option key={m.id} value={m.id}>
             {memberName(m)}
           </option>
@@ -953,6 +982,9 @@ function RowSheet({
   onCells,
   onTyping,
   others,
+  onWriting,
+  notAssignable,
+  onField,
   onHighlight,
   onAddToTasks,
   onDelete,
@@ -963,6 +995,9 @@ function RowSheet({
   members: Member[]
   onTyping: (column: string, text: string) => void
   others: Peer[]
+  onWriting: (writing: boolean) => void
+  notAssignable: number | null
+  onField: (column: string | null) => void
   canEdit: boolean
   canComment: boolean
   now: Date
@@ -1004,16 +1039,17 @@ function RowSheet({
         </div>
         <div className="sheet-body">
           {columns.map((column) => (
-            <div key={column.id} className="field-group">
+            <div key={column.id} className="field-group sheet-field" onFocus={() => onField(column.id)} onBlur={() => onField(null)}>
               <span className="label">{column.name}</span>
+              {others.find((peer) => peer.place.column === column.id) && <PeerTag id={others.find((peer) => peer.place.column === column.id)!.id} members={members} />}
               {column.type === 'file' ? (
                 <CellFiles workspaceId={workspaceId} value={row.values[column.id]} canEdit={canEdit} columnName={column.name} expanded onChange={(value) => onCells({ [column.id]: value })} />
               ) : column.type === 'checkbox' ? (
                 <div className="sheet-check" style={{ ['--cat' as string]: 'var(--work)' }}>
                   <RowCheck row={row} column={column} canEdit={canEdit} onChange={(value) => onCells({ [column.id]: value })} />
                 </div>
-              ) : canEdit ? (
-                <CellEditor key={column.id} column={column} value={row.values[column.id]} rows={rows} members={members} label={column.name} live onChange={(value) => onCells({ [column.id]: value })} onTyping={(text) => onTyping(column.id, text)} />
+              ) : canEdit && !others.some((peer) => peer.place.column === column.id) ? (
+                <CellEditor key={column.id} column={column} value={row.values[column.id]} rows={rows} members={members} label={column.name} live onChange={(value) => onCells({ [column.id]: value })} onTyping={(text) => onTyping(column.id, text)} notAssignable={notAssignable} />
               ) : (
                 <p className="sheet-read">{displayValue(column, row.values[column.id], members) || '—'}</p>
               )}
@@ -1025,7 +1061,7 @@ function RowSheet({
               <button type="button" className="switch" role="switch" aria-checked={row.highlighted} aria-label={tr('Highlight in red')} onClick={() => onHighlight(!row.highlighted)} />
             </div>
           )}
-          <Comments target={{ workspaceId, tableId, rowId: row.id }} now={now} members={members} canComment={canComment} onChanged={onCommentsChanged} />
+          <Comments target={{ workspaceId, tableId, rowId: row.id }} now={now} members={members} canComment={canComment} onChanged={onCommentsChanged} writers={others.filter((peer) => peer.place.commenting).map((peer) => peer.id)} onWriting={onWriting} />
           <HistoryFold workspaceId={workspaceId} now={now} rowId={row.id} />
         </div>
         <div className="sheet-foot table-sheet-foot">
@@ -1061,43 +1097,6 @@ function filterText(column: TableColumn, value: string, members: Member[], userI
 }
 
 /** A dialog on desktop and a bottom sheet on phones, like the task and row sheets. */
-function Sheet({ title, onBack, onClose, foot, children }: { title: string; onBack?: () => void; onClose: () => void; foot: React.ReactNode; children: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (onBack) onBack()
-      else onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onBack, onClose])
-  return createPortal(
-    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="sheet-top">
-          <div className="grabber" aria-hidden="true" />
-          <div className="sheet-head">
-            <div className="sheet-title">
-              {onBack && (
-                <button type="button" className="icon-btn" aria-label={tr('Back')} onClick={onBack}>
-                  <Icon name="back" />
-                </button>
-              )}
-              <h2>{title}</h2>
-            </div>
-            <button type="button" className="icon-btn" aria-label={tr('Close')} onClick={onClose}>
-              <Icon name="x" />
-            </button>
-          </div>
-        </div>
-        <div className="sheet-body">{children}</div>
-        <div className="sheet-foot table-sheet-foot">{foot}</div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
 function FilterSheet({
   columns,
   filterable,

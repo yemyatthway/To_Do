@@ -87,6 +87,17 @@ def send_now(*, to, subject, template, context):
 
 def code_context(purpose, code, device="", language="en"):
     minutes = settings.OTP_TTL_MINUTES
+    if purpose == "reset":
+        return {
+            "language": language,
+            "eyebrow": tr(language, "Password reset"),
+            "heading": tr(language, "Reset your password"),
+            "intro": tr(language, "Someone asked to reset your Todo Clock password. If it's you, enter this code. If not, ignore this email and your password stays the same."),
+            "preheader": tr(language, "{code} is your password reset code. It expires in {minutes} minutes.", code=code, minutes=minutes),
+            "code": code,
+            "minutes": minutes,
+            "device": "",
+        }
     if purpose == "login":
         return {
             "language": language,
@@ -111,8 +122,19 @@ def code_context(purpose, code, device="", language="en"):
 
 
 def send_code(*, to, purpose, code, device="", language="en"):
-    subject = "{code} is your Todo Clock sign-in code" if purpose == "login" else "{code} is your Todo Clock verification code"
+    subjects = {"login": "{code} is your Todo Clock sign-in code", "reset": "{code} is your Todo Clock password reset code"}
+    subject = subjects.get(purpose, "{code} is your Todo Clock verification code")
     send(to=to, subject=tr(language, subject, code=code), template="code", context=code_context(purpose, code, device, language))
+
+
+def send_password_changed(user):
+    """If it wasn't them, this is how they find out."""
+    context = {
+        "language": user.language,
+        "app_url": settings.APP_URL,
+        "preheader": tr(user, "Your Todo Clock password was just changed."),
+    }
+    send(to=user.email, subject=tr(user, "Your Todo Clock password was changed"), template="password_changed", context=context)
 
 
 def welcome_context(user):

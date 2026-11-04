@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F
+from django.db.models import Count, F, Q
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -669,12 +669,25 @@ def delete_column(me, workspace_id, table_id, column_id):
     return table
 
 
+def _refuse_assigning_yourself(me, table, cells, before):
+    """Owners and admins hand work out, so they can't assign it to themselves. A row that already
+    names them stays as it is until someone changes it."""
+    people = {column["id"] for column in table.columns if column["type"] == "person"}
+    if not any(column in people and value == me.pk and before.get(column) != me.pk for column, value in cells.items()):
+        return
+    role = table.workspace.memberships.filter(user=me).values_list("role", flat=True).first()
+    if role in (perms.OWNER, perms.ADMIN):
+        raise ValidationError({"values": ["Owners and admins can't assign work to themselves."]})
+
+
 def create_row(me, workspace_id, table_id, values=None):
     with transaction.atomic():
         table = _table_for(me, workspace_id, table_id, perms.EDIT, lock=True)
         if table.rows.count() >= MAX_ROWS:
             raise ValidationError({"values": [f"A table can have up to {MAX_ROWS:,} rows. Start a new table."]})
-        row = TableRow.objects.create(table=table, no=table.next_no, values=_clean_cells(table, values or {}), created_by=me, updated_by=me)
+        cells = _clean_cells(table, values or {})
+        _refuse_assigning_yourself(me, table, cells, {})
+        row = TableRow.objects.create(table=table, no=table.next_no, values=cells, created_by=me, updated_by=me)
         table.next_no += 1
         table.version += 1
         _tell_table(table)
@@ -711,6 +724,7 @@ def update_row(me, workspace_id, table_id, row_id, values=None, base=None, highl
     with transaction.atomic():
         table, row = _row_for(me, workspace_id, table_id, row_id, perms.EDIT, lock=True)
         cleaned = _clean_cells(table, values or {})
+        _refuse_assigning_yourself(me, table, cleaned, row.values)
         # `base` is what the app last saw. Someone changed one of those cells since: ask, don't overwrite.
         if isinstance(base, dict):
             for column_id in cleaned:
@@ -795,6 +809,7 @@ def _log(workspace, actor, verb, kind="", target_id=None, title="", detail=None,
     with `coalesce` a repeat of the same thing soon after updates the last line instead of adding one."""
     now = timezone.now()
     detail = detail or {}
+    _tell_open(workspace.pk, "activity", {})
     if coalesce:
         recent = (
             ActivityEvent.objects.filter(
@@ -826,6 +841,35 @@ def activity_of(me, workspace_id, before=None, page_id=None, row_id=None):
         events = events.filter(pk__lt=before)
     # Newest ids first, so "show more" can simply ask for anything older than the last one shown.
     return list(events.order_by("-id")[: PAGE_SIZE + 1])
+
+
+ACTIVITY_KINDS = {
+    "pages": ("page.",),
+    "tables": ("table.", "column."),
+    "rows": ("row.",),
+    "comments": ("comment.",),
+    "people": ("member.", "workspace."),
+}
+ACTIVITY_PAGE_SIZE = 20
+
+
+def activity_page(me, workspace_id, number, query="", actor=None, kind="", since=None):
+    """The Activity screen: returns (events on that page, the page it really is, how many pages)."""
+    events = membership_for(me, workspace_id).workspace.activity.select_related("actor")
+    if query := query.strip()[:100]:
+        events = events.filter(Q(title__icontains=query) | Q(actor__full_name__icontains=query) | Q(actor__username__icontains=query))
+    if actor is not None:
+        events = events.filter(actor_id=actor)
+    if kind in ACTIVITY_KINDS:
+        rule = Q()
+        for prefix in ACTIVITY_KINDS[kind]:
+            rule |= Q(verb__startswith=prefix)
+        events = events.filter(rule)
+    if since is not None:
+        events = events.filter(created_at__gte=since)
+    pages = max(math.ceil(events.count() / ACTIVITY_PAGE_SIZE), 1)
+    number = min(max(number, 1), pages)
+    return list(events.order_by("-created_at", "-id")[(number - 1) * ACTIVITY_PAGE_SIZE : number * ACTIVITY_PAGE_SIZE]), number, pages
 
 
 def _link(workspace_id, page=None, row=None):

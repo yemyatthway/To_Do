@@ -1,9 +1,11 @@
 from django.db.models import Count
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.social.services import mask_email
+from apps.users.language import tr
 
 from . import files
 from . import permissions as perms
@@ -345,35 +347,46 @@ def _quoted(text):
     return f"\u201c{text}\u201d" if text else ""
 
 
-def activity_text(event):
-    """One line of history, in words."""
-    title, detail = _quoted(event.title), event.detail
-    row = f"row {detail.get('no')} of {title}"
-    column = _quoted(detail.get("column", ""))
-    return {
-        "workspace.renamed": f"renamed the workspace to {title}",
-        "member.joined": "joined the workspace",
-        "member.left": "left the workspace",
-        "member.removed": f"removed {event.title} from the workspace",
-        "member.role": f"made {event.title} {str(detail.get('role', '')).capitalize()}",
-        "page.created": f"created the page {title}",
-        "page.edited": f"edited the page {title}",
-        "page.deleted": f"deleted the page {title}",
-        "page.restored": f"brought back the page {title}",
-        "table.created": f"created the table {title}",
-        "table.renamed": f"renamed a table to {title}",
-        "table.deleted": f"deleted the table {title}",
-        "table.restored": f"brought back the table {title}",
-        "column.added": f"added the column {column} to {title}",
-        "column.renamed": f"renamed {_quoted(detail.get('was', ''))} to {column} in {title}",
-        "column.removed": f"removed the column {column} from {title}",
-        "row.created": f"added {row}",
-        "row.edited": f"changed {', '.join(detail.get('columns', []))} in {row}",
-        "row.deleted": f"deleted {row}",
-        "row.restored": f"brought back {row}",
-        "comment.page": f"commented on the page {title}",
-        "comment.row": f"commented on {row}",
-    }.get(event.verb, "changed something")
+ACTIVITY_LINES = {
+    "workspace.renamed": "renamed the workspace to {title}",
+    "member.joined": "joined the workspace",
+    "member.left": "left the workspace",
+    "member.removed": "removed {name} from the workspace",
+    "member.role": "made {name} {role}",
+    "page.created": "created the page {title}",
+    "page.edited": "edited the page {title}",
+    "page.deleted": "deleted the page {title}",
+    "page.restored": "brought back the page {title}",
+    "table.created": "created the table {title}",
+    "table.renamed": "renamed a table to {title}",
+    "table.deleted": "deleted the table {title}",
+    "table.restored": "brought back the table {title}",
+    "column.added": "added the column {column} to {title}",
+    "column.renamed": "renamed {was} to {column} in {title}",
+    "column.removed": "removed the column {column} from {title}",
+    "row.created": "added row {no} of {title}",
+    "row.edited": "changed {columns} in row {no} of {title}",
+    "row.deleted": "deleted row {no} of {title}",
+    "row.restored": "brought back row {no} of {title}",
+    "comment.page": "commented on the page {title}",
+    "comment.row": "commented on row {no} of {title}",
+}
+
+
+def activity_text(event, language="en"):
+    """One line of history, in words, in the reader's language."""
+    detail = event.detail
+    return tr(
+        language,
+        ACTIVITY_LINES.get(event.verb, "changed something"),
+        title=_quoted(event.title),
+        name=event.title,
+        role=tr(language, str(detail.get("role", "")).capitalize()),
+        column=_quoted(detail.get("column", "")),
+        was=_quoted(detail.get("was", "")),
+        no=detail.get("no"),
+        columns=", ".join(detail.get("columns", [])),
+    )
 
 
 def activity_url(event):
@@ -389,10 +402,10 @@ def activity_url(event):
     return None
 
 
-def activity_data(event):
+def activity_data(event, language="en"):
     actor = event.actor
     return {
-        "id": event.pk, "created_at": event.created_at, "text": activity_text(event), "url": activity_url(event),
+        "id": event.pk, "created_at": event.created_at, "text": activity_text(event, language), "url": activity_url(event),
         "actor": (actor.full_name or f"@{actor.username}") if actor else "Someone",
     }
 
@@ -403,11 +416,21 @@ def _int_param(request, name):
 
 
 class ActivityApi(APIView):
-    """GET: the workspace's history, newest first, ?before=<id> for more, ?page= or ?row= for one thing."""
+    """GET: the workspace's history, newest first, ?before=<id> for more, ?page= or ?row= for one thing.
+    With ?number=<n> it's the Activity screen instead, a page at a time, narrowed by ?q=, ?actor=<id>,
+    ?kind=pages|tables|rows|comments|people and ?since=<iso>."""
 
     def get(self, request, workspace_id):
+        language = request.user.language
+        number = _int_param(request, "number")
+        if number is not None:
+            since = parse_datetime(request.query_params.get("since") or "")
+            events, number, pages = services.activity_page(
+                request.user, workspace_id, number, request.query_params.get("q", ""), _int_param(request, "actor"), request.query_params.get("kind", ""), since,
+            )
+            return Response({"items": [activity_data(e, language) for e in events], "number": number, "pages": pages})
         events = services.activity_of(request.user, workspace_id, _int_param(request, "before"), _int_param(request, "page"), _int_param(request, "row"))
-        return Response({"items": [activity_data(e) for e in events[: services.PAGE_SIZE]], "more": len(events) > services.PAGE_SIZE})
+        return Response({"items": [activity_data(e, language) for e in events[: services.PAGE_SIZE]], "more": len(events) > services.PAGE_SIZE})
 
 
 def notification_data(item):
