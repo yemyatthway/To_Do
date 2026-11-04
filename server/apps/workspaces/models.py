@@ -213,6 +213,8 @@ class Notification(models.Model):
         MENTION = "mention", "Mention"
         ASSIGNED = "assigned", "Assigned"
         COMMENT = "comment", "Comment"
+        NEW_WORK = "new_work", "New work"
+        DONE = "done", "Finished"
 
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="workspace_notifications")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
@@ -222,6 +224,8 @@ class Notification(models.Model):
     body = models.CharField(max_length=280, blank=True)
     url = models.CharField(max_length=200)
     read_at = models.DateTimeField(null=True, blank=True)
+    # Set once it's been emailed, or there's no need to (see digest.py).
+    emailed_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -9,7 +9,7 @@ import { deviceCanReceive, isPushSupported, sendTestNotification } from '../push
 type Status = 'needs-install' | 'unsupported' | 'blocked' | 'ready' | 'on'
 
 const STATUS_TEXT: Record<Status, string> = {
-  'needs-install': 'Add To-Do to your Home Screen first (steps below).',
+  'needs-install': 'Add Todo Clock to your Home Screen first (steps below).',
   unsupported: "This browser can't show notifications. Try Safari, Chrome or Edge.",
   blocked: 'Notifications are blocked for this site. See "Blocked?" below.',
   ready: 'Ready: turn reminders on below.',
@@ -29,7 +29,7 @@ const STEPS: Record<Exclude<Platform, 'other'>, { title: string; steps: ReactNod
         Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.
       </>,
       <>
-        Open <strong>To-Do from the new Home Screen icon</strong>, not from Safari.
+        Open <strong>Todo Clock from the new Home Screen icon</strong>, not from Safari.
       </>,
       <>
         Tap the <strong>bell</strong> and choose <strong>Allow</strong>.
@@ -37,10 +37,10 @@ const STEPS: Record<Exclude<Platform, 'other'>, { title: string; steps: ReactNod
     ],
     blocked: (
       <>
-        Settings → Notifications → <strong>To-Do</strong> → turn on Allow Notifications.
+        Settings → Notifications → <strong>Todo Clock</strong> → turn on Allow Notifications.
       </>
     ),
-    tip: <>Focus and Do Not Disturb can hide reminders; add To-Do to the allowed apps.</>,
+    tip: <>Focus and Do Not Disturb can hide reminders; add Todo Clock to the allowed apps.</>,
   },
   android: {
     title: 'Android',

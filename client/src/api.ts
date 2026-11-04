@@ -46,6 +46,7 @@ export interface User {
   tutorial_seen: boolean
   /** Friends may put tasks straight into your list. */
   friends_can_add_tasks: boolean
+  workspace_emails: boolean
   is_staff: boolean
   date_joined: string
 }
@@ -105,7 +106,7 @@ export interface Page<T> {
   results: T[]
 }
 
-export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'username' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks'>>
+export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'username' | 'timezone' | 'reminders_enabled' | 'tutorial_seen' | 'friends_can_add_tasks' | 'workspace_emails'>>
 
 interface Session {
   access: string
@@ -340,8 +341,18 @@ export type TableQuery = Record<string, string | number | undefined>
 const tableQuery = (params: TableQuery) =>
   new URLSearchParams(Object.entries(params).flatMap(([key, value]) => (value === undefined || value === '' ? [] : [[key, String(value)]])))
 
+export interface EmailResult {
+  id: number
+  kind: string
+  recipient: string
+  ok: boolean
+  error: string
+  created_at: string
+}
+
 export const admin = {
   stats: () => request<AdminStats>('/api/admin/stats/'),
+  emails: () => request<{ items: EmailResult[]; sent_24h: number; failed_24h: number }>('/api/admin/emails/'),
   users: (params: TableQuery) => request<Page<AdminUser>>(`/api/admin/users/?${tableQuery(params)}`),
   events: (params: TableQuery) => request<Page<AuthEvent>>(`/api/admin/auth-events/?${tableQuery(params)}`),
   user: (id: number) => request<AdminUserDetail>(`/api/admin/users/${id}/`),
@@ -492,6 +503,8 @@ export interface WorkspaceSummary {
   name: string
   role: Role
   member_count: number
+  /** Notifications from here you haven't seen. */
+  unread: number
   created_at: string
 }
 
@@ -590,7 +603,7 @@ export interface ActivityItem {
 
 export interface WorkspaceNotification {
   id: number
-  kind: 'mention' | 'assigned' | 'comment'
+  kind: 'mention' | 'assigned' | 'comment' | 'new_work' | 'done'
   title: string
   body: string
   url: string
@@ -635,6 +648,7 @@ export const workspaces = {
   },
   notifications: (before?: number) => request<{ items: WorkspaceNotification[]; unread: number; more: boolean }>(`/api/workspaces/notifications/${before ? `?before=${before}` : ''}`),
   readNotifications: (ids?: number[]) => request<void>('/api/workspaces/notifications/read/', json('POST', ids ? { ids } : {})),
+  readWorkspaceNotifications: (id: number) => request<void>('/api/workspaces/notifications/read/', json('POST', { workspace: id })),
   tables: (id: number) => request<TeamTableSummary[]>(`/api/workspaces/${id}/tables/`),
   createTable: (id: number, title: string) => request<TeamTable>(`/api/workspaces/${id}/tables/`, json('POST', { title })),
   /** With `known`, answers "unchanged" if nothing moved since that version. */

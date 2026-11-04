@@ -1,0 +1,12 @@
+{% autoescape off %}{{ heading }}
+
+{% for item in items %}- {{ item.title }}{% if item.body %}
+  {{ item.body }}{% endif %}
+{% endfor %}{% if more %}And {{ more }} more in the app.
+
+{% endif %}{{ open_label }}: {{ open_url }}
+
+You get these because you're in a workspace. Turn them off in Settings, under Preferences.
+
+— Todo Clock
+{% endautoescape %}

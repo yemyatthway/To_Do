@@ -13,10 +13,11 @@ from apps.tasks.models import Task
 from apps.workspaces import files
 from apps.workspaces.models import ActivityEvent, Comment, Invitation, Notification, Page, Table, TableRow, Workspace
 
-from .models import AuthEvent, EmailCode, TrustedDevice, User
+from .models import AuthEvent, EmailCode, EmailLog, TrustedDevice, User
 from .services import purge_account
 
 AUTH_LOG_DAYS = 180
+EMAIL_LOG_DAYS = 30
 FINISHED_INVITE_DAYS = 30
 WORKSPACE_RESTORE_DAYS = 30
 NOTIFICATION_KEEP_DAYS = 90
@@ -38,6 +39,7 @@ def prune(now=None):
         "trusted_devices": TrustedDevice.objects.filter(created_at__lt=now - timedelta(days=settings.TRUSTED_DEVICE_DAYS)).delete()[0],
         # Expired refresh tokens (and their blacklist rows) can never be used again.
         "tokens": OutstandingToken.objects.filter(expires_at__lt=now).delete()[0],
+        "email_logs": EmailLog.objects.filter(created_at__lt=now - timedelta(days=EMAIL_LOG_DAYS)).delete()[0],
         "auth_events": AuthEvent.objects.filter(created_at__lt=now - timedelta(days=AUTH_LOG_DAYS)).delete()[0],
         "comments": Comment.all_objects.filter(deleted_at__lt=now - timedelta(days=WORKSPACE_RESTORE_DAYS)).delete()[0],
         "notifications": Notification.objects.filter(created_at__lt=now - timedelta(days=NOTIFICATION_KEEP_DAYS)).delete()[0],

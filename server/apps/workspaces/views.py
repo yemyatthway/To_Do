@@ -1,3 +1,4 @@
+from django.db.models import Count
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,7 +8,7 @@ from apps.social.services import mask_email
 from . import files
 from . import permissions as perms
 from . import services
-from .models import Membership
+from .models import Membership, Notification
 
 
 def member_data(membership):
@@ -18,11 +19,12 @@ def member_data(membership):
     }
 
 
-def summary_data(membership, member_count=None):
+def summary_data(membership, member_count=None, unread=0):
     workspace = membership.workspace
     return {
         "id": workspace.pk, "name": workspace.name, "role": membership.role, "created_at": workspace.created_at,
         "member_count": member_count if member_count is not None else services.members_of(workspace).count(),
+        "unread": unread,
     }
 
 
@@ -55,8 +57,9 @@ class WorkspacesApi(APIView):
     def get(self, request):
         me = request.user
         memberships = Membership.objects.filter(user=me, workspace__deleted_at__isnull=True).select_related("workspace").order_by("workspace__name")
+        unread = dict(Notification.objects.filter(recipient=me, read_at__isnull=True).order_by().values_list("workspace").annotate(Count("id")))
         return Response({
-            "workspaces": [summary_data(m) for m in memberships],
+            "workspaces": [summary_data(m, unread=unread.get(m.workspace_id, 0)) for m in memberships],
             "invitations": [invitation_data(i) for i in services.my_invitations(me)],
         })
 
@@ -424,10 +427,10 @@ class NotificationsApi(APIView):
 
 
 class ReadNotificationsApi(APIView):
-    """POST {ids: [...]}: mark those as read. With no ids: mark everything."""
+    """POST {ids: [...]} or {workspace: id}: mark those as read. With neither: mark everything."""
 
     def post(self, request):
-        services.mark_read(request.user, request.data.get("ids"))
+        services.mark_read(request.user, request.data.get("ids"), request.data.get("workspace"))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

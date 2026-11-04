@@ -52,7 +52,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id", "email", "email_verified", "code_expires_at", "full_name", "username", "username_confirmed", "timezone",
-            "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "is_staff", "date_joined",
+            "reminders_enabled", "tutorial_seen", "friends_can_add_tasks", "workspace_emails", "is_staff", "date_joined",
         ]
         read_only_fields = ["id", "email_verified", "is_staff", "date_joined"]
         # validate_username gives the friendlier "taken" message (and allows keeping your own).

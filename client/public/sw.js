@@ -2,9 +2,9 @@
 
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {}
-  const title = data.title || 'To-Do'
+  const title = data.title || 'Todo Clock'
 
-  // Tell any open To-Do window, so it refreshes what changed right away (no waiting for a poll).
+  // Tell any open Todo Clock window, so it refreshes what changed right away (no waiting for a poll).
   const tellOpenApps = self.clients
     .matchAll({ type: 'window', includeUncontrolled: true })
     .then((windows) => windows.forEach((w) => w.postMessage({ type: 'push', url: data.url || '/' })))

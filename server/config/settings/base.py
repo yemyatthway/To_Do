@@ -156,14 +156,15 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 # Google shows App Passwords as "abcd efgh ijkl mnop"; the spaces aren't part of it.
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="").replace(" ", "")
 EMAIL_TIMEOUT = 15
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=f"To-Do <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "To-Do <no-reply@localhost>")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default=f"Todo Clock <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "Todo Clock <no-reply@localhost>")
 if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 else:
     EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
     EMAIL_FILE_PATH = BASE_DIR / ".dev-emails"
 # Send in a background thread so login/sign-up answer immediately (tests turn this off).
-EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default=True)
+# Tests send straight away, so no thread writes to the test database behind their back.
+EMAIL_SEND_ASYNC = env.bool("EMAIL_SEND_ASYNC", default="test" not in sys.argv)
 # Live updates (chat, shared tasks, friends, admin) through Ably. Empty = off: the app refreshes instead.
 ABLY_API_KEY = env("ABLY_API_KEY", default="")
 if "test" in sys.argv[1:2]:
@@ -175,7 +176,7 @@ CHAT_ALLOW_DERIVED_KEY = env.bool("CHAT_ALLOW_DERIVED_KEY", default=False)
 
 # Friend/share notifications go out in a background thread (tests switch this off).
 PUSH_SEND_ASYNC = env.bool("PUSH_SEND_ASYNC", default=True)
-# The app's address, for the "Open To-Do" button in the welcome email.
+# The app's address, for the "Open Todo Clock" button in the welcome email.
 APP_URL = env("APP_URL", default="http://localhost:5173")
 
 # One-time codes.

@@ -59,7 +59,7 @@ class ReminderTests(APITestCase):
         self.assertEqual(self.client.post("/api/push/send-due/", HTTP_X_CRON_SECRET="wrong").status_code, 403)
         with mock.patch("apps.notifications.reminders.timezone.now", return_value=NOW):
             response = self.client.post("/api/push/send-due/", HTTP_X_CRON_SECRET="s3cret")
-        self.assertEqual(response.data, {"sent": 1})
+        self.assertEqual(response.data, {"sent": 1, "emails": 0})
 
     @override_settings(CRON_SECRET="")
     def test_cron_endpoint_disabled_without_secret(self, send_push):

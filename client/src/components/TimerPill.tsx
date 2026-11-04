@@ -21,10 +21,10 @@ export function TimerPill({ timer, active, onOpen }: { timer: TimerState; active
   const label = formatClock(timeLeft(timer, now))
 
   useEffect(() => {
-    document.title = running ? `${label} · To-Do` : timer.status === 'done' ? "Time's up · To-Do" : 'To-Do'
+    document.title = running ? `${label} · Todo Clock` : timer.status === 'done' ? "Time's up · Todo Clock" : 'Todo Clock'
   }, [label, running, timer.status])
 
-  useEffect(() => () => void (document.title = 'To-Do'), [])
+  useEffect(() => () => void (document.title = 'Todo Clock'), [])
 
   if (!live) return null
 

@@ -209,7 +209,7 @@ export function AuthScreen({ onAuthenticated, notice }: { onAuthenticated: (user
         <span className="auth-logo" aria-hidden="true">
           <Icon name="clock" />
         </span>
-        <span>To-Do</span>
+        <span>Todo Clock</span>
       </div>
 
       <form ref={cardRef} className="auth-card glass" onSubmit={submit} noValidate aria-labelledby="auth-title">

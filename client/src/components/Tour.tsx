@@ -179,7 +179,7 @@ export function WelcomeDialog({ name, onAnswer }: { name: string; onAnswer: (fir
           </svg>
         </span>
         <h2 id="welcome-title">Welcome{name ? `, ${name.split(' ')[0]}` : ''}!</h2>
-        <p id="welcome-body">Is this your first time using To-Do? We can show you around in about a minute.</p>
+        <p id="welcome-body">Is this your first time using Todo Clock? We can show you around in about a minute.</p>
         <button ref={yesRef} type="button" className="primary-btn" onClick={() => onAnswer(true)}>
           Yes, show me around
         </button>

@@ -90,7 +90,7 @@ export function ReminderCheck() {
           title="This device can receive them"
           detail={
             !isPushSupported()
-              ? "This browser can't receive notifications (on iPhone, open To-Do from the Home Screen)."
+              ? "This browser can't receive notifications (on iPhone, open Todo Clock from the Home Screen)."
               : !device
                 ? 'Not registered yet. Turn reminders off and on again here, then Allow.'
                 : device.last_error

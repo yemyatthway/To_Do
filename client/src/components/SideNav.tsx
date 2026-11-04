@@ -16,7 +16,7 @@ interface SideNavProps {
   isStaff: boolean
   chatBadge: number
   socialBadge: number
-  workspaces: { id: number; name: string }[]
+  workspaces: { id: number; name: string; unread?: number }[]
   inviteBadge: number
   noticeBadge: number
   /** The workspace that's open, whose pages and tables show under its name. */
@@ -62,7 +62,7 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
       label: 'Workspaces',
       items: [
         ...workspaces.flatMap((w): Item[] => [
-          { id: `workspace:${w.id}`, label: w.name, icon: 'team' },
+          { id: `workspace:${w.id}`, label: w.name, icon: 'team', badge: w.unread },
           ...(openWorkspace?.workspaceId === w.id ? openWorkspace.items.map((i): Item => ({ id: `${i.kind}:${w.id}:${i.id}`, label: i.title, icon: i.kind, sub: true })) : []),
         ]),
         { id: 'workspaces', label: workspaces.length ? 'All workspaces' : 'Workspaces', icon: 'list' as const, badge: inviteBadge, tour: 'workspaces' },
@@ -85,7 +85,7 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
           <span className="auth-logo" aria-hidden="true">
             <Icon name="clock" />
           </span>
-          <span className="side-text">To-Do</span>
+          <span className="side-text">Todo Clock</span>
         </div>
         <button type="button" className="icon-btn side-toggle" aria-label={closed ? 'Open the side menu' : 'Close the side menu'} aria-expanded={!closed} onClick={toggle}>
           <Icon name={closed ? 'sideOpen' : 'sideClose'} />

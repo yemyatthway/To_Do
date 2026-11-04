@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { EMAIL_NAMES, resultsMessage } from '../emailResults'
 import { useLiveRefresh } from '../live'
 import { Bone, Loading } from '../components/Loading'
 import { admin, type AdminStats, type AdminUser, type AdminUserDetail, type User } from '../api'
@@ -8,7 +9,7 @@ import { ConfirmDialog, UserPanel } from './admin/UserPanel'
 import { UsersTable } from './admin/UsersTable'
 import { timeAgo } from '../user'
 
-type Tab = 'users' | 'activity'
+type Tab = 'users' | 'activity' | 'emails'
 
 interface AdminProps {
   me: User
@@ -111,6 +112,7 @@ export function Admin({ me, now, notify }: AdminProps) {
           [
             ['users', 'Users'],
             ['activity', 'Activity log'],
+            ['emails', 'Emails'],
           ] as const
         ).map(([value, label]) => (
           <button key={value} type="button" role="tab" aria-selected={tab === value} aria-pressed={tab === value} onClick={() => setTab(value)}>
@@ -125,6 +127,11 @@ export function Admin({ me, now, notify }: AdminProps) {
       </div>
       <div hidden={tab !== 'activity'}>
         <ActivityTable key={activity.key} now={now} initialSearch={activity.search} onOpenUser={openUser} />
+      </div>
+
+      {/* Stays mounted too, so a result shows up as a notification on any admin tab. */}
+      <div hidden={tab !== 'emails'}>
+        <EmailResults now={now} notify={notify} />
       </div>
 
       <UserPanel
@@ -145,6 +152,65 @@ export function Admin({ me, now, notify }: AdminProps) {
 
       {confirm && detail && <ConfirmDialog action={confirm} user={detail} onCancel={() => setConfirm(null)} onConfirm={applyAction} />}
     </div>
+  )
+}
+
+/** Did our emails leave? New results pop up as notifications; nothing is emailed to staff. */
+function EmailResults({ now, notify }: { now: Date; notify: AdminProps['notify'] }) {
+  const [data, setData] = useState<Awaited<ReturnType<typeof admin.emails>> | null>(null)
+  const [error, setError] = useState('')
+  const lastSeen = useRef<number | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const next = await admin.emails()
+      setData(next)
+      setError('')
+      const newest = next.items[0]?.id ?? 0
+      if (lastSeen.current !== null) {
+        const message = resultsMessage(next.items.filter((e) => e.id > lastSeen.current!))
+        if (message) notify(message.title, message.detail)
+      }
+      lastSeen.current = Math.max(newest, lastSeen.current ?? 0)
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+  }, [notify])
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
+    void load()
+  }, [load])
+  useLiveRefresh(load, 15_000)
+
+  return (
+    <section className="card glass email-results" aria-label="Email results">
+      {error && <div className="error-banner">{error}</div>}
+      {data === null && !error && <Loading skeleton={<Bone width="60%" height={18} />} />}
+      {data && (
+        <>
+          <p className="task-meta">
+            Last 24 hours: {data.sent_24h} sent · {data.failed_24h} failed
+          </p>
+          {data.items.length === 0 && <p className="empty">No emails yet.</p>}
+          <ul className="row-list">
+            {data.items.map((item) => (
+              <li key={item.id}>
+                <div className="flat-row">
+                  <span className={`row-status ${item.ok ? 'done' : 'failed'}`}>{item.ok ? 'Sent' : 'Failed'}</span>
+                  <span className="row-main">
+                    <span className="person-name">{EMAIL_NAMES[item.kind] ?? item.kind}</span>
+                    <span className="row-sub">
+                      {item.recipient} · {timeAgo(item.created_at, now).toLowerCase()}
+                      {item.error && ` · ${item.error}`}
+                    </span>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   )
 }
 

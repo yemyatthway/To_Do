@@ -100,7 +100,7 @@ export function Notifications({ now, notify, onOpen, onUnread }: NotificationsPr
         )}
         <div className="panel-scroll">
           {items === null && <Loading active={!error} skeleton={<SkeletonRows count={4} />} onRetry={() => void load()} />}
-          {items?.length === 0 && <p className="empty">Nothing yet. You'll see it here when someone mentions you, assigns you a row or comments on your work.</p>}
+          {items?.length === 0 && <p className="empty">Nothing yet. You'll see it here when someone adds work, finishes it, mentions you or comments.</p>}
           <ul className="notice-list">
             {items?.map((item) => (
               <li key={item.id}>

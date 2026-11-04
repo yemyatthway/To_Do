@@ -1,6 +1,6 @@
 {
-  "name": "To-Do",
-  "short_name": "To-Do",
+  "name": "Todo Clock",
+  "short_name": "Todo Clock",
   "description": "A to-do list on a clock, with push reminders.",
   "start_url": "/",
   "display": "standalone",

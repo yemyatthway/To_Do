@@ -52,7 +52,7 @@ export function VerifyEmail({ user, onVerified, onLogout }: { user: User; onVeri
         <span className="auth-logo" aria-hidden="true">
           <Icon name="clock" />
         </span>
-        <span>To-Do</span>
+        <span>Todo Clock</span>
       </div>
 
       <div className="auth-card glass" role="region" aria-labelledby="verify-title">

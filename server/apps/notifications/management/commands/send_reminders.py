@@ -3,6 +3,7 @@ import time
 from django.core.management.base import BaseCommand
 
 from apps.notifications.reminders import send_due_reminders
+from apps.workspaces.digest import send_due_emails
 
 
 class Command(BaseCommand):
@@ -15,6 +16,7 @@ class Command(BaseCommand):
     def handle(self, *args, loop, every, **options):
         while True:
             sent = send_due_reminders()
+            send_due_emails()
             if sent or not loop:
                 self.stdout.write(f"Sent {sent} reminder(s).")
             if not loop:

@@ -295,7 +295,7 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
                 <Loading active={searching} skeleton={<SkeletonRows count={2} avatar />} />
                 {!searching && people.length > 0 && (
                   <>
-                    <h3 className="section-label">People on To-Do</h3>
+                    <h3 className="section-label">People on Todo Clock</h3>
                     <ul className="people">
                       {people.map((p) => (
                         <PersonRow key={p.id} person={p}>

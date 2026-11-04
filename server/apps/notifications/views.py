@@ -15,6 +15,8 @@ from apps.tasks.models import Task
 
 from .models import PushSubscription, ReminderRun
 from .push import send_push
+from apps.workspaces.digest import send_due_emails
+
 from .reminders import send_due_reminders
 
 
@@ -136,4 +138,4 @@ class SendDueRemindersView(APIView):
         given = request.headers.get("X-Cron-Secret", "")
         if not secret or not hmac.compare_digest(given, secret):
             return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
-        return Response({"sent": send_due_reminders()})
+        return Response({"sent": send_due_reminders(), "emails": send_due_emails()})

@@ -6776,3 +6776,16 @@ li:first-child > .flat-row {
   width: 50px;
   flex: none;
 }
+
+.row-status.failed {
+  background: var(--dBg);
+  color: var(--dIcon);
+}
+
+.round-btn .nav-badge {
+  z-index: 1;
+}
+
+.admin-tabs button {
+  flex: 1;
+}

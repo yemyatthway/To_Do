@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from apps.notifications.models import ReminderRun
 
-from .models import AuthEvent, User
+from .models import AuthEvent, EmailLog, User
 from .services import ban_user, restore_deadline, unban_user
 
 
@@ -100,6 +100,20 @@ def _paged(request, view, queryset, serializer):
 USER_ORDERING = {"name": "full_name", "username": "username", "email": "email", "joined": "date_joined", "last_login": "last_login_at", "tasks": "task_count"}
 EVENT_ORDERING = {"time": "created_at", "email": "email", "kind": "kind"}
 SINCE = {"24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+
+
+class AdminEmailLogApi(APIView):
+    """GET: whether recent emails went out, newest first, with the last day's totals."""
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        day = EmailLog.objects.filter(created_at__gte=timezone.now() - timedelta(days=1))
+        return Response({
+            "items": [{"id": e.pk, "kind": e.kind, "recipient": e.recipient, "ok": e.ok, "error": e.error, "created_at": e.created_at} for e in EmailLog.objects.all()[:50]],
+            "sent_24h": day.filter(ok=True).count(),
+            "failed_24h": day.filter(ok=False).count(),
+        })
 
 
 class AdminStatsApi(APIView):

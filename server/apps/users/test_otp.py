@@ -215,9 +215,9 @@ class WelcomeEmailTests(APITestCase):
         self.client.post("/api/auth/verify-email/", {"code": last_code()}, format="json")
         welcome = [m for m in mail.outbox if "Welcome" in m.subject]
         self.assertEqual(len(welcome), 1)
-        self.assertIn("Welcome to To-Do, Ko!", welcome[0].body)
+        self.assertIn("Welcome to Todo Clock, Ko!", welcome[0].body)
         html = welcome[0].alternatives[0][0]
-        self.assertIn("Open To-Do", html)
+        self.assertIn("Open Todo Clock", html)
         self.assertNotIn("{{", html)
         # Later logins don't send it again.
         self.client.credentials()

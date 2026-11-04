@@ -738,6 +738,26 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       .catch(() => undefined)
   }, [])
   useEffect(loadNotices, [loadNotices])
+
+  // Being in a workspace counts as seeing what's new there.
+  const openWorkspaceUnread = workspaceList?.workspaces.find((w) => w.id === workspaceId)?.unread ?? 0
+  useEffect(() => {
+    if (!workspaceId || !openWorkspaceUnread) return
+    workspaces
+      .readWorkspaceNotifications(workspaceId)
+      .then(() => {
+        loadNotices()
+        loadWorkspaces()
+      })
+      .catch(() => undefined)
+  }, [workspaceId, openWorkspaceUnread, loadNotices, loadWorkspaces])
+
+  // The count on the app's icon, where the phone or computer supports it.
+  const iconCount = chatBadge + unreadNotices + (workspaceList?.invitations.length ?? 0)
+  useEffect(() => {
+    if (!('setAppBadge' in navigator)) return
+    void (iconCount ? navigator.setAppBadge(iconCount) : navigator.clearAppBadge()).catch(() => undefined)
+  }, [iconCount])
   useLiveRefresh(loadNotices, 30_000)
   const openUrl = useCallback(
     (url: string) => {
@@ -830,8 +850,13 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           </div>
           <div className={`header-actions${isChildPage(route) ? ' on-child' : ''}`}>
             <TimerPill timer={timer.state} active={view === 'timer'} onOpen={() => go('timer')} />
-            <button className="round-btn" aria-label="Workspaces" aria-pressed={view === 'workspaces' || view === 'workspace'} onClick={() => go('workspaces')}>
+            <button className="round-btn" aria-label={inviteBadge + unreadNotices ? `Workspaces, ${inviteBadge + unreadNotices} new` : 'Workspaces'} aria-pressed={view === 'workspaces' || view === 'workspace'} onClick={() => go('workspaces')}>
               <Icon name="team" />
+              {inviteBadge + unreadNotices > 0 && (
+                <span className="nav-badge" aria-hidden="true">
+                  {inviteBadge + unreadNotices}
+                </span>
+              )}
             </button>
             {bell(`round-btn${remindersOn ? ' on' : ''}`)}
             <button className="primary-btn desktop-only" data-tour="new-task" onClick={() => openCreate(day)}>
@@ -851,7 +876,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
                 ? 'Allow notifications here to get them.'
                 : deviceState === 'blocked'
                   ? 'Notifications are blocked for this site in your settings.'
-                  : 'This browser can\'t show them. On iPhone, open To-Do from your Home Screen.'}
+                  : 'This browser can\'t show them. On iPhone, open Todo Clock from your Home Screen.'}
             </span>
             {deviceState === 'needs-permission' ? (
               <button
@@ -910,7 +935,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </Reveal>
           ) : view === 'more' ? (
             <Reveal key="more">
-              <More user={user} inviteBadge={inviteBadge} noticeBadge={unreadNotices} onGo={go} />
+              <More user={user} inviteBadge={inviteBadge + unreadNotices} noticeBadge={unreadNotices} onGo={go} />
             </Reveal>
           ) : view === 'notifications' ? (
             <Reveal key="notifications">

@@ -251,6 +251,30 @@ export function Profile(props: ProfileProps) {
           />
         </div>
 
+        <div className="toggle-row">
+          <span style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Icon name="team" />
+              Workspace emails
+            </span>
+            <span className="hint">An email when someone adds work or finishes it. You'll always see it in the app.</span>
+          </span>
+          <button
+            type="button"
+            className="switch"
+            role="switch"
+            aria-checked={user.workspace_emails}
+            aria-label="Workspace emails"
+            onClick={async () => {
+              try {
+                onUserChange(await auth.updateMe({ workspace_emails: !user.workspace_emails }))
+              } catch (err) {
+                notify("Couldn't save that", err instanceof Error ? err.message : String(err))
+              }
+            }}
+          />
+        </div>
+
         <div className="pref-row">
           <span className="label">Appearance</span>
           <div className="segmented" role="group" aria-label="Appearance">

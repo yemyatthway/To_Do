@@ -20,6 +20,9 @@
   @media (prefers-color-scheme: dark) {
     .page { background: #0b1120 !important; }
     .card { background: #121a2e !important; border-color: #1f2a44 !important; }
+    .hero { background: #172036 !important; background-image: none !important; }
+    .hero-title { color: #f1f5ff !important; }
+    .hero-eyebrow { color: #93b9f8 !important; }
     .h1, .strong { color: #f1f5ff !important; }
     .text { color: #b7c3dc !important; }
     .muted { color: #7d8aa6 !important; }
@@ -32,11 +35,11 @@
   }
 </style>
 </head>
-<body class="page" style="margin:0;padding:0;background:#eef2f9;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body class="page" style="margin:0;padding:0;background:#e6eef8;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
   <!-- Inbox preview line -->
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">{{ preheader }}&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="page" style="background:#eef2f9;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="page" style="background:#e6eef8;">
     <tr>
       <td align="center" class="wrap" style="padding:36px 16px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
@@ -48,11 +51,11 @@
               <!-- Header band -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td class="hero" bgcolor="#2f6fd6" style="background:#2f6fd6;background-image:linear-gradient(135deg,#1f4fb3 0%,#2f6fd6 45%,#5b9bff 100%);padding:28px 36px;border-radius:28px 28px 0 0;">
+                  <td class="hero" bgcolor="#e6f0fd" style="background:#e6f0fd;background-image:linear-gradient(135deg,#eef4fd 0%,#d6e5fb 100%);padding:28px 36px;border-radius:28px 28px 0 0;">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td width="40" height="40" valign="middle" style="width:40px;height:40px;"><img src="{{ icons }}logo.png" width="40" height="40" alt="To-Do" style="display:block;width:40px;height:40px;border:0;border-radius:11px;"></td>
-                        <td style="padding-left:12px;font:800 19px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#ffffff;letter-spacing:-0.2px;">To-Do</td>
+                        <td width="40" height="40" valign="middle" style="width:40px;height:40px;"><img src="{{ icons }}logo.png" width="40" height="40" alt="Todo Clock" style="display:block;width:40px;height:40px;border:0;border-radius:11px;"></td>
+                        <td style="padding-left:12px;font:800 19px/1 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e2b45;letter-spacing:-0.2px;" class="hero-title">Todo Clock</td>
                       </tr>
                     </table>
                     {% block hero %}{% endblock %}
@@ -74,8 +77,8 @@
           <!-- Footer -->
           <tr>
             <td align="center" class="muted" style="padding:24px 24px 0;font:400 12px/1.7 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#8a97ad;">
-              {% block footer %}You're getting this because this address was used on To-Do.{% endblock %}<br>
-              <span style="color:#a3aec2;">To-Do &middot; your day on a clock &middot; todoclock.app</span>
+              {% block footer %}You're getting this because this address was used on Todo Clock.{% endblock %}<br>
+              <span style="color:#a3aec2;">Todo Clock &middot; your day on a clock &middot; todoclock.app</span>
             </td>
           </tr>
         </table>

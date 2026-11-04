@@ -12,5 +12,5 @@ Not you? Don't share this code with anyone, and change your password in the app.
 {% endif %}
 If you didn't ask for this code, you can safely ignore this email.
 
-— To-Do
+— Todo Clock
 {% endautoescape %}

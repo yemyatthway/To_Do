@@ -131,6 +131,11 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
                           {label(w.role)} · {w.member_count} {w.member_count === 1 ? 'member' : 'members'}
                         </span>
                       </span>
+                      {w.unread > 0 && (
+                        <span className="nav-badge" aria-label={`${w.unread} new`}>
+                          {w.unread}
+                        </span>
+                      )}
                       <Icon name="chevron" className="more-go" />
                     </button>
                   </li>

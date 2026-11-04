@@ -163,12 +163,12 @@ def invite(me, workspace_id, invitee, role):
     who = " ".join(me.full_name.split()) or f"@{me.username}"
     mail.send(
         to=email,
-        subject=f"{who} invited you to {workspace.name} on To-Do",
+        subject=f"{who} invited you to {workspace.name} on Todo Clock",
         template="workspace_invite",
         context={
             "who": who, "workspace": workspace.name, "role": role.capitalize(), "days": INVITE_DAYS,
             "app_url": f"{settings.APP_URL.rstrip('/')}/?view=workspaces",
-            "preheader": f"Join {workspace.name} on To-Do.",
+            "preheader": f"Join {workspace.name} on Todo Clock.",
         },
     )
     if user is not None:
@@ -347,6 +347,7 @@ def create_page(me, workspace_id, title):
         raise ValidationError({"title": [f"A workspace can have up to {MAX_PAGES} pages."]})
     page = Page.objects.create(workspace=workspace, title=_clean_title(title), created_by=me, updated_by=me)
     _log(workspace, me, "page.created", "page", page.pk, page.title)
+    _tell_team(me, workspace, Notification.Kind.NEW_WORK, f"{_name(me)} added a page to {workspace.name}", page.title, _link(workspace.pk, page=page))
     _tell_members(workspace)
     return page
 
@@ -538,6 +539,7 @@ def create_table(me, workspace_id, title):
         workspace=workspace, title=_clean_title(title), columns=[_new_column(*c) for c in STARTER_COLUMNS], created_by=me, updated_by=me,
     )
     _log(workspace, me, "table.created", "table", table.pk, table.title)
+    _tell_team(me, workspace, Notification.Kind.NEW_WORK, f"{_name(me)} added a table to {workspace.name}", table.title, f"/workspaces/{workspace.pk}/tables/{table.pk}")
     _tell_members(workspace)
     return table
 
@@ -649,6 +651,7 @@ def create_row(me, workspace_id, table_id, values=None):
         table.save()
     _log(table.workspace, me, "row.created", "row", row.pk, table.title, _row_detail(row))
     _tell_assigned(me, table, row, {}, row.values)
+    _announce_row(me, table, row, {})
     _tell_members(table.workspace)
     return row
 
@@ -694,6 +697,7 @@ def update_row(me, workspace_id, table_id, row_id, values=None, base=None, highl
     if names:
         _log(table.workspace, me, "row.edited", "row", row.pk, table.title, {**_row_detail(row), "columns": names}, coalesce=True)
     _tell_assigned(me, table, row, before, cleaned)
+    _announce_row(me, table, row, before)
     return row
 
 
@@ -800,6 +804,29 @@ def _link(workspace_id, page=None, row=None):
 def _inform(recipient, actor, workspace, kind, title, body, url):
     Notification.objects.create(recipient=recipient, actor=actor, workspace=workspace, kind=kind, title=title[:240], body=body[:280], url=url)
     _notify(recipient, title, body, url=url, event="notifications")
+
+
+def _tell_team(me, workspace, kind, title, body, url):
+    """Everyone else in the workspace: in the app and as a push now, by email shortly (digest.py)."""
+    for membership in workspace.memberships.select_related("user").exclude(user=me):
+        _inform(membership.user, me, workspace, kind, title, body, url)
+
+
+def _row_text(table, values):
+    return next((" ".join(values[c["id"]].split()) for c in table.columns if c["type"] == "text" and (values.get(c["id"]) or "").strip()), "")
+
+
+def _announce_row(me, table, row, before):
+    """New work counts from the moment a row says something, since New makes an empty one first.
+    Finished means its first checkbox, like the table's progress bar, was just ticked."""
+    text = _row_text(table, row.values)
+    workspace = table.workspace
+    url = _link(workspace.pk, row=row)
+    if text and not _row_text(table, before):
+        _tell_team(me, workspace, Notification.Kind.NEW_WORK, f"{_name(me)} added work to {table.title}", text, url)
+    done = next((c for c in table.columns if c["type"] == "checkbox"), None)
+    if done and row.values.get(done["id"]) is True and before.get(done["id"]) is not True:
+        _tell_team(me, workspace, Notification.Kind.DONE, f"{_name(me)} finished {text or _row_name(table, row)}", table.title, url)
 
 
 def _row_name(table, row):
@@ -916,8 +943,12 @@ def notifications_of(me, before=None):
     return list(items.order_by("-id")[: PAGE_SIZE + 1]), unread
 
 
-def mark_read(me, ids=None):
+def mark_read(me, ids=None, workspace_id=None):
     items = Notification.objects.filter(recipient=me, read_at__isnull=True)
+    if workspace_id is not None:
+        if type(workspace_id) is not int:
+            raise ValidationError({"workspace": ["That workspace isn't valid."]})
+        items = items.filter(workspace_id=workspace_id)
     if ids is not None:
         if not isinstance(ids, list) or not all(type(i) is int for i in ids):
             raise ValidationError({"ids": ["That list isn't valid."]})

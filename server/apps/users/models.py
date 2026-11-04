@@ -47,6 +47,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     tutorial_seen = models.BooleanField(default=False)
     # Friends may put tasks straight into this list (with reminders); off = they land in the inbox.
     friends_can_add_tasks = models.BooleanField(default=True)
+    workspace_emails = models.BooleanField(default=True)
     email_verified_at = models.DateTimeField(null=True, blank=True)
     # When the welcome email went out (once per account; see mail.send_welcome_once).
     welcomed_at = models.DateTimeField(null=True, blank=True)
@@ -155,3 +156,17 @@ class AuthEvent(models.Model):
 
     def __str__(self):
         return f"{self.email} {self.kind} {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class EmailLog(models.Model):
+    """Whether an email left: what staff see in the admin dashboard. No contents, and the address is masked."""
+
+    kind = models.CharField(max_length=30)
+    recipient = models.CharField(max_length=160)
+    ok = models.BooleanField()
+    error = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "email_logs"
+        ordering = ["-id"]

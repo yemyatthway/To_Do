@@ -3,10 +3,11 @@ import threading
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.db import close_old_connections
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .models import User
+from .models import EmailLog, User
 
 logger = logging.getLogger("apps.users.mail")
 
@@ -21,12 +22,38 @@ WELCOME_FEATURES = [
 ]
 
 
-def _deliver(message):
+def _record(kind, to, ok, error=""):
+    """What staff see in Admin > Emails. Never gets in the way of the email itself."""
+    from apps.live import ably
+    from apps.social.services import mask_email
+
+    try:
+        entry = EmailLog.objects.create(kind=kind, recipient=mask_email(to), ok=ok, error=str(error)[:200])
+        ably.to_admins("email", {"id": entry.pk, "ok": ok})
+    except Exception:
+        logger.exception("Couldn't record an email result")
+
+
+def _deliver(message, kind="email"):
+    """Sends it, records how that went and says whether it worked."""
+    to = message.to[0]
     try:
         message.send(fail_silently=False)
-    except Exception:
+    except Exception as error:
         # Never crash a request over email; the person can ask for a new code.
         logger.exception("Couldn't send email to %s", message.to)
+        _record(kind, to, False, error)
+        return False
+    _record(kind, to, True)
+    return True
+
+
+def _deliver_in_background(message, kind):
+    close_old_connections()
+    try:
+        _deliver(message, kind)
+    finally:
+        close_old_connections()
 
 
 def render(template, context):
@@ -36,15 +63,25 @@ def render(template, context):
     return render_to_string(f"emails/{template}.txt", context), render_to_string(f"emails/{template}.html", context)
 
 
-def send(*, to, subject, template, context):
+def _build(to, subject, template, context):
     context = {"subject": subject, **context}
     text, html = render(template, context)
     message = EmailMultiAlternatives(subject, text, settings.DEFAULT_FROM_EMAIL, [to])
     message.attach_alternative(html, "text/html")
+    return message
+
+
+def send(*, to, subject, template, context):
+    message = _build(to, subject, template, context)
     if settings.EMAIL_SEND_ASYNC:
-        threading.Thread(target=_deliver, args=(message,), daemon=True).start()
+        threading.Thread(target=_deliver_in_background, args=(message, template), daemon=True).start()
     else:
-        _deliver(message)
+        _deliver(message, template)
+
+
+def send_now(*, to, subject, template, context):
+    """For scheduled work: waits for the mail server and says whether it worked."""
+    return _deliver(_build(to, subject, template, context), template)
 
 
 def code_context(purpose, code, device=""):
@@ -52,7 +89,7 @@ def code_context(purpose, code, device=""):
         return {
             "eyebrow": "New device sign-in",
             "heading": "Your sign-in code",
-            "intro": "Someone is signing in to your To-Do account from a new device. If it's you, enter this code to finish.",
+            "intro": "Someone is signing in to your Todo Clock account from a new device. If it's you, enter this code to finish.",
             "preheader": f"{code} is your sign-in code. It expires in {settings.OTP_TTL_MINUTES} minutes.",
             "code": code,
             "minutes": settings.OTP_TTL_MINUTES,
@@ -71,7 +108,7 @@ def code_context(purpose, code, device=""):
 
 def send_code(*, to, purpose, code, device=""):
     word = "sign-in" if purpose == "login" else "verification"
-    send(to=to, subject=f"{code} is your To-Do {word} code", template="code", context=code_context(purpose, code, device))
+    send(to=to, subject=f"{code} is your Todo Clock {word} code", template="code", context=code_context(purpose, code, device))
 
 
 def welcome_context(user):
@@ -80,7 +117,7 @@ def welcome_context(user):
         "name": first,
         "features": WELCOME_FEATURES,
         "app_url": settings.APP_URL,
-        "preheader": "Your account is ready. Here's how to get the most out of To-Do.",
+        "preheader": "Your account is ready. Here's how to get the most out of Todo Clock.",
     }
 
 
@@ -91,5 +128,5 @@ def send_welcome_once(user):
         return False
     if not User.all_objects.filter(pk=user.pk, welcomed_at__isnull=True).update(welcomed_at=timezone.now()):
         return False
-    send(to=user.email, subject="Welcome to To-Do", template="welcome", context=welcome_context(user))
+    send(to=user.email, subject="Welcome to Todo Clock", template="welcome", context=welcome_context(user))
     return True
