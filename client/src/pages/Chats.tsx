@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { chat, social, type Chat, type ChatMessage, type ChatReaction, type Person } from '../api'
+import { chatSections, dayLabel, isSeen, matchesChat, messageTime, momentLabel } from '../chatTimeline'
 import { ConfirmAction } from '../components/ConfirmAction'
+import { Dial } from '../components/Dial'
 import { EmojiGrid } from '../components/emoji'
 import { Loading, SkeletonRows, ThreadSkeleton } from '../components/Loading'
 import { MessageMenu, type MessageAction } from '../components/MessageMenu'
+import { OptionsMenu } from '../components/OptionsMenu'
+import { SearchField } from '../components/SearchField'
 import { groupReactions, onlyEmoji, withMyReaction, type ReactionGroup } from '../emojiText'
 import { Icon, type IconName } from '../icons'
 import { useLiveRefresh } from '../live'
 import { gsap, useGsap } from '../motion'
 import { pendingMessages, type Outbox, type ShownMessage } from '../outbox'
 import { isLive, joinChat, onLive, watchOnline, watchTyping } from '../realtime'
-import { addDays, formatLongDate, formatShortDay, formatTime, sameDay } from '../time'
+import { sameDay } from '../time'
 import { handle, initials } from '../user'
 import { usePageVisible } from '../visibility'
 import './Chats.css'
@@ -42,6 +46,8 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
   const [opened, setOpened] = useState<Chat | null>(null)
   const [picking, setPicking] = useState(false)
   const [online, setOnline] = useState<Set<number>>(new Set())
+  const [search, setSearch] = useState('')
+  const listRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -132,17 +138,38 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
   const withMessages = new Set(chats?.map((c) => c.friend.id))
   const newFriends = friends.filter((f) => !withMessages.has(f.id))
 
+  const sections = chatSections((chats ?? []).filter((c) => matchesChat(c, search)), now)
+
+  // The timeline draws itself when it first appears: the line, then each chat sliding in.
+  const listReady = chats !== null && chats.length > 0 && !picking && !search
+  useGsap(
+    listRef,
+    () => {
+      if (!listReady || !listRef.current) return
+      gsap.fromTo(listRef.current.querySelectorAll('.moment'), { x: 26, opacity: 0 }, { x: 0, opacity: 1, duration: 0.55, stagger: 0.07, ease: 'power3.out', clearProps: 'transform,opacity' })
+      gsap.fromTo(listRef.current.querySelectorAll('.moment-dot'), { scale: 0 }, { scale: 1, duration: 0.5, stagger: 0.07, delay: 0.15, ease: 'back.out(2.6)', clearProps: 'transform' })
+    },
+    [listReady],
+  )
+  // A chat with a new message hops up to the top.
+  const topChat = useRef<number | null>(null)
+  const top = chats?.[0]?.id ?? null
+  useLayoutEffect(() => {
+    const before = topChat.current
+    topChat.current = top
+    if (before === null || top === null || before === top) return
+    const row = listRef.current?.querySelector(`.moment[data-id="${top}"]`)
+    if (row) gsap.fromTo(row, { y: 40, scale: 0.97 }, { y: 0, scale: 1, duration: 0.55, ease: 'back.out(1.7)', clearProps: 'transform' })
+  }, [top])
+
   return (
     <div className={`chats-page${openId ? ' has-thread' : ''}`}>
-      <section className="card glass chat-list-pane" aria-labelledby="chats-h">
-        <div className="section-head">
-          <h2 id="chats-h">
-            <Icon name="chat" /> Chats
-          </h2>
+      <section className="card glass panel chat-list-pane" aria-label="Your chats">
+        <div className="panel-top">
+          <SearchField label="Search chats" placeholder="Search chats" value={search} onChange={setSearch} />
           {friends.length > 0 && (
-            <button className="primary-btn small-btn" aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
+            <button className="primary-btn icon-only" aria-label={picking ? 'Close' : 'New chat'} aria-expanded={picking} onClick={() => setPicking((p) => !p)}>
               <Icon name={picking ? 'x' : 'plus'} />
-              {picking ? 'Close' : 'New'}
             </button>
           )}
         </div>
@@ -156,69 +183,85 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
           </div>
         )}
 
-        {picking && (
-          <ul className="chat-list picker" aria-label="Start a chat with">
-            {friends.map((f) => (
-              <li key={f.id}>
-                <button className="chat-row" onClick={() => openWith(f.id)}>
-                  <Avatar person={f} online={online.has(f.id)} />
-                  <span className="chat-row-main">
-                    <span className="person-name">{nameOf(f)}</span>
-                    <span className="task-meta">{online.has(f.id) ? `${handle(f)} · Online` : handle(f)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {!picking &&
-          (chats === null ? (
-            <Loading active={!error} skeleton={<SkeletonRows count={4} avatar />} onRetry={() => void refresh()} />
-          ) : chats.length === 0 ? (
-            <p className="empty">
-              {friends.length ? 'No messages yet. Tap New to write to a friend.' : 'Add a friend first, then you can message them here.'}
-            </p>
-          ) : (
-            <ul className="chat-list">
-              {chats.map((c) => (
-                <li key={c.id}>
-                  <button
-                    className="chat-row"
-                    aria-current={c.id === openId ? 'true' : undefined}
-                    onClick={() => {
-                      setOpened(c) // stays open even if it leaves the list (e.g. cleared)
-                      setOpenId(c.id)
-                    }}
-                  >
-                    <Avatar person={c.friend} online={online.has(c.friend.id)} />
-                    <span className="chat-row-main">
-                      <span className="chat-row-top">
-                        <span className="person-name">{nameOf(c.friend)}</span>
-                        {c.last_message_at && <span className="chat-when">{listTime(new Date(c.last_message_at), now)}</span>}
-                      </span>
-                      <span className="chat-row-bottom">
-                        {typingIn.has(c.id) ? (
-                          <span className="task-meta chat-preview live-status">typing…</span>
-                        ) : (
-                          <span className={`task-meta chat-preview${c.unread ? ' unread' : ''}`}>{preview(c)}</span>
-                        )}
-                        {c.unread > 0 && (
-                          <span className="nav-badge static" aria-label={`${c.unread} unread`}>
-                            {c.unread}
-                          </span>
-                        )}
-                      </span>
+        <div ref={listRef} className="panel-scroll chat-scroll">
+          {picking && (
+            <ul className="chat-list" aria-label="Start a chat with">
+              {friends.filter((f) => `${f.full_name} ${f.username}`.toLowerCase().includes(search.trim().toLowerCase())).map((f) => (
+                <li key={f.id}>
+                  <button className="flat-row" onClick={() => openWith(f.id)}>
+                    <Dial id={f.id} initials={initials(f)} ring={online.has(f.id) ? 'live' : null} />
+                    <span className="row-main">
+                      <span className="person-name">{nameOf(f)}</span>
+                      <span className={`row-sub${online.has(f.id) ? ' live-status' : ''}`}>{online.has(f.id) ? `Online · ${handle(f)}` : handle(f)}</span>
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
-          ))}
+          )}
 
-        {!picking && chats && chats.length > 0 && newFriends.length > 0 && (
-          <p className="task-meta chat-hint">Tap New to message {newFriends.length === 1 ? nameOf(newFriends[0]) : `${newFriends.length} more friends`}.</p>
-        )}
+          {!picking &&
+            (chats === null ? (
+              <Loading active={!error} skeleton={<SkeletonRows count={4} avatar />} onRetry={() => void refresh()} />
+            ) : chats.length === 0 ? (
+              <p className="empty">{friends.length ? 'No messages yet. Press + to write to a friend.' : 'Add a friend first, then you can message them here.'}</p>
+            ) : sections.length === 0 ? (
+              <p className="empty">No chats match.</p>
+            ) : (
+              sections.map((section) => (
+                <div key={section.label} className="chat-section">
+                  <h3 className="rail-label">{section.label}</h3>
+                  <ul className="timeline">
+                    {section.chats.map((c) => (
+                      <li key={c.id} className="moment" data-id={c.id}>
+                        <span className="moment-time">{c.last_message_at ? momentLabel(new Date(c.last_message_at), now) : ''}</span>
+                        <span className={`moment-dot${c.unread ? ' new' : ''}`} aria-hidden="true" />
+                        <button
+                          className={`flat-row${c.unread ? ' unread' : ''}`}
+                          aria-current={c.id === openId ? 'true' : undefined}
+                          onClick={() => {
+                            setOpened(c) // stays open even if it leaves the list (e.g. cleared)
+                            setOpenId(c.id)
+                          }}
+                        >
+                          <Dial id={c.friend.id} initials={initials(c.friend)} ring={c.unread ? 'new' : online.has(c.friend.id) ? 'live' : null} />
+                          <span className="row-main">
+                            <span className="person-name">{nameOf(c.friend)}</span>
+                            {typingIn.has(c.id) ? (
+                              <span className="typing">
+                                <i />
+                                <i />
+                                <i />
+                                typing
+                              </span>
+                            ) : (
+                              <span className={`row-sub${c.unread ? ' unread' : ''}`}>
+                                {isSeen(c) && (
+                                  <span className="seen-mark" role="img" aria-label="Seen">
+                                    <Icon name="seen" />
+                                  </span>
+                                )}
+                                {preview(c)}
+                              </span>
+                            )}
+                          </span>
+                          {c.unread > 0 && (
+                            <span className="count-badge" aria-label={`${c.unread} unread`}>
+                              {c.unread}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            ))}
+
+          {!picking && chats && chats.length > 0 && newFriends.length > 0 && !search && (
+            <p className="task-meta chat-hint">Press + to message {newFriends.length === 1 ? nameOf(newFriends[0]) : `${newFriends.length} more friends`}.</p>
+          )}
+        </div>
       </section>
 
       <section className="card glass chat-thread-pane" aria-label="Messages">
@@ -248,15 +291,6 @@ export function Chats({ myId, now, notify, start, onUnread, onStarted, outbox }:
   )
 }
 
-function Avatar({ person, online }: { person: Person; online: boolean }) {
-  return (
-    <span className="avatar chat-avatar" aria-hidden="true">
-      {initials(person)}
-      {online && <span className="online-dot" />}
-    </span>
-  )
-}
-
 /** A message deleted for everyone: its words go, including from any reply that quotes it. */
 function withDeleted<T extends ChatMessage>(list: T[], id: number): T[] {
   return list.map((m) => {
@@ -270,18 +304,6 @@ function preview(c: Chat) {
   if (!m) return 'No messages yet'
   if (m.deleted) return m.mine ? 'You deleted a message' : 'Message deleted'
   return `${m.mine ? 'You: ' : ''}${m.text}`
-}
-
-function listTime(d: Date, now: Date) {
-  if (sameDay(d, now)) return formatTime(d)
-  if (sameDay(d, addDays(now, -1))) return 'Yesterday'
-  return formatShortDay(d)
-}
-
-function dayLabel(d: Date, now: Date) {
-  if (sameDay(d, now)) return 'Today'
-  if (sameDay(d, addDays(now, -1))) return 'Yesterday'
-  return formatLongDate(d)
 }
 
 /** A message on screen: real ones from the server, plus my own still in the save queue. */
@@ -631,30 +653,21 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
   return (
     <div className="thread">
       <header className="thread-head">
-        <button className="icon-btn thread-back" aria-label="Back to chats" onClick={onBack}>
+        <button className="round-btn thread-back" aria-label="Back to chats" onClick={onBack}>
           <Icon name="back" />
         </button>
-        <Avatar person={friend} online={online} />
-        <span className="chat-row-main">
-          <span className="person-name">{nameOf(friend)}</span>
-          <span className="task-meta">
-            {handle(friend)} · <span className={typing || online ? 'live-status' : undefined}>{status}</span>
+        <span className="row-main">
+          <span className={`eyebrow${typing || online ? ' live-status' : ''}`}>
+            {status} · {handle(friend)}
           </span>
+          <h2 className="thread-name">{nameOf(friend)}</h2>
         </span>
-        <button className="icon-btn" aria-label="Clear chat" aria-expanded={confirmClear} onClick={() => setConfirmClear((c) => !c)}>
-          <Icon name="trash" />
-        </button>
+        <OptionsMenu label="Chat options" options={[{ icon: 'trash', label: 'Clear chat', danger: true, run: () => setConfirmClear(true) }]} />
       </header>
       {confirmClear && (
-        <div className="clear-bar" role="alert">
-          <span>Clear this chat for you? {nameOf(friend)} keeps their copy.</span>
-          <button className="text-btn" onClick={() => setConfirmClear(false)}>
-            Cancel
-          </button>
-          <button className="text-btn danger" onClick={clearChat}>
-            Clear
-          </button>
-        </div>
+        <ConfirmAction danger icon="trash" title="Clear this chat?" confirmLabel="Clear chat" onCancel={() => setConfirmClear(false)} onConfirm={clearChat}>
+          <p>It's cleared for you. {nameOf(friend)} keeps their copy.</p>
+        </ConfirmAction>
       )}
 
       <div
@@ -744,7 +757,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
                       )}
                       <span className="bubble-time">
                         {m.edited && 'edited · '}
-                        {formatTime(at)}
+                        {messageTime(at)}
                       </span>
                     </div>
                     {!m.deleted && !m.pending && !m.failed && (
@@ -824,7 +837,7 @@ function Thread({ chat: info, myId, now, online, notify, outbox, onBack, onChang
             }
           }}
         />
-        <button className="primary-btn send-btn" type="submit" aria-label={editing ? 'Save edit' : 'Send'} disabled={!draft.trim()}>
+        <button className="fab send-btn" type="submit" aria-label={editing ? 'Save edit' : 'Send'} disabled={!draft.trim()}>
           <Icon name={editing ? 'check' : 'send'} />
         </button>
       </form>

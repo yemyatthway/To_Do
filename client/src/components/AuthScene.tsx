@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-/** Sample cards that drift behind the login form to show what the app is for. Decorative only. */
+/** Sample cards that drift behind the login form to show what the app is for. Decorative only, so search results must never quote them. */
 const FLOATERS = [
   { title: 'Morning run', time: '7:00 AM', cat: 'health', done: true, x: '6%', y: '14%' },
   { title: 'Team standup', time: '2:00 PM', cat: 'work', done: false, x: '74%', y: '10%' },
@@ -29,7 +29,7 @@ export function AuthScene() {
   }, [])
 
   return (
-    <div className="auth-scene" aria-hidden="true">
+    <div className="auth-scene" aria-hidden="true" data-nosnippet>
       <span className="orb orb-1" />
       <span className="orb orb-2" />
       <span className="orb orb-3" />

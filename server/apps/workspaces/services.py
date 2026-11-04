@@ -19,6 +19,7 @@ from apps.tasks.models import Task
 from apps.users import mail, usernames
 from apps.users.models import User
 
+from . import files
 from . import permissions as perms
 from .models import ActivityEvent, Comment, Invitation, Membership, Notification, Page, Table, TableRow, Workspace
 
@@ -29,12 +30,14 @@ MAX_PAGES = 500
 MAX_BLOCKS = 2000
 MAX_BLOCK_TEXT = 10_000
 MAX_PAGE_CHARS = 200_000
-BLOCK_TYPES = {"p", "h", "todo"}
+BLOCK_TYPES = {"p", "h", "todo", "file"}
 MAX_TABLES = 200
 MAX_COLUMNS = 30
 MAX_ROWS = 2000
 MAX_CELL_TEXT = 5000
-COLUMN_TYPES = {"text", "number", "select", "person", "date", "checkbox"}
+COLUMN_TYPES = {"text", "number", "select", "person", "date", "checkbox", "file"}
+MAX_CELL_FILES = 10
+MAX_COMMENT_FILES = 6
 STARTER_COLUMNS = [("Description", "text"), ("Assigned", "person"), ("Done", "checkbox")]
 MAX_COMMENT = 2000
 MENTION = re.compile(r"(?<![\w.@])@([A-Za-z0-9._]{1,20})")
@@ -290,7 +293,7 @@ def _clean_title(title):
     return title[:120] or "Untitled"
 
 
-def _clean_blocks(blocks):
+def _clean_blocks(blocks, workspace):
     """Only what the editor can show gets stored: this reaches every member's screen."""
     if not isinstance(blocks, list):
         raise ValidationError({"blocks": ["That page content isn't valid."]})
@@ -312,8 +315,15 @@ def _clean_blocks(blocks):
         item = {"id": block_id, "type": block["type"], "text": block["text"]}
         if block["type"] == "todo":
             item["done"] = block.get("done") is True
+        if block["type"] == "file":
+            if type(block.get("file")) is not int:
+                raise ValidationError({"blocks": ["That page content isn't valid."]})
+            item["file"] = block["file"]
+            item["text"] = ""
         cleaned.append(item)
-    return cleaned
+    # A file that's gone (an upload that never finished) leaves the page. So does anyone else's.
+    present = set(files.known(workspace, [item["file"] for item in cleaned if item["type"] == "file"]))
+    return [item for item in cleaned if item["type"] != "file" or item["file"] in present]
 
 
 def pages_of(me, workspace_id):
@@ -353,7 +363,7 @@ def update_page(me, workspace_id, page_id, base_version, title=None, blocks=None
     perms.require(membership, perms.EDIT)
     if type(base_version) is not int:
         raise ValidationError({"base_version": ["Say which version this edit started from."]})
-    cleaned = None if blocks is None else _clean_blocks(blocks)
+    cleaned = None if blocks is None else _clean_blocks(blocks, membership.workspace)
     with transaction.atomic():
         page = membership.workspace.pages.select_for_update().filter(pk=page_id).first()
         if page is None:
@@ -467,6 +477,8 @@ def _clean_cell(column, value, workspace):
         if parsed is None or parsed.tzinfo is None:
             raise _cell_error(f"{column['name']} must be a date and time.")
         return parsed.astimezone(dt_timezone.utc).isoformat()
+    if kind == "file":
+        return files.clean_list(workspace, value, MAX_CELL_FILES, "values")
     if value is None:
         return False
     if not isinstance(value, bool):
@@ -841,19 +853,21 @@ def mentioned_in(workspace, body):
     return [m.user for m in workspace.memberships.select_related("user").filter(user__username__in=names, user__is_active=True, user__deleted_at__isnull=True)]
 
 
-def add_comment(me, workspace_id, body, page_id=None, table_id=None, row_id=None):
+def add_comment(me, workspace_id, body, page_id=None, table_id=None, row_id=None, file_ids=None):
     membership = membership_for(me, workspace_id)
     perms.require(membership, perms.COMMENT, "Your role in this workspace doesn't allow commenting.")
+    workspace = membership.workspace
+    attached = files.clean_list(workspace, file_ids, MAX_COMMENT_FILES, "files")
     body = str(body or "").strip()
-    if not body:
+    if not body and not attached:
         raise ValidationError({"body": ["Write something first."]})
     if len(body) > MAX_COMMENT:
         raise ValidationError({"body": [f"Keep comments under {MAX_COMMENT:,} characters."]})
-    workspace = membership.workspace
     page, table, row = _comment_target(membership, page_id, table_id, row_id)
     earlier = page.comments if page else row.comments
     earlier_authors = set(earlier.exclude(author=None).values_list("author_id", flat=True))
-    comment = Comment.objects.create(workspace=workspace, page=page, row=row, author=me, body=body)
+    comment = Comment.objects.create(workspace=workspace, page=page, row=row, author=me, body=body, files=attached)
+    summary = body or "Shared a file"
     if page:
         _log(workspace, me, "comment.page", "page", page.pk, page.title)
         where = page.title
@@ -866,11 +880,11 @@ def add_comment(me, workspace_id, body, page_id=None, table_id=None, row_id=None
     # Everyone gets one notification at most, and the most personal one.
     mentioned = [user for user in mentioned_in(workspace, body) if user.pk != me.pk]
     for user in mentioned:
-        _inform(user, me, workspace, Notification.Kind.MENTION, f"{_name(me)} mentioned you on {where}", body, url)
+        _inform(user, me, workspace, Notification.Kind.MENTION, f"{_name(me)} mentioned you on {where}", summary, url)
     followers = set(earlier_authors) | (_assigned_people(table, row.values) if row else set())
     followers -= {me.pk, *(u.pk for u in mentioned)}
     for other in workspace.memberships.select_related("user").filter(user_id__in=followers):
-        _inform(other.user, me, workspace, Notification.Kind.COMMENT, f"{_name(me)} commented on {where}", body, url)
+        _inform(other.user, me, workspace, Notification.Kind.COMMENT, f"{_name(me)} commented on {where}", summary, url)
     _tell_members(workspace)
     return comment
 

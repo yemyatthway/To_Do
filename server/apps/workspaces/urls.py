@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from .dev_files import dev_file
 
 urlpatterns = [
     path("", views.WorkspacesApi.as_view()),
@@ -8,7 +9,11 @@ urlpatterns = [
     path("notifications/read/", views.ReadNotificationsApi.as_view()),
     path("invitations/<int:invitation_id>/accept/", views.AcceptInvitationApi.as_view()),
     path("invitations/<int:invitation_id>/decline/", views.DeclineInvitationApi.as_view()),
+    path("files/dev/<str:token>/", dev_file),
     path("<int:workspace_id>/", views.WorkspaceApi.as_view()),
+    path("<int:workspace_id>/files/", views.FilesApi.as_view()),
+    path("<int:workspace_id>/files/<int:file_id>/", views.FileApi.as_view()),
+    path("<int:workspace_id>/files/<int:file_id>/done/", views.FileDoneApi.as_view()),
     path("<int:workspace_id>/invitations/", views.WorkspaceInvitationsApi.as_view()),
     path("<int:workspace_id>/invitations/<int:invitation_id>/", views.WorkspaceInvitationApi.as_view()),
     path("<int:workspace_id>/members/<int:user_id>/", views.MemberApi.as_view()),

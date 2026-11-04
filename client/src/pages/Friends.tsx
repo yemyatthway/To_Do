@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveRefresh } from '../live'
 import { social, type Person, type Share } from '../api'
 import { ConfirmAction } from '../components/ConfirmAction'
+import { Dial } from '../components/Dial'
 import { Loading, SkeletonRows } from '../components/Loading'
 import { SearchField } from '../components/SearchField'
 import { Icon } from '../icons'
 import { useEnterOnChange } from '../motion'
+import { watchOnline } from '../realtime'
 import { formatShortDay, formatTime } from '../time'
 import { handle, initials, timeAgo } from '../user'
 
@@ -45,6 +47,9 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
   const request = useRef(0)
   const pageRef = useRef<HTMLDivElement>(null)
   useEnterOnChange(pageRef, username ?? '')
+  const [online, setOnline] = useState<Set<number>>(new Set())
+  const friendIds = lists?.friends.map((f) => f.id).join(',') ?? ''
+  useEffect(() => watchOnline(friendIds ? friendIds.split(',').map(Number) : [], setOnline), [friendIds])
 
   const refresh = useCallback(async () => {
     try {
@@ -217,6 +222,8 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
 
   const matches = (p: Person) => `${p.full_name} ${p.username}`.toLowerCase().includes(trimmed.replace(/^@/, '').toLowerCase())
   const friends = lists?.friends.filter(matches) ?? []
+  const onlineFriends = friends.filter((p) => online.has(p.id))
+  const otherFriends = friends.filter((p) => !online.has(p.id))
   const outgoing = lists?.outgoing.filter(matches) ?? []
   const incoming = lists?.incoming ?? []
   const shares = [...(inbox?.filter((s) => s.status === 'new') ?? []), ...(inbox?.filter((s) => s.status !== 'new') ?? [])]
@@ -237,9 +244,8 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
         <div className="panel-top">
           <SearchField label="Search friends or find people" placeholder="Search people" value={query} onChange={typeQuery} />
           {Boolean(lists?.friends.length) && (
-            <button className="primary-btn" onClick={() => onSendTasks()}>
+            <button className="primary-btn icon-only" aria-label="Send tasks" onClick={() => onSendTasks()}>
               <Icon name="send" />
-              <span className="hide-narrow">Send tasks</span>
             </button>
           )}
         </div>
@@ -259,22 +265,22 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
             ) : (
               <>
                 {lists.friends.length === 0 && lists.outgoing.length === 0 && !trimmed && <p className="empty">No friends yet. Search above to find people and send a request.</p>}
-                {friends.length + outgoing.length > 0 && (
+                {onlineFriends.length > 0 && (
                   <>
-                    <h3 className="section-label">Your friends</h3>
+                    <h3 className="section-label">Online now · {onlineFriends.length}</h3>
                     <ul className="people">
-                      {friends.map((p) => (
-                        <li key={p.id} className="person">
-                          <button className="person-open" onClick={() => onOpenFriend(p.username)}>
-                            <PersonInfo person={p} />
-                          </button>
-                          <span className="person-actions">
-                            <button className="text-btn" onClick={() => onMessage(p)} aria-label={`Message ${nameOf(p)}`}>
-                              <Icon name="chat" />
-                              <span className="hide-narrow">Message</span>
-                            </button>
-                          </span>
-                        </li>
+                      {onlineFriends.map((p) => (
+                        <FriendRow key={p.id} person={p} online onOpen={() => onOpenFriend(p.username)} />
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {otherFriends.length + outgoing.length > 0 && (
+                  <>
+                    <h3 className="section-label">{onlineFriends.length > 0 ? 'Everyone' : 'Your friends'}</h3>
+                    <ul className="people">
+                      {otherFriends.map((p) => (
+                        <FriendRow key={p.id} person={p} online={false} onOpen={() => onOpenFriend(p.username)} />
                       ))}
                       {outgoing.map((p) => (
                         <PersonRow key={p.id} person={p} note="Request sent">
@@ -350,6 +356,22 @@ export function Friends({ now, username, notify, onOpenFriend, onCloseFriend, on
       </section>
       {removeDialog}
     </div>
+  )
+}
+
+/** A friend: the whole row opens their page, where you can message them or send tasks. */
+function FriendRow({ person, online, onOpen }: { person: Person; online: boolean; onOpen: () => void }) {
+  return (
+    <li className="friend-row">
+      <button type="button" className="flat-row" onClick={onOpen}>
+        <Dial id={person.id} initials={initials(person)} ring={online ? 'live' : null} />
+        <span className="row-main">
+          <span className="person-name">{nameOf(person)}</span>
+          <span className={`row-sub${online ? ' live-status' : ''}`}>{online ? `Online · ${handle(person)}` : handle(person)}</span>
+        </span>
+        <Icon name="chevron" className="more-go" />
+      </button>
+    </li>
   )
 }
 

@@ -1,6 +1,8 @@
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 from . import permissions
 
@@ -165,7 +167,9 @@ class Comment(models.Model):
     page = models.ForeignKey(Page, null=True, blank=True, on_delete=models.CASCADE, related_name="comments")
     row = models.ForeignKey(TableRow, null=True, blank=True, on_delete=models.CASCADE, related_name="comments")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
-    body = models.TextField()
+    body = models.TextField(blank=True)
+    # Ids of WorkspaceFile rows. A comment can be just a screenshot.
+    files = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
@@ -223,3 +227,37 @@ class Notification(models.Model):
     class Meta:
         ordering = ["-created_at", "-id"]
         indexes = [models.Index(fields=["recipient", "read_at"])]
+
+
+class WorkspaceFile(models.Model):
+    """A screenshot or file somewhere in a workspace. The bytes are in storage.py, not the database."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending"
+        READY = "ready"
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="files")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    name = models.CharField(max_length=150)
+    size = models.PositiveBigIntegerField()
+    content_type = models.CharField(max_length=120)
+    key = models.CharField(max_length=120, unique=True)
+    thumb_key = models.CharField(max_length=120, blank=True)
+    # Checked against the file's first bytes, so a renamed file can't pose as a picture.
+    is_image = models.BooleanField(default=False)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    def __str__(self):
+        return self.name
+
+
+@receiver(post_delete, sender=WorkspaceFile)
+def _delete_stored_copy(sender, instance, **kwargs):
+    """However a record goes (cleanup, or with its whole workspace), the stored file follows it."""
+    from . import storage
+
+    keys = [instance.key, instance.thumb_key]
+    transaction.on_commit(lambda: storage.remove_quietly(keys))

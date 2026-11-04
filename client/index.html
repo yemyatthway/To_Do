@@ -2,16 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Search engines want a square PNG or ICO: the SVG alone left a blank globe in Google results. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- iPhone/iPad Home Screen icon: a square PNG (iOS rounds the corners itself and ignores SVG). -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#e6eef8" />
-    <meta name="description" content="A to-do list on a clock, with push reminders." />
+    <meta name="description" content="Todo Clock puts your day on a clock. Plan tasks by the hour, get reminders on your phone, chat with friends and work together in shared workspaces." />
+    <link rel="canonical" href="https://todoclock.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Todo Clock" />
+    <meta property="og:url" content="https://todoclock.app/" />
+    <meta property="og:title" content="Todo Clock: your to-do list on a clock" />
+    <meta property="og:description" content="Plan tasks by the hour, get reminders on your phone, chat with friends and work together in shared workspaces." />
+    <meta property="og:image" content="https://todoclock.app/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Todo Clock",
+        "alternateName": "todoclock.app",
+        "url": "https://todoclock.app/"
+      }
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="To-Do" />
-    <title>To-Do</title>
+    <title>Todo Clock: your to-do list on a clock</title>
     <script>
       // Apply the saved theme before first paint so dark mode doesn't flash light.
       try {

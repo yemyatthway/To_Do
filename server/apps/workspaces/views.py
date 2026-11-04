@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 
 from apps.social.services import mask_email
 
+from . import files
 from . import permissions as perms
 from . import services
 from .models import Membership
@@ -298,6 +299,7 @@ def comment_data(comment, me, can_manage):
         "id": comment.pk, "body": comment.body, "created_at": comment.created_at,
         "author": {"id": author.pk, "name": author.full_name or f"@{author.username}", "username": author.username} if author else None,
         "can_delete": can_manage or (author is not None and author.pk == me.pk),
+        "files": comment.files,
     }
 
 
@@ -313,7 +315,7 @@ class PageCommentsApi(APIView):
         return _comments_response(request, workspace_id, services.comments_of(request.user, workspace_id, page_id=page_id))
 
     def post(self, request, workspace_id, page_id):
-        comment = services.add_comment(request.user, workspace_id, request.data.get("body"), page_id=page_id)
+        comment = services.add_comment(request.user, workspace_id, request.data.get("body"), page_id=page_id, file_ids=request.data.get("files"))
         can_manage = perms.can(services.membership_for(request.user, workspace_id).role, perms.MANAGE_MEMBERS)
         return Response(comment_data(comment, request.user, can_manage), status=status.HTTP_201_CREATED)
 
@@ -325,7 +327,7 @@ class RowCommentsApi(APIView):
         return _comments_response(request, workspace_id, services.comments_of(request.user, workspace_id, table_id=table_id, row_id=row_id))
 
     def post(self, request, workspace_id, table_id, row_id):
-        comment = services.add_comment(request.user, workspace_id, request.data.get("body"), table_id=table_id, row_id=row_id)
+        comment = services.add_comment(request.user, workspace_id, request.data.get("body"), table_id=table_id, row_id=row_id, file_ids=request.data.get("files"))
         can_manage = perms.can(services.membership_for(request.user, workspace_id).role, perms.MANAGE_MEMBERS)
         return Response(comment_data(comment, request.user, can_manage), status=status.HTTP_201_CREATED)
 
@@ -427,3 +429,50 @@ class ReadNotificationsApi(APIView):
     def post(self, request):
         services.mark_read(request.user, request.data.get("ids"))
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _upload_response(file, targets, status_code=status.HTTP_200_OK):
+    return Response({"file": files.data_for([file])[0], **targets}, status=status_code)
+
+
+class FilesApi(APIView):
+    """GET ?ids=1,2: those files, with links to read them. POST {name, size, ...}: get ready to upload one."""
+
+    throttle_scope = "files"
+
+    def get(self, request, workspace_id):
+        membership = services.membership_for(request.user, workspace_id)
+        raw = request.query_params.get("ids", "")
+        try:
+            ids = [int(part) for part in raw.split(",") if part]
+        except ValueError:
+            ids = None
+        return Response(files.data_for(files.listed(membership, ids)))
+
+    def post(self, request, workspace_id):
+        membership = services.membership_for(request.user, workspace_id)
+        data = request.data
+        file, targets = files.prepare(membership, request.user, data.get("name"), data.get("size"), data.get("width"), data.get("height"), data.get("thumb"))
+        return _upload_response(file, targets, status.HTTP_201_CREATED)
+
+
+class FileApi(APIView):
+    """POST: fresh upload links, to try again. DELETE: give up on an upload that hasn't finished."""
+
+    throttle_scope = "files"
+
+    def post(self, request, workspace_id, file_id):
+        membership = services.membership_for(request.user, workspace_id)
+        return _upload_response(*files.restart(membership, request.user, file_id))
+
+    def delete(self, request, workspace_id, file_id):
+        files.cancel(services.membership_for(request.user, workspace_id), request.user, file_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FileDoneApi(APIView):
+    throttle_scope = "files"
+
+    def post(self, request, workspace_id, file_id):
+        file = files.finish(services.membership_for(request.user, workspace_id), request.user, file_id)
+        return Response(files.data_for([file])[0])

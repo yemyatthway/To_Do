@@ -8,7 +8,7 @@ services:
     # Closest Render region to the Supabase database (Mumbai), so each query is a short hop.
     region: singapore
     rootDir: server
-    buildCommand: pip install uv && uv sync --frozen && uv run python manage.py collectstatic --noinput && uv run python manage.py migrate --noinput
+    buildCommand: pip install uv && uv sync --frozen && uv run python manage.py collectstatic --noinput && uv run python manage.py migrate --noinput && uv run python manage.py setup_file_storage
     startCommand: uv run gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
     healthCheckPath: /api/health/
     envVars:
@@ -50,4 +50,11 @@ services:
       # Encrypts chat messages at rest. Make one with:
       # uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       - key: CHAT_ENCRYPTION_KEYS
+        sync: false
+      # Screenshots and files in workspaces: Supabase project URL and a server-only secret key.
+      - key: FILE_STORAGE
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
         sync: false

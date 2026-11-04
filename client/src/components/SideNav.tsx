@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Icon, type IconName } from '../icons'
 import type { WorkspaceItem } from '../pages/Workspaces'
 
@@ -23,8 +24,25 @@ interface SideNavProps {
   onGo: (view: string) => void
 }
 
+const CLOSED_KEY = 'todo:sideClosed'
+
 /** Desktop navigation: a full sidebar on wide windows, icons only when there's less room. */
 export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inviteBadge, noticeBadge, openWorkspace, onGo }: SideNavProps) {
+  const [closed, setClosed] = useState(() => {
+    try {
+      return localStorage.getItem(CLOSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggle = () => {
+    setClosed(!closed)
+    try {
+      localStorage.setItem(CLOSED_KEY, closed ? '0' : '1')
+    } catch {
+      // This device won't remember it; the menu still works.
+    }
+  }
   const groups: { label: string; items: Item[] }[] = [
     {
       label: '',
@@ -61,12 +79,17 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
     },
   ]
   return (
-    <nav className="side-nav" aria-label="Main">
-      <div className="side-brand">
-        <span className="auth-logo" aria-hidden="true">
-          <Icon name="clock" />
-        </span>
-        <span className="side-text">To-Do</span>
+    <nav className={`side-nav${closed ? ' is-closed' : ''}`} aria-label="Main">
+      <div className="side-top">
+        <div className="side-brand">
+          <span className="auth-logo" aria-hidden="true">
+            <Icon name="clock" />
+          </span>
+          <span className="side-text">To-Do</span>
+        </div>
+        <button type="button" className="icon-btn side-toggle" aria-label={closed ? 'Open the side menu' : 'Close the side menu'} aria-expanded={!closed} onClick={toggle}>
+          <Icon name={closed ? 'sideOpen' : 'sideClose'} />
+        </button>
       </div>
       {groups.map((group) => (
         <div key={group.label || 'main'} className="side-group">

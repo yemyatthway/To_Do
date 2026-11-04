@@ -1,19 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ApiError, workspaces as api, type Block, type BlockType, type Member, type TeamPage } from '../api'
 import { Icon } from '../icons'
 import { useLiveRefresh } from '../live'
-import { applyShortcut, backspaceAtStart, makeBlock, pasteLines, setType, splitAt, type Caret } from '../pageBlocks'
+import { applyShortcut, backspaceAtStart, insertBlock, makeBlock, pasteLines, splitAt, type Caret } from '../pageBlocks'
 import { PageSaver, pageStorage, type PageDoc, type SaveStatus } from '../pageSaver'
 import { Comments, HistoryFold } from './Comments'
 import { ConfirmAction } from './ConfirmAction'
 import { Loading, SkeletonRows } from './Loading'
+import { OptionsMenu } from './OptionsMenu'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
-const TYPES: { type: BlockType; label: string }[] = [
-  { type: 'p', label: 'Text' },
-  { type: 'h', label: 'Heading' },
-  { type: 'todo', label: 'Checklist' },
-]
 
 interface PageEditorProps {
   workspaceId: number
@@ -92,6 +88,7 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
   const [status, setStatus] = useState<SaveStatus>(saver.status)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(false)
   const inputs = useRef(new Map<string, HTMLTextAreaElement>())
   const caret = useRef<Caret | null>(null)
 
@@ -170,9 +167,14 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
     }
   }
 
-  const active = useMemo(() => blocks.find((b) => b.id === activeId) ?? null, [blocks, activeId])
+  const addOptions: { type: BlockType; label: string; icon: 'text' | 'heading' | 'check' }[] = [
+    { type: 'p', label: 'Text', icon: 'text' },
+    { type: 'h', label: 'Heading', icon: 'heading' },
+    { type: 'todo', label: 'Checklist', icon: 'check' },
+  ]
 
   return (
+    <>
     <section className="card glass panel page-editor" aria-label={title || 'Untitled'}>
       {canEdit ? (
         <input
@@ -195,9 +197,20 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
           {statusText(status, canEdit)}
         </span>
         {canEdit && (
-          <button type="button" className="icon-btn" aria-label="Delete this page" onClick={() => setDeleting(true)}>
-            <Icon name="trash" />
-          </button>
+          <>
+            <OptionsMenu
+              label="Add to this page"
+              triggerClass="text-btn"
+              trigger={
+                <>
+                  <Icon name="plus" />
+                  Add
+                </>
+              }
+              options={addOptions.map(({ type, label, icon }) => ({ icon, label, run: () => apply(insertBlock(blocks, activeId, type)) }))}
+            />
+            <OptionsMenu label="Page options" options={[{ icon: 'trash', label: 'Delete page', danger: true, run: () => setDeleting(true) }]} />
+          </>
         )}
       </div>
 
@@ -213,25 +226,6 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
           <button type="button" className="primary-btn small" onClick={() => saver.keepMine()}>
             Keep mine
           </button>
-        </div>
-      )}
-
-      {canEdit && (
-        <div className="chips page-tools" role="group" aria-label="Line type">
-          {TYPES.map(({ type, label }) => (
-            <button
-              key={type}
-              type="button"
-              className="chip"
-              aria-pressed={active?.type === type}
-              disabled={!active}
-              // Keep the caret in the line being changed.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => active && change(blocks.map((b) => (b.id === active.id ? setType(b, type) : b)))}
-            >
-              {label}
-            </button>
-          ))}
         </div>
       )}
 
@@ -275,8 +269,6 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
             <ReadOnlyBlock key={block.id} block={block} />
           ),
         )}
-        <Comments target={{ workspaceId, pageId: page.id }} now={now} members={members} canComment={canComment} />
-        <HistoryFold workspaceId={workspaceId} now={now} pageId={page.id} />
       </div>
 
       {deleting && (
@@ -297,6 +289,18 @@ function Editor({ workspaceId, userId, canEdit, canComment, members, now, page, 
         </ConfirmAction>
       )}
     </section>
+
+    <aside className="card glass page-side" aria-label="Comments and history">
+      <button type="button" className="flat-row page-side-toggle" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((v) => !v)}>
+        <span className="row-main person-name">Comments and history</span>
+        <Icon name="chevron" className="more-go" />
+      </button>
+      <div className={`page-side-body${commentsOpen ? ' open' : ''}`}>
+        <Comments target={{ workspaceId, pageId: page.id }} now={now} members={members} canComment={canComment} />
+        <HistoryFold workspaceId={workspaceId} now={now} pageId={page.id} />
+      </div>
+    </aside>
+    </>
   )
 }
 

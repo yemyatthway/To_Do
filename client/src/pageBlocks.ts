@@ -67,3 +67,13 @@ export function pasteLines(blocks: Block[], id: string, start: number, end: numb
   const last = makeBlock(block.type === 'todo' ? 'todo' : 'p', lastLine + after)
   return { blocks: [...blocks.slice(0, index), first, ...middle, last, ...blocks.slice(index + 1)], caret: { id: last.id, at: lastLine.length } }
 }
+
+/** Add: an empty line becomes the new kind, otherwise a new line appears below. */
+export function insertBlock(blocks: Block[], afterId: string | null, type: BlockType): Edit {
+  const index = blocks.findIndex((b) => b.id === afterId)
+  const current = index >= 0 ? blocks[index] : blocks[blocks.length - 1]
+  if (current && !current.text) return { blocks: blocks.map((b) => (b.id === current.id ? setType(b, type) : b)), caret: { id: current.id, at: 0 } }
+  const next = makeBlock(type)
+  const at = index >= 0 ? index + 1 : blocks.length
+  return { blocks: [...blocks.slice(0, at), next, ...blocks.slice(at)], caret: { id: next.id, at: 0 } }
+}

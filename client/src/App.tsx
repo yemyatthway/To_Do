@@ -794,8 +794,9 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
 
       <div className="shell">
       <SideNav
-        view={route.view === 'workspace' ? (route.section === 'page' ? `page:${route.id}:${route.pageId}` : route.section === 'table' ? `table:${route.id}:${route.tableId}` : `workspace:${route.id}`) : view}
-        openWorkspace={route.view === 'workspace' && sideItems?.workspaceId === route.id ? sideItems : null}
+        view={route.view === 'workspace' ? (route.section === 'table' ? `table:${route.id}:${route.tableId}` : `workspace:${route.id}`) : view}
+        // An open page has its own list of pages and tables beside it.
+        openWorkspace={route.view === 'workspace' && route.section !== 'page' && sideItems?.workspaceId === route.id ? sideItems : null}
         isStaff={user.is_staff}
         chatBadge={chatBadge}
         socialBadge={socialBadge}
@@ -813,7 +814,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
           else go(next as Exclude<View, 'workspace'>)
         }}
       />
-      <div className="app">
+      <div className={`app${view === 'chats' ? ' is-chats' : ''}`}>
+        {view !== 'chats' && (
         <header className="header">
           <div className="header-start">
             {(isChildPage(route) || (inMore && view !== 'more')) && (
@@ -838,6 +840,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             </button>
           </div>
         </header>
+        )}
 
         {user.reminders_enabled && deviceState !== 'ready' && !hideDeviceBanner && (
           <div className="device-banner" role="status">

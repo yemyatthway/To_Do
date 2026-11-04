@@ -62,6 +62,7 @@ REST_FRAMEWORK = {
         "pages": "240/min",
         "tables": "300/min",
         "comments": "120/min",
+        "files": "300/min",
     },
 }
 
@@ -231,3 +232,14 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "loggers": {"apps.users.auth": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }
+
+# Workspace files. See apps/workspaces/storage.py. Empty FILE_STORAGE: adding files is switched off.
+FILE_STORAGE = env("FILE_STORAGE", default="")
+FILE_DEV_DIR = BASE_DIR / ".dev-uploads"
+SUPABASE_URL = env("SUPABASE_URL", default="")
+SUPABASE_SECRET_KEY = env("SUPABASE_SECRET_KEY", default="")
+SUPABASE_BUCKET = env("SUPABASE_BUCKET", default="workspace-files")
+FILE_MAX_BYTES = 25 * 1024 * 1024
+FILE_USER_QUOTA = 250 * 1024 * 1024
+# Supabase's free plan holds 1 GB. Stop well before it, so files can never cost anything.
+FILE_TOTAL_QUOTA = 900 * 1024 * 1024

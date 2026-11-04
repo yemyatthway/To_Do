@@ -1,5 +1,10 @@
 const paths = {
   plus: 'M12 5v14M5 12h14',
+  sideClose: 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 4v16M16 9l-3 3 3 3',
+  sideOpen: 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 4v16M13 9l3 3-3 3',
+  seen: 'M2 13l5 5L17 7M12 17l1 1L23 7',
+  heading: 'M6 4v16M18 4v16M6 12h12',
+  text: 'M4 6h16M4 12h16M4 18h10',
   check: 'M5 12l5 5L20 7',
   circle: 'M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z',
   x: 'M18 6L6 18M6 6l12 12',

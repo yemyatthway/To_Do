@@ -26,6 +26,7 @@ import {
 import { Comments, HistoryFold } from './Comments'
 import { ConfirmAction } from './ConfirmAction'
 import { Loading, SkeletonRows } from './Loading'
+import { OptionsMenu } from './OptionsMenu'
 import { SearchField } from './SearchField'
 import type { ToastData } from './Toast'
 
@@ -152,7 +153,6 @@ function TableScreen({
   const [description, setDescription] = useState(table.description)
   const [query, setQuery] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
-  const [moreOpen, setMoreOpen] = useState(false)
   const [filters, setFilters] = useState<Filters>({})
   const [sort, setSort] = useState<SortChoice>({ column: 'no', descending: false })
   const [view, setView] = useState<'table' | 'board'>('table')
@@ -307,19 +307,34 @@ function TableScreen({
 
   return (
     <section className="card glass panel table-screen" aria-label={title || 'Untitled'}>
-      {canEdit ? (
-        <input
-          className="page-title"
-          aria-label="Table name"
-          placeholder="Untitled"
-          maxLength={120}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => title !== table.title && void saveDetails({ title })}
+      <div className="table-title-row">
+        {canEdit ? (
+          <input
+            className="page-title"
+            aria-label="Table name"
+            placeholder="Untitled"
+            maxLength={120}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => title !== table.title && void saveDetails({ title })}
+          />
+        ) : (
+          <h2 className="page-title">{table.title}</h2>
+        )}
+        <OptionsMenu
+          label="Table options"
+          options={[
+            { icon: 'table', label: 'Show as table', current: view === 'table', run: () => setView('table') },
+            { icon: 'columns', label: 'Show as board', current: view === 'board', run: () => setView('board') },
+            ...(canEdit
+              ? [
+                  { icon: 'menu' as const, label: 'Edit columns', run: () => setColumnsOpen(true) },
+                  { icon: 'trash' as const, label: 'Delete table', danger: true, run: () => setDeletingTable(true) },
+                ]
+              : []),
+          ]}
         />
-      ) : (
-        <h2 className="page-title">{table.title}</h2>
-      )}
+      </div>
 
       {canEdit ? (
         <input
@@ -336,39 +351,15 @@ function TableScreen({
       )}
 
       <div className="table-tools">
-        <div className="segmented" role="group" aria-label="View">
-          <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')}>
-            Table
-          </button>
-          <button type="button" aria-pressed={view === 'board'} onClick={() => setView('board')}>
-            Board
-          </button>
-        </div>
-        <SearchField label="Search rows" placeholder="Search rows" value={query} onChange={setQuery} />
-        <button type="button" className={`text-btn table-filter-btn${activeFilters.length ? ' is-on' : ''}`} onClick={() => setFilterOpen(true)}>
+        <SearchField label="Search rows" placeholder="Search" value={query} onChange={setQuery} />
+        <button type="button" className={`text-btn icon-only table-filter-btn${activeFilters.length ? ' is-on' : ''}`} aria-label={activeFilters.length ? `Filter rows, ${activeFilters.length} on` : 'Filter rows'} onClick={() => setFilterOpen(true)}>
           <Icon name="filter" />
-          Filter
           {activeFilters.length > 0 && <span className="count-pill">{activeFilters.length}</span>}
         </button>
         {canEdit && (
-          <>
-            <div className="table-more">
-              <button type="button" className="icon-btn" aria-label="More options" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>
-                <Icon name="more" />
-              </button>
-              {moreOpen && (
-                <MoreMenu
-                  onClose={() => setMoreOpen(false)}
-                  onColumns={() => setColumnsOpen(true)}
-                  onDelete={() => setDeletingTable(true)}
-                />
-              )}
-            </div>
-            <button type="button" className="primary-btn table-new" disabled={adding} onClick={() => void addRow()}>
-              <Icon name="plus" />
-              New row
-            </button>
-          </>
+          <button type="button" className="primary-btn icon-only table-new" aria-label="New row" disabled={adding} onClick={() => void addRow()}>
+            <Icon name="plus" />
+          </button>
         )}
       </div>
 
@@ -413,22 +404,26 @@ function TableScreen({
         )
       ) : phone ? (
         <ul className="panel-scroll table-list">
-          {shown.map((row) => (
-            <li key={row.id} className="task-wrap">
-              <div className={`task-row${checkbox && row.values[checkbox.id] ? ' done' : ''}`} style={{ ['--cat' as string]: 'var(--work)' }}>
-                {checkbox && <RowCheck row={row} column={checkbox} canEdit={canEdit} onChange={(value) => setCells(row, { [checkbox.id]: value })} />}
-                <button type="button" className="task-main" onClick={() => setOpenRow(row.id)}>
-                  <span className={`task-title${row.highlighted ? ' row-red' : ''}`}>{rowTitle(row, columns)}</span>
-                  <span className="task-meta">
-                    {[row.no, ...columns.filter((c) => c.type !== 'checkbox' && displayValue(c, row.values[c.id], members) !== rowTitle(row, columns)).map((c) => displayValue(c, row.values[c.id], members))]
-                      .filter((part) => part !== '')
-                      .join(' · ')}
-                    {row.comment_count > 0 && ` · ${row.comment_count} ${row.comment_count === 1 ? 'comment' : 'comments'}`}
+          {shown.map((row) => {
+            const done = Boolean(checkbox && row.values[checkbox.id])
+            return (
+              <li key={row.id}>
+                <button type="button" className="flat-row" onClick={() => setOpenRow(row.id)}>
+                  <span className="row-main">
+                    <span className={`person-name${row.highlighted ? ' row-red' : ''}${done ? ' is-done' : ''}`}>{rowTitle(row, columns)}</span>
+                    <span className="row-sub">
+                      {[`No. ${row.no}`, ...columns.filter((c) => c.type !== 'checkbox' && displayValue(c, row.values[c.id], members) !== rowTitle(row, columns)).map((c) => displayValue(c, row.values[c.id], members))]
+                        .filter((part) => part !== '')
+                        .join(' · ')}
+                      {row.comment_count > 0 && ` · ${row.comment_count} ${row.comment_count === 1 ? 'comment' : 'comments'}`}
+                    </span>
                   </span>
+                  {done && <span className="row-status done">Done</span>}
+                  <Icon name="chevron" className="more-go" />
                 </button>
-              </div>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <div className="panel-scroll grid-box" role="table" aria-label={title || 'Table'}>
@@ -863,38 +858,6 @@ function filterText(column: TableColumn, value: string, members: Member[], userI
     return `${column.name}: ${member ? memberName(member) : 'Former member'}`
   }
   return `${column.name}: ${value === NONE ? 'Empty' : value}`
-}
-
-function MoreMenu({ onClose, onColumns, onDelete }: { onClose: () => void; onColumns: () => void; onDelete: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.parentElement?.contains(e.target as Node)) onClose()
-    }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    document.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
-  const choose = (action: () => void) => () => {
-    onClose()
-    action()
-  }
-  return (
-    <div ref={ref} className="table-menu glass" role="menu">
-      <button type="button" role="menuitem" onClick={choose(onColumns)}>
-        <Icon name="columns" />
-        Edit columns
-      </button>
-      <button type="button" role="menuitem" className="danger-row" onClick={choose(onDelete)}>
-        <Icon name="trash" />
-        Delete table
-      </button>
-    </div>
-  )
 }
 
 /** A dialog on desktop and a bottom sheet on phones, like the task and row sheets. */

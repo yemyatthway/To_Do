@@ -10,6 +10,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
 from apps.social.models import Share
 from apps.tasks.models import Task
+from apps.workspaces import files
 from apps.workspaces.models import ActivityEvent, Comment, Invitation, Notification, Page, Table, TableRow, Workspace
 
 from .models import AuthEvent, EmailCode, TrustedDevice, User
@@ -46,6 +47,8 @@ def prune(now=None):
         "pages": Page.all_objects.filter(deleted_at__lt=now - timedelta(days=WORKSPACE_RESTORE_DAYS)).delete()[0],
         "workspaces": Workspace.all_objects.filter(deleted_at__lt=now - timedelta(days=WORKSPACE_RESTORE_DAYS)).delete()[0],
         # Invitations that were answered, cancelled or ran out.
+        # Run after the things above, so anything they erased no longer holds on to its files.
+        "files": files.prune(now),
         "invitations": Invitation.objects.filter(expires_at__lt=now - timedelta(days=FINISHED_INVITE_DAYS)).delete()[0],
         # Shares already added or dismissed (their task copies go with them).
         "shares": Share.objects.filter(

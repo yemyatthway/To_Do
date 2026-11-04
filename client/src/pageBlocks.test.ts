@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from './api'
-import { applyShortcut, backspaceAtStart, pasteLines, setType, splitAt } from './pageBlocks'
+import { applyShortcut, backspaceAtStart, pasteLines, setType, splitAt, insertBlock } from './pageBlocks'
 
 const p = (id: string, text = ''): Block => ({ id, type: 'p', text })
 const h = (id: string, text = ''): Block => ({ id, type: 'h', text })
@@ -68,5 +68,26 @@ describe('page editing', () => {
   it('only checklist items carry a checkmark', () => {
     expect(setType(todo('a', 'x', true), 'p')).toEqual(p('a', 'x'))
     expect(setType(p('a', 'x'), 'todo')).toEqual(todo('a', 'x'))
+  })
+})
+
+describe('adding from the Add menu', () => {
+  const line = (id: string, text: string) => ({ id, type: 'p' as const, text })
+
+  it('adds a new line below the current one', () => {
+    const edit = insertBlock([line('a', 'one'), line('b', 'two')], 'a', 'h')
+    expect(edit.blocks.map((b) => b.type)).toEqual(['p', 'h', 'p'])
+    expect(edit.caret.id).toBe(edit.blocks[1].id)
+  })
+
+  it('turns an empty line into the new kind instead of leaving a gap', () => {
+    const edit = insertBlock([line('a', '')], 'a', 'todo')
+    expect(edit.blocks).toEqual([{ id: 'a', type: 'todo', text: '', done: false }])
+    expect(edit.caret).toEqual({ id: 'a', at: 0 })
+  })
+
+  it('goes to the end when no line is active', () => {
+    const edit = insertBlock([line('a', 'one')], null, 'h')
+    expect(edit.blocks.map((b) => b.type)).toEqual(['p', 'h'])
   })
 })

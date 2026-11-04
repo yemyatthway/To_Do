@@ -73,14 +73,14 @@ export function Workspaces({ data, error, notify, onOpen, onChanged, onRetry }: 
         <div className="panel-top">
           <SearchField label="Search workspaces" placeholder="Search workspaces" value={query} onChange={setQuery} />
           <button
-            className="primary-btn"
+            className="primary-btn icon-only"
+            aria-label="New workspace"
             onClick={() => {
               setName('')
               setCreating(true)
             }}
           >
             <Icon name="plus" />
-            New
           </button>
         </div>
 
@@ -375,8 +375,88 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
     setDialog({ kind: 'invite' })
   }
 
+  // Everything in the workspace, as plain rows. Beside an open page on wide screens.
+  const itemsPanel = (
+    <section className="card glass panel items-panel" aria-label={data.name}>
+      <div className="panel-top">
+        <SearchField label="Search this workspace" placeholder="Search" value={itemQuery} onChange={setItemQuery} />
+        {data.can.edit && (
+          <button
+            className="primary-btn icon-only"
+            aria-label="New page or table"
+            onClick={() => {
+              setText('')
+              setNewKind('table')
+              setDialog({ kind: 'new-item' })
+            }}
+          >
+            <Icon name="plus" />
+          </button>
+        )}
+      </div>
+      <div className="panel-scroll">
+        {items?.length === 0 && <p className="empty">{data.can.edit ? 'Nothing here yet. Press + and name your first table or page.' : 'Nothing here yet.'}</p>}
+        {Boolean(items?.length) && shownItems.length === 0 && <p className="empty">Nothing matches.</p>}
+        <ul className="row-list">
+          {shownItems.map((item) => (
+            <li key={`${item.kind}-${item.id}`}>
+              <button className="flat-row" aria-current={section === 'page' && item.kind === 'page' && item.id === pageId ? 'true' : undefined} onClick={() => (item.kind === 'table' ? onOpenTable(item.id) : onOpenPage(item.id))}>
+                <span className={`well${item.kind === 'page' ? ' violet' : ''}`}>
+                  <Icon name={item.kind} />
+                </span>
+                <span className="row-main">
+                  <span className="person-name">{item.title}</span>
+                  <span className="row-sub">
+                    {item.kind === 'page' ? 'Page' : 'Table'} · edited {timeAgo(item.updated_at, now).toLowerCase()}
+                    {item.updated_by && ` by ${item.updated_by}`}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <h3 className="section-label">Team</h3>
+        <ul className="row-list">
+          <li>
+            <button className="flat-row" onClick={() => onOpenSection('members')}>
+              <span className="well quiet">
+                <Icon name="users" />
+              </span>
+              <span className="row-main">
+                <span className="person-name">Members</span>
+                <span className="row-sub">{data.members.length} in this workspace</span>
+              </span>
+              <Icon name="chevron" className="more-go" />
+            </button>
+          </li>
+          <li>
+            <button className="flat-row" onClick={() => onOpenSection('activity')}>
+              <span className="well quiet">
+                <Icon name="list" />
+              </span>
+              <span className="row-main person-name">Activity</span>
+              <Icon name="chevron" className="more-go" />
+            </button>
+          </li>
+          <li>
+            <button className="flat-row" onClick={() => onOpenSection('settings')}>
+              <span className="well quiet">
+                <Icon name="menu" />
+              </span>
+              <span className="row-main">
+                <span className="person-name">Workspace settings</span>
+                <span className="row-sub">You: {label(data.role)}</span>
+              </span>
+              <Icon name="chevron" className="more-go" />
+            </button>
+          </li>
+        </ul>
+      </div>
+    </section>
+  )
+
   return (
-    <div ref={pageRef} className={`panel-page${section === 'table' ? ' wide' : ''}`}>
+    <div ref={pageRef} className={`panel-page${section === 'table' || section === 'page' ? ' wide' : ''}`}>
       {error && (
         <div className="error-banner" role="alert">
           <span>{error}</span>
@@ -391,73 +471,15 @@ export function WorkspacePage({ id, myId, now, section, pageId, tableId, rowId, 
         </section>
       )}
 
-      {section === 'home' && (
-        <section className="card glass panel" aria-label={data.name}>
-          <div className="panel-top">
-            <SearchField label="Search this workspace" placeholder="Search this workspace" value={itemQuery} onChange={setItemQuery} />
-            {data.can.edit && (
-              <button
-                className="primary-btn"
-                onClick={() => {
-                  setText('')
-                  setNewKind('table')
-                  setDialog({ kind: 'new-item' })
-                }}
-              >
-                <Icon name="plus" />
-                New
-              </button>
-            )}
-          </div>
-          <div className="panel-scroll">
-            <h3 className="section-label">Pages and tables</h3>
-            {items?.length === 0 && <p className="empty">{data.can.edit ? 'Nothing here yet. Press New and name your first table or page.' : 'Nothing here yet.'}</p>}
-            {Boolean(items?.length) && shownItems.length === 0 && <p className="empty">Nothing matches.</p>}
-            <ul className="people">
-              {shownItems.map((item) => (
-                <li key={`${item.kind}-${item.id}`}>
-                  <button className="more-row" onClick={() => (item.kind === 'table' ? onOpenTable(item.id) : onOpenPage(item.id))}>
-                    <Icon name={item.kind} />
-                    <span className="person-main">
-                      <span className="person-name">{item.title}</span>
-                      <span className="task-meta">
-                        Edited {timeAgo(item.updated_at, now).toLowerCase()}
-                        {item.updated_by && ` by ${item.updated_by}`}
-                      </span>
-                    </span>
-                    <Icon name="chevron" className="more-go" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <h3 className="section-label">Manage</h3>
-            <div className="panel-rows">
-            <button className="more-row" onClick={() => onOpenSection('activity')}>
-              <Icon name="list" />
-              <span className="person-name">Activity</span>
-              <Icon name="chevron" className="more-go" />
-            </button>
-            <button className="more-row" onClick={() => onOpenSection('members')}>
-              <Icon name="users" />
-              <span className="person-name">Members</span>
-              <span className="row-value">{data.members.length}</span>
-              <Icon name="chevron" className="more-go" />
-            </button>
-            <button className="more-row" onClick={() => onOpenSection('settings')}>
-              <Icon name="menu" />
-              <span className="person-main">
-                <span className="person-name">Workspace settings</span>
-                <span className="task-meta">You: {label(data.role)}</span>
-              </span>
-              <Icon name="chevron" className="more-go" />
-            </button>
-            </div>
-          </div>
-        </section>
-      )}
+      {section === 'home' && itemsPanel}
 
       {section === 'page' && pageId && (
-        <PageEditor key={pageId} workspaceId={id} pageId={pageId} userId={myId} canEdit={data.can.edit} canComment={data.can.comment} members={data.members} now={now} onSaved={pageSaved} onDeleted={pageDeleted} onGone={pageGone} />
+        <div className="page-split">
+          <div className="page-grid">
+            {itemsPanel}
+            <PageEditor key={pageId} workspaceId={id} pageId={pageId} userId={myId} canEdit={data.can.edit} canComment={data.can.comment} members={data.members} now={now} onSaved={pageSaved} onDeleted={pageDeleted} onGone={pageGone} />
+          </div>
+        </div>
       )}
 
       {section === 'table' && tableId && (
