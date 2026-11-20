@@ -313,3 +313,19 @@ class BrowseTasksTests(APITestCase):
         self.assertEqual(self.client.get("/api/tasks/browse/", {"list": "nope"}).status_code, 400)
         self.assertEqual(self.client.get("/api/tasks/browse/", {"page": "x"}).status_code, 400)
         self.assertEqual(self.client.get("/api/tasks/browse/", {"now": "soon"}).status_code, 400)
+
+
+class TaskAlarmTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("alarm@example.com", "Sunny-Clock-2026", email_verified_at=timezone.now())
+        self.client.force_authenticate(self.user)
+
+    def test_a_task_is_a_notification_unless_set_to_ring_as_an_alarm(self):
+        due = (timezone.now() + timedelta(hours=2)).isoformat()
+        plain = self.client.post("/api/tasks/", {"title": "Call", "due_at": due}, format="json")
+        self.assertIs(plain.data["alarm"], False)
+        loud = self.client.post("/api/tasks/", {"title": "Flight", "due_at": due, "alarm": True}, format="json")
+        self.assertEqual(loud.status_code, 201, loud.data)
+        self.assertIs(loud.data["alarm"], True)
+        changed = self.client.patch(f"/api/tasks/{loud.data['id']}/", {"alarm": False}, format="json")
+        self.assertIs(changed.data["alarm"], False)

@@ -7,6 +7,7 @@ import { TimePicker } from './TimePicker'
 import { gsap, useGsap } from '../motion'
 import { addDays, dueDate, formatLead, fromInputs, REMINDER_LEADS, startOfDay, toDateInput, toTimeInput } from '../time'
 import { formatDate, tr } from '../i18n'
+import { alarmsAvailable, askForAlarms, openAlarmSettings } from '../nativeAlarm'
 import { describeChanges } from '../taskChanges'
 import { ConfirmAction } from './ConfirmAction'
 
@@ -78,6 +79,19 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   // How long before the task the reminder comes (minutes); kept when the switch goes off and on.
   const [lead, setLead] = useState<number>(task?.remind_before_minutes ?? DEFAULT_LEAD)
   const [done, setDone] = useState(task?.done ?? false)
+  // Ring like a Clock alarm instead of a notification (iPhone app, iOS 26+).
+  const [alarm, setAlarm] = useState(task?.alarm ?? false)
+  const [alarmNote, setAlarmNote] = useState('')
+
+  async function toggleAlarm() {
+    setAlarmNote('')
+    if (alarm) {
+      setAlarm(false)
+      return
+    }
+    if (await askForAlarms().catch(() => false)) setAlarm(true)
+    else setAlarmNote(tr('Alarms are off for Todo Clock. Turn them on in Settings → Todo Clock.'))
+  }
     // Turning the time off and on again brings back the last time, so a mistaken tap costs nothing.
   const lastTime = useRef(time || defaults.time || '09:00')
 
@@ -174,6 +188,8 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
       priority,
       // With reminders off account-wide the switch is locked, so keep whatever the task already had.
       remind_before_minutes: !remindersOn ? (task?.remind_before_minutes ?? null) : time && remind ? lead : null,
+      // Where alarms can't ring (a browser, an older iPhone) the task keeps what it had.
+      alarm: remindersOn && alarmsAvailable() ? Boolean(time && remind && alarm) : (task?.alarm ?? false),
       done,
     }
   }
@@ -320,7 +336,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
 
           {time && (
             <>
-              <TaskRowButton icon="bell" label={tr('Reminder')} value={!remindersOn ? tr('Off in settings') : remind ? formatLead(lead) : tr('None')} open={openRow === 'remind'} onToggle={() => toggleRow('remind')} />
+              <TaskRowButton icon="bell" label={tr('Reminder')} value={!remindersOn ? tr('Off in settings') : remind ? (alarm && alarmsAvailable() ? `${formatLead(lead)} · ${tr('Alarm')}` : formatLead(lead)) : tr('None')} open={openRow === 'remind'} onToggle={() => toggleRow('remind')} />
               {openRow === 'remind' && (
                 <div className="task-row-body">
                   {remindersOn ? (
@@ -358,6 +374,20 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
                     </div>
                   ) : (
                     <span className="hint">{tr('Reminders are off. Turn them on with the bell button or in Settings.')}</span>
+                  )}
+                  {remindersOn && remind && alarmsAvailable() && (
+                    <>
+                      <div className="toggle-row">
+                        <span>{tr('Ring as an alarm')}</span>
+                        <button type="button" className="switch" role="switch" aria-checked={alarm} aria-label={tr('Ring as an alarm')} onClick={() => void toggleAlarm()} />
+                      </div>
+                      <span className="hint">{alarmNote || (alarm ? tr('Rings like the Clock app, even on silent, until you stop it.') : tr('Off: a normal notification.'))}</span>
+                      {alarmNote && (
+                        <button type="button" className="text-btn" onClick={openAlarmSettings}>
+                          {tr('Open Settings')}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}

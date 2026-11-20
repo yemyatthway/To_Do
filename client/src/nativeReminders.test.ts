@@ -3,7 +3,7 @@ import type { Task } from './api'
 import { MAX_SCHEDULED, reminderPlan } from './nativeReminders'
 
 const NOW = new Date('2026-11-04T12:00:00Z')
-const task = (over: Partial<Task>) => ({ id: 1, title: 'Back muscles', due_at: '2026-11-04T12:40:00Z', remind_before_minutes: 10, done: false, priority: 'medium', ...over }) as Task
+const task = (over: Partial<Task>) => ({ id: 1, title: 'Back muscles', due_at: '2026-11-04T12:40:00Z', remind_before_minutes: 10, done: false, priority: 'medium', alarm: false, ...over }) as Task
 
 describe('reminders scheduled on the phone', () => {
   it('rings the chosen time before the task', () => {
@@ -26,6 +26,13 @@ describe('reminders scheduled on the phone', () => {
     expect(reminderPlan([task({ remind_before_minutes: 120, due_at: '2026-11-04T15:00:00Z' })], NOW)[0].body.startsWith('in 2 h')).toBe(true)
     expect(reminderPlan([task({ remind_before_minutes: 1440, due_at: '2026-11-06T12:00:00Z' })], NOW)[0].body.startsWith('in 1 d')).toBe(true)
     expect(reminderPlan([task({ remind_before_minutes: 0 })], NOW)[0].body.startsWith('Starting now')).toBe(true)
+  })
+
+  it('marks the tasks that ring as an alarm, with the time in the title', () => {
+    const [item] = reminderPlan([task({ alarm: true })], NOW)
+    expect(item.alarm).toBe(true)
+    expect(item.alarmTitle.startsWith('Back muscles · ')).toBe(true)
+    expect(reminderPlan([task({})], NOW)[0].alarm).toBe(false)
   })
 
   it('keeps the soonest ones within what iOS allows', () => {

@@ -3,8 +3,8 @@ import type { Task, TaskInput } from './api'
 import { describeChanges } from './taskChanges'
 
 const due = new Date(2026, 10, 4, 15, 0).toISOString()
-const task = { id: 1, title: 'Call mom', notes: '', due_at: due, category: 'personal', priority: 'medium', remind_before_minutes: 10, done: false } as Task
-const same: TaskInput = { title: 'Call mom', notes: '', due_at: due, category: 'personal', priority: 'medium', remind_before_minutes: 10, done: false }
+const task = { id: 1, title: 'Call mom', notes: '', due_at: due, category: 'personal', priority: 'medium', remind_before_minutes: 10, alarm: false, done: false } as Task
+const same: TaskInput = { title: 'Call mom', notes: '', due_at: due, category: 'personal', priority: 'medium', remind_before_minutes: 10, alarm: false, done: false }
 
 describe('describing an edit', () => {
   it('finds nothing when nothing changed', () => {
@@ -29,5 +29,12 @@ describe('describing an edit', () => {
     const changes = describeChanges(task, { ...same, due_at: null, remind_before_minutes: null })
     expect(changes[0].to).toBe('Anytime')
     expect(changes[1]).toEqual({ label: 'Reminder', from: '10 min before', to: 'None' })
+  })
+})
+
+describe('the alarm switch', () => {
+  it('counts as a change', () => {
+    const changes = describeChanges(task, { ...same, alarm: true })
+    expect(changes.map((c) => c.label)).toContain('Alarm')
   })
 })

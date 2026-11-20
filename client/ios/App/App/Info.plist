@@ -72,5 +72,10 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Tasks you choose ring like an alarm, even on silent, so you don't miss them.</string>
+	<!-- Alarms are shown through the same system as Live Activities. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 </dict>
 </plist>

@@ -1,4 +1,5 @@
-import { isNativeApp, NATIVE_API_URL, nativeSession, saveNativeSession } from './native'
+import { CapacitorHttp } from '@capacitor/core'
+import { isNativeApp, NATIVE_API_URL, NATIVE_ORIGIN, nativeSession, saveNativeSession } from './native'
 import type { PreparedUpload, UploadMeta, UploadTarget } from './uploads'
 import { Outbox } from './outbox'
 import { tr } from './i18n'
@@ -21,6 +22,8 @@ export interface Task {
   category: Category
   priority: Priority
   remind_before_minutes: number | null
+  /** In the iPhone app, the reminder rings like a Clock alarm. */
+  alarm: boolean
   done: boolean
   completed_at: string | null
   created_at: string
@@ -37,7 +40,7 @@ export interface Task {
   client_id?: string | null
 }
 
-export type TaskInput = Pick<Task, 'title' | 'notes' | 'due_at' | 'category' | 'priority' | 'remind_before_minutes' | 'done'>
+export type TaskInput = Pick<Task, 'title' | 'notes' | 'due_at' | 'category' | 'priority' | 'remind_before_minutes' | 'alarm' | 'done'>
 
 export interface User {
   id: number
@@ -200,16 +203,43 @@ export function setSessionExpiredHandler(handler: () => void) {
   onSessionExpired = handler
 }
 
+/**
+ * The iPhone app sends API requests through iOS itself rather than the web view. From a web view
+ * each request to another address first needs a separate permission check (CORS), which on a slow
+ * connection doubles the wait. The answer comes back as a normal Response.
+ */
+async function nativeFetch(url: string, init: RequestInit, headers: Headers): Promise<Response> {
+  // Tells the server this is the app (a browser sets Origin itself and can't fake this one).
+  headers.set('Origin', NATIVE_ORIGIN)
+  try {
+    const answer = await CapacitorHttp.request({
+      url,
+      method: init.method ?? 'GET',
+      headers: Object.fromEntries(headers.entries()),
+      data: typeof init.body === 'string' ? JSON.parse(init.body) : undefined,
+      responseType: 'text',
+      connectTimeout: REQUEST_TIMEOUT_MS,
+      readTimeout: REQUEST_TIMEOUT_MS,
+    })
+    const empty = answer.status === 204 || answer.status === 205 || answer.data === '' || answer.data === undefined || answer.data === null
+    const body = empty ? null : typeof answer.data === 'string' ? answer.data : JSON.stringify(answer.data)
+    return new Response(answer.status === 204 || answer.status === 205 ? null : body, { status: answer.status, headers: answer.headers })
+  } catch {
+    throw new ApiError(tr('Couldn\'t reach the server. Check your connection and try again.'), 0)
+  }
+}
+
 async function rawFetch(path: string, init: RequestInit = {}, withAuth = true) {
   const headers = new Headers(init.headers)
   if (init.body !== undefined) headers.set('Content-Type', 'application/json')
   if (withAuth && accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   // The app has no cookies: it says which phone this is with a header instead.
   if (isNativeApp && nativeSession.device) headers.set('X-Device-Token', nativeSession.device)
+  if (isNativeApp) return nativeFetch(API_BASE + path, init, headers)
   const timeout = new AbortController()
   const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS)
   try {
-    return await fetch(API_BASE + path, { ...init, headers, credentials: isNativeApp ? 'omit' : 'include', signal: timeout.signal })
+    return await fetch(API_BASE + path, { ...init, headers, credentials: 'include', signal: timeout.signal })
   } catch {
     throw new ApiError(tr('Couldn\'t reach the server. Check your connection and try again.'), 0)
   } finally {

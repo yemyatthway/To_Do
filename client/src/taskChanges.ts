@@ -23,6 +23,7 @@ export function describeChanges(task: Task, input: TaskInput): TaskChange[] {
   if (task.category !== input.category) changes.push({ label: tr('Category'), from: CATEGORY()[task.category], to: CATEGORY()[input.category] })
   if (task.priority !== input.priority) changes.push({ label: tr('Priority'), from: PRIORITY()[task.priority], to: PRIORITY()[input.priority] })
   if (task.remind_before_minutes !== input.remind_before_minutes) changes.push({ label: tr('Reminder'), from: leadText(task.remind_before_minutes), to: leadText(input.remind_before_minutes) })
+  if (Boolean(task.alarm) !== Boolean(input.alarm)) changes.push({ label: tr('Alarm'), from: task.alarm ? tr('On') : tr('Off'), to: input.alarm ? tr('On') : tr('Off') })
   if (task.notes !== input.notes) changes.push({ label: tr('Notes'), from: task.notes || tr('None'), to: input.notes || tr('None') })
   if (task.done !== input.done) changes.push({ label: tr('Status'), from: task.done ? tr('Done') : tr('Not done'), to: input.done ? tr('Done') : tr('Not done') })
   return changes

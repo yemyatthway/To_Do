@@ -214,6 +214,26 @@ a {
   gap: 20px;
 }
 
+/* The iPhone app draws under the status bar (time, battery); a browser reports 0 here. */
+.app {
+  padding-top: calc(24px + env(safe-area-inset-top));
+}
+
+/* In the iPhone app, a strip behind the status bar so scrolled content doesn't run under the time. */
+html[data-platform='ios-app'] body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  height: env(safe-area-inset-top);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+
 .header {
   display: flex;
   align-items: center;

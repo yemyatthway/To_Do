@@ -29,6 +29,8 @@ class Task(models.Model):
     remind_before_minutes = models.PositiveIntegerField(null=True, blank=True, default=10)
     done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # In the iPhone app, the reminder rings like a Clock alarm instead of a notification.
+    alarm = models.BooleanField(default=False)
     reminder_sent_at = models.DateTimeField(null=True, blank=True)
     # When a sender last started on this reminder, so two can't send it at once and a failed try is retried.
     reminder_claimed_at = models.DateTimeField(null=True, blank=True)

@@ -22,7 +22,8 @@
     "gsap": "^3.15.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "read-excel-file": "9.3.14"
+    "read-excel-file": "9.3.14",
+    "todo-alarm": "file:native/todo-alarm"
   },
   "devDependencies": {
     "@capacitor/cli": "8.6.2",

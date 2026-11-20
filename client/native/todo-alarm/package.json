@@ -1,0 +1,12 @@
+{
+  "name": "todo-alarm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Todo Clock's own iPhone plugin: task reminders that ring like a Clock alarm (AlarmKit, iOS 26+).",
+  "main": "index.js",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

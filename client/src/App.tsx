@@ -22,6 +22,7 @@ import { usePageVisible } from './visibility'
 import { loadShownReminders, reminderKey, remindersDue, saveShownReminders } from './taskReminders'
 import { isNativeApp } from './native'
 import { reminderPlan } from './nativeReminders'
+import { alarmsAllowed, loadAlarmStatus, setAppAlarms } from './nativeAlarm'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
 import { More } from './pages/More'
@@ -462,13 +463,20 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   // back to the app re-reads the permission, in case it was changed in iPhone Settings.
   useEffect(() => {
     if (!isNativeApp || !pageVisible) return
-    void loadAppPermission().then(() => setDeviceState(deviceReminderState()))
+    void Promise.all([loadAppPermission(), loadAlarmStatus()]).then(() => setDeviceState(deviceReminderState()))
   }, [pageVisible])
   useEffect(() => {
     if (!isNativeApp) return
     const timer = window.setTimeout(() => {
-      if (!user.reminders_enabled) void cancelAppReminders()
-      else if (deviceState === 'ready') void scheduleAppReminders(reminderPlan(tasks, new Date())).catch(() => undefined)
+      if (!user.reminders_enabled) {
+        void cancelAppReminders()
+        return
+      }
+      const plan = reminderPlan(tasks, new Date())
+      // Tasks set to ring as an alarm get one (when iOS allows it); everything else a notification.
+      const ringing = alarmsAllowed()
+      if (deviceState === 'ready') void scheduleAppReminders(plan.filter((item) => !(ringing && item.alarm))).catch(() => undefined)
+      if (ringing) void setAppAlarms(plan.filter((item) => item.alarm).map((item) => ({ title: item.alarmTitle, at: item.at }))).catch(() => undefined)
     }, 800)
     return () => clearTimeout(timer)
   }, [tasks, user.reminders_enabled, deviceState])

@@ -1,6 +1,7 @@
 import { api } from './api'
 import { tr } from './i18n'
 import { isNativeApp } from './native'
+import { setAppAlarms } from './nativeAlarm'
 // Imported directly: a plugin can't be handed back from an async function (it looks like a promise and never settles).
 import { LocalNotifications } from '@capacitor/local-notifications'
 
@@ -162,6 +163,7 @@ const TEST_ID = 2_000_000_000
 /** Takes back every reminder scheduled on this phone (reminders off, or logging out). */
 export async function cancelAppReminders() {
   if (!isNativeApp) return
+  await setAppAlarms([]).catch(() => undefined)
   const notifications = LocalNotifications
   const { notifications: pending } = await notifications.getPending()
   if (pending.length) await notifications.cancel({ notifications: pending.map((n) => ({ id: n.id })) })

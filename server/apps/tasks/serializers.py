@@ -24,6 +24,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "category",
             "priority",
             "remind_before_minutes",
+            "alarm",
             "done",
             "completed_at",
             "created_at",

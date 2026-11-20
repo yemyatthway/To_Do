@@ -11,6 +11,9 @@ export const isNativeApp = Capacitor.isNativePlatform()
 /** The app's pages come from inside it, so it reaches the server by its full address. */
 export const NATIVE_API_URL: string = import.meta.env.VITE_NATIVE_API_URL ?? 'https://todoclock.app'
 
+/** What the server recognises the app by (also where its pages are served from). */
+export const NATIVE_ORIGIN = 'capacitor://localhost'
+
 const REFRESH = 'session.refresh'
 const DEVICE = 'session.device'
 

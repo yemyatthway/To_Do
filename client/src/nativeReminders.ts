@@ -23,7 +23,15 @@ export function reminderPlan(tasks: Task[], now: Date) {
       const due = new Date(task.due_at!)
       const at = new Date(due.getTime() - task.remind_before_minutes! * 60_000)
       const text = `${lead(task.remind_before_minutes!)} · ${formatTime(due)}`
-      return { id: task.id, title: task.title, body: task.priority === 'high' ? `${tr('High priority')} · ${text}` : text, at }
+      return {
+        id: task.id,
+        title: task.title,
+        body: task.priority === 'high' ? `${tr('High priority')} · ${text}` : text,
+        at,
+        // An alarm shows one line, so it carries the time too.
+        alarm: task.alarm,
+        alarmTitle: `${task.title} · ${formatTime(due)}`,
+      }
     })
     .filter((item) => item.at.getTime() > now.getTime())
     .sort((a, b) => a.at.getTime() - b.at.getTime())
