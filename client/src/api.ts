@@ -1,3 +1,4 @@
+import { isNativeApp, NATIVE_API_URL, nativeSession, saveNativeSession } from './native'
 import type { PreparedUpload, UploadMeta, UploadTarget } from './uploads'
 import { Outbox } from './outbox'
 import { tr } from './i18n'
@@ -121,6 +122,9 @@ export type ProfileInput = Partial<Pick<User, 'email' | 'full_name' | 'username'
 interface Session {
   access: string
   user: User
+  /** Only for the iPhone app, which can't keep cookies: its login and its "known device" mark. */
+  refresh?: string
+  device?: string
 }
 
 /** Right password on a browser the account hasn't used: a code was emailed to finish signing in. */
@@ -186,7 +190,7 @@ export class ApiError extends Error {
 const REQUEST_TIMEOUT_MS = 25_000
 
 // Empty in development (Vite proxies /api to Django); the backend URL in production.
-export const API_BASE = import.meta.env.VITE_API_URL ?? ''
+export const API_BASE = import.meta.env.VITE_API_URL ?? (isNativeApp ? NATIVE_API_URL : '')
 
 // Like afm_sys: the access token lives only in memory; the refresh token is an httpOnly cookie.
 let accessToken: string | null = null
@@ -200,10 +204,12 @@ async function rawFetch(path: string, init: RequestInit = {}, withAuth = true) {
   const headers = new Headers(init.headers)
   if (init.body !== undefined) headers.set('Content-Type', 'application/json')
   if (withAuth && accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
+  // The app has no cookies: it says which phone this is with a header instead.
+  if (isNativeApp && nativeSession.device) headers.set('X-Device-Token', nativeSession.device)
   const timeout = new AbortController()
   const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS)
   try {
-    return await fetch(API_BASE + path, { ...init, headers, credentials: 'include', signal: timeout.signal })
+    return await fetch(API_BASE + path, { ...init, headers, credentials: isNativeApp ? 'omit' : 'include', signal: timeout.signal })
   } catch {
     throw new ApiError(tr('Couldn\'t reach the server. Check your connection and try again.'), 0)
   } finally {
@@ -238,14 +244,19 @@ let refreshing: Promise<boolean> | null = null
 
 /** Swap the refresh cookie for a new access token. One request at a time, like afm_sys. */
 export function refreshSession(): Promise<boolean> {
-  refreshing ??= rawFetch('/api/auth/refresh/', { method: 'POST' }, false)
+  // The app sends its refresh token itself; a browser's goes in the cookie.
+  const body = isNativeApp ? JSON.stringify({ refresh: nativeSession.refresh }) : undefined
+  refreshing ??= (isNativeApp && !nativeSession.refresh ? Promise.resolve(new Response(null, { status: 204 })) : rawFetch('/api/auth/refresh/', { method: 'POST', body }, false))
     .then(async (response) => {
       // 204: no session cookie at all; 401: it expired or was revoked.
       if (!response.ok || response.status === 204) {
         accessToken = null
+        if (response.status === 401) await saveNativeSession({ refresh: null })
         return false
       }
-      accessToken = (await response.json()).access
+      const data: { access: string; refresh?: string } = await response.json()
+      accessToken = data.access
+      if (data.refresh) await saveNativeSession({ refresh: data.refresh })
       return true
     })
     .catch(() => false)
@@ -275,6 +286,7 @@ async function startSession(path: string, body: object) {
   if ('two_factor_required' in data) return { challenge: data.challenge, email: data.email, resend_in: data.resend_in, expires_at: data.expires_at }
   if ('account_deleted' in data) return data
   accessToken = data.access
+  if (data.refresh || data.device) await saveNativeSession({ refresh: data.refresh, device: data.device })
   return data.user
 }
 
@@ -311,14 +323,17 @@ export const auth = {
   devices: () => request<TrustedDevice[]>('/api/auth/devices/'),
   removeDevice: (id: number) => request<void>(`/api/auth/devices/${id}/`, { method: 'DELETE' }),
   async logout() {
-    await rawFetch('/api/auth/logout/', { method: 'POST' }, false).catch(() => undefined)
+    const body = isNativeApp ? JSON.stringify({ refresh: nativeSession.refresh }) : undefined
+    await rawFetch('/api/auth/logout/', { method: 'POST', body }, false).catch(() => undefined)
     accessToken = null
+    await saveNativeSession({ refresh: null })
   },
   me: () => request<User>('/api/auth/me/'),
   updateMe: (input: ProfileInput) => request<User>('/api/auth/me/', json('PATCH', input)),
   async deleteAccount(password: string) {
     await request<void>('/api/auth/me/', json('DELETE', { password }))
     accessToken = null
+    await saveNativeSession({ refresh: null, device: null })
   },
   changePassword: (old_password: string, new_password: string) =>
     request<void>('/api/auth/change-password/', json('POST', { old_password, new_password })),

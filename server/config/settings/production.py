@@ -11,9 +11,10 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 if render_host := env("RENDER_EXTERNAL_HOSTNAME", default=""):
     ALLOWED_HOSTS.append(render_host)
 
-# The app calls /api on its own (Vercel) domain, which forwards to Render, so the browser never
-# makes cross-site requests and CORS stays off. These origins may use the cookie endpoints.
-TRUSTED_FRONTEND_ORIGINS = env.list("TRUSTED_FRONTEND_ORIGINS")
+# The website calls /api on its own (Vercel) domain, which forwards to Render, so the browser never
+# makes cross-site requests. Only the iPhone app needs CORS (set in base). These origins may use
+# the login endpoints.
+TRUSTED_FRONTEND_ORIGINS = env.list("TRUSTED_FRONTEND_ORIGINS") + NATIVE_APP_ORIGINS  # noqa: F405
 CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if host]  # Django admin login
 
 # HTTPS everywhere. Render terminates TLS and says so in X-Forwarded-Proto.

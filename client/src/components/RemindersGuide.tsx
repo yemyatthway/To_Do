@@ -4,7 +4,7 @@ import { BROWSER_LABEL, detectDevice, PLATFORM_LABEL, type Platform } from '../d
 import { Icon } from '../icons'
 import { ReminderCheck } from './ReminderCheck'
 import { gsap, useGsap } from '../motion'
-import { deviceCanReceive, isPushSupported, sendTestNotification } from '../push'
+import { deviceCanReceive, isPushSupported, notificationsBlocked, sendTestNotification } from '../push'
 import { tr } from '../i18n'
 
 type Status = 'needs-install' | 'unsupported' | 'blocked' | 'ready' | 'on'
@@ -145,7 +145,7 @@ export function RemindersGuide({
       ? 'needs-install'
       : !isPushSupported()
         ? 'unsupported'
-        : Notification.permission === 'denied'
+        : notificationsBlocked()
           ? 'blocked'
           : remindersOn && receiving
             ? 'on'

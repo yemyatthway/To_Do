@@ -7,7 +7,8 @@ import { language } from './i18n'
 import { watchKeyboard } from './keyboard'
 import { listenForPushes } from './live'
 import { startMonitoring } from './monitoring'
-import { registerServiceWorker } from './push'
+import { isNativeApp, loadNativeSession } from './native'
+import { loadAppPermission, registerServiceWorker } from './push'
 
 document.documentElement.lang = language
 
@@ -26,10 +27,16 @@ try {
   // Storage blocked; nothing to clean.
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+// The iPhone app reads its saved login and notification permission first; a browser starts at once.
+Promise.all([loadNativeSession(), loadAppPermission()])
+  .catch(() => undefined)
+  .then(() => {
+    if (isNativeApp) document.documentElement.dataset.platform = 'ios-app'
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </StrictMode>,
+    )
+  })

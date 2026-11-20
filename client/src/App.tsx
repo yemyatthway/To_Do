@@ -20,10 +20,12 @@ import { overlayTasks, type TaskPatch } from './outbox'
 import { onLive, startAdminLive, startLive, stopLive } from './realtime'
 import { usePageVisible } from './visibility'
 import { loadShownReminders, reminderKey, remindersDue, saveShownReminders } from './taskReminders'
+import { isNativeApp } from './native'
+import { reminderPlan } from './nativeReminders'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { Home } from './pages/Home'
 import { More } from './pages/More'
-import { canAskForNotifications, deviceReminderState, subscribeThisDevice, syncThisDevice, unsubscribeThisDevice, type DeviceReminderState } from './push'
+import { cancelAppReminders, canAskForNotifications, deviceReminderState, loadAppPermission, scheduleAppReminders, subscribeThisDevice, syncThisDevice, unsubscribeThisDevice, type DeviceReminderState } from './push'
 import { useTheme } from './theme'
 import {
   addDays,
@@ -361,6 +363,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const pageVisible = usePageVisible()
   useEffect(() => {
     if (!user.reminders_enabled || !pageVisible) return
+    // The iPhone app shows the phone's own notification at that moment instead.
+    if (isNativeApp && deviceReminderState() === 'ready') return
     const shown = loadShownReminders(now)
     const due = remindersDue(tasks, now, shown)
     if (!due.length) return
@@ -453,6 +457,21 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
       .finally(() => setDeviceState(deviceReminderState()))
   }, [user.reminders_enabled])
   const [hideDeviceBanner, setHideDeviceBanner] = useState(false)
+
+  // The iPhone app: reminders are scheduled on the phone, kept in step with the task list. Coming
+  // back to the app re-reads the permission, in case it was changed in iPhone Settings.
+  useEffect(() => {
+    if (!isNativeApp || !pageVisible) return
+    void loadAppPermission().then(() => setDeviceState(deviceReminderState()))
+  }, [pageVisible])
+  useEffect(() => {
+    if (!isNativeApp) return
+    const timer = window.setTimeout(() => {
+      if (!user.reminders_enabled) void cancelAppReminders()
+      else if (deviceState === 'ready') void scheduleAppReminders(reminderPlan(tasks, new Date())).catch(() => undefined)
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [tasks, user.reminders_enabled, deviceState])
 
   const unhide = (id: number) =>
     setHidden((set) => {

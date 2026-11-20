@@ -84,10 +84,30 @@ def _clear_refresh_cookie(response):
     )
 
 
-def _session_response(user, response_status=status.HTTP_200_OK):
+def native_app(request):
+    """The iPhone app: the only caller that gets its refresh token in the body, since it can't keep
+    our cookie. A web page can't pretend to be it, because a browser sets Origin itself."""
+    return request.headers.get("Origin") in settings.NATIVE_APP_ORIGINS
+
+
+def _give_refresh(request, response, refresh):
+    if native_app(request):
+        response.data["refresh"] = str(refresh)
+    else:
+        _set_refresh_cookie(response, refresh)
+
+
+def _refresh_from(request):
+    if native_app(request):
+        token = request.data.get("refresh") if isinstance(request.data, dict) else None
+        return token if isinstance(token, str) else None
+    return request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+
+
+def _session_response(request, user, response_status=status.HTTP_200_OK):
     refresh = RefreshToken.for_user(user)
     response = Response({"access": str(refresh.access_token), "user": UserSerializer(user).data}, status=response_status)
-    _set_refresh_cookie(response, refresh)
+    _give_refresh(request, response, refresh)
     return response
 
 
@@ -114,7 +134,7 @@ class RegisterApi(APIView):
         user.save(update_fields=["last_login_at", "last_login_ip"])
         events.record(user, AuthEvent.Kind.LOGIN, ip=ip)
         otp.issue_code(user, EmailCode.Purpose.VERIFY_EMAIL)
-        response = _session_response(user, status.HTTP_201_CREATED)
+        response = _session_response(request, user, status.HTTP_201_CREATED)
         # The browser that created the account doesn't need a sign-in code later.
         otp.trust_device(request, response, user, ip=_client_ip(request))
         return response
@@ -174,7 +194,7 @@ class LoginApi(APIView):
         # (An unverified account signs in straight away; the app then asks for its email code first.)
         events.record(user, AuthEvent.Kind.LOGIN, ip=_client_ip(request))
         mail.send_welcome_once(user)
-        return _session_response(user)
+        return _session_response(request, user)
 
 
 class LoginVerifyApi(APIView):
@@ -196,7 +216,7 @@ class LoginVerifyApi(APIView):
             events.record(user, AuthEvent.Kind.RESTORED)
         events.record(user, AuthEvent.Kind.LOGIN, ip=_client_ip(request))
         mail.send_welcome_once(user)
-        response = _session_response(user)
+        response = _session_response(request, user)
         otp.trust_device(request, response, user, ip=_client_ip(request))
         return response
 
@@ -286,7 +306,7 @@ class ResetPasswordApi(APIView):
         events.record(user, AuthEvent.Kind.PASSWORD)
         events.record(user, AuthEvent.Kind.LOGIN, ip=ip)
         mail.send_password_changed(user)
-        response = _session_response(user)
+        response = _session_response(request, user)
         otp.trust_device(request, response, user, ip=ip)
         return response
 
@@ -416,7 +436,7 @@ class RefreshApi(APIView):
     def post(self, request):
         if not _trusted_origin(request):
             return _forbidden_origin()
-        token = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+        token = _refresh_from(request)
         if not token:
             # Simply logged out: not an error, so the app's startup check doesn't log one.
             return Response(status=status.HTTP_204_NO_CONTENT)
@@ -433,7 +453,7 @@ class RefreshApi(APIView):
                 return _session_over()
             fresh = RefreshToken.for_user(user)
             response = Response({"access": str(fresh.access_token)})
-            _set_refresh_cookie(response, fresh)
+            _give_refresh(request, response, fresh)
             return response
 
         # Written before the swap, so a repeat that sees the old token blacklisted also finds this.
@@ -453,7 +473,7 @@ class RefreshApi(APIView):
         RotatedRefresh.objects.filter(rotated_at__lt=timezone.now() - timedelta(hours=1)).delete()
         response = Response({"access": serializer.validated_data["access"]})
         if "refresh" in serializer.validated_data:
-            _set_refresh_cookie(response, serializer.validated_data["refresh"])
+            _give_refresh(request, response, serializer.validated_data["refresh"])
         return response
 
 
@@ -464,7 +484,7 @@ class LogoutApi(APIView):
     def post(self, request):
         if not _trusted_origin(request):
             return _forbidden_origin()
-        token = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+        token = _refresh_from(request)
         if token:
             try:
                 refresh = RefreshToken(token)

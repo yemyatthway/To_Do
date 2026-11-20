@@ -13,6 +13,7 @@ CORS_ALLOWED_ORIGINS = [
     # `npm run preview` (production build)
     "http://localhost:4173",
     "http://127.0.0.1:4173",
+    *NATIVE_APP_ORIGINS,  # noqa: F405
 ]
 CORS_ALLOW_CREDENTIALS = True
 

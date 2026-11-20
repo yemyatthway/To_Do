@@ -86,8 +86,16 @@ REFRESH_COOKIE_SECURE = env.bool("REFRESH_COOKIE_SECURE", default=not DEBUG)
 # "Lax" works when the frontend proxies /api on its own domain; "None" if it calls another domain directly.
 REFRESH_COOKIE_SAMESITE = env("REFRESH_COOKIE_SAMESITE", default="Lax")
 
+# The iPhone app shows its pages from inside the app, at this address. It can't keep cookies for
+# our domain, so the login endpoints hand it its tokens in the response instead (see auth_apis).
+NATIVE_APP_ORIGINS = ["capacitor://localhost"]
+
 # Frontend origins allowed to call the cookie endpoints (login, refresh, logout).
-TRUSTED_FRONTEND_ORIGINS = env.list("TRUSTED_FRONTEND_ORIGINS", default=[])
+TRUSTED_FRONTEND_ORIGINS = env.list("TRUSTED_FRONTEND_ORIGINS", default=[]) + NATIVE_APP_ORIGINS
+
+# Only the app calls from another origin; the website goes through its own domain.
+CORS_ALLOWED_ORIGINS = list(NATIVE_APP_ORIGINS)
+CORS_ALLOW_HEADERS = ("accept", "authorization", "content-type", "x-device-token")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

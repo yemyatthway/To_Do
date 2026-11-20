@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type ReminderStatus } from '../api'
 import { Icon } from '../icons'
-import { currentEndpoint, isPushSupported } from '../push'
+import { currentEndpoint, deviceReminderState, isPushSupported } from '../push'
+import { isNativeApp } from '../native'
 import { formatTime } from '../time'
 import { timeAgo } from '../user'
 import { tr } from '../i18n'
@@ -70,6 +71,7 @@ export function ReminderCheck() {
         </button>
       </div>
       <ul className="check-list">
+        {!isNativeApp && (
         <Check
           state={status.service.running ? 'ok' : 'bad'}
           title={tr('Reminder service')}
@@ -81,11 +83,19 @@ export function ReminderCheck() {
                 : tr('Never ran. The every-minute job (cron-job.org) isn\'t calling the server.')
           }
         />
+        )}
         <Check
           state={status.reminders_enabled ? 'ok' : 'bad'}
           title={tr('Reminders on for your account')}
           detail={status.reminders_enabled ? tr('On') : tr('Off. Tap the bell to turn them on.')}
         />
+        {isNativeApp ? (
+          <Check
+            state={deviceReminderState() === 'ready' ? 'ok' : 'bad'}
+            title={tr('This device can receive them')}
+            detail={deviceReminderState() === 'ready' ? tr('On · reminders are set on this iPhone, so they ring even offline.') : tr('Off. Turn on notifications in Settings → Todo Clock → Notifications.')}
+          />
+        ) : (
         <Check
           state={!isPushSupported() ? 'bad' : !device ? 'bad' : device.last_error ? 'bad' : 'ok'}
           title={tr('This device can receive them')}
@@ -101,6 +111,7 @@ export function ReminderCheck() {
                     : tr('Registered · nothing sent yet. Try "Send a test notification".')
           }
         />
+        )}
         <Check
           state={next ? 'ok' : 'warn'}
           title={tr('Next reminder')}

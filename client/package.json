@@ -8,9 +8,15 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ios": "vite build && cap sync ios",
+    "ios:local": "VITE_NATIVE_API_URL=http://localhost:8000 vite build && cap sync ios"
   },
   "dependencies": {
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "8.6.2",
+    "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/preferences": "8.0.1",
     "@sentry/browser": "^11.10.0",
     "ably": "^2.30.0",
     "gsap": "^3.15.0",
@@ -19,6 +25,7 @@
     "read-excel-file": "9.3.14"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.6.2",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

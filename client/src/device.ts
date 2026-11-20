@@ -1,3 +1,4 @@
+import { isNativeApp } from './native'
 export type Platform = 'ios' | 'android' | 'mac' | 'windows' | 'other'
 export type Browser = 'safari' | 'chrome' | 'edge' | 'firefox' | 'samsung' | 'other'
 
@@ -26,6 +27,7 @@ export function detectDevice(): Device {
             ? 'safari'
             : 'other'
   const installed =
+    isNativeApp ||
     window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true
   return { platform, browser, installed }
 }

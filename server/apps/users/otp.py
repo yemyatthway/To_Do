@@ -183,8 +183,15 @@ def device_name(user_agent):
     return f"{browser} on {system}" if system else browser
 
 
+def _device_token(request):
+    """This browser's "I've signed in here before" mark. The iPhone app sends it in a header."""
+    if request.headers.get("Origin") in settings.NATIVE_APP_ORIGINS:
+        return request.headers.get("X-Device-Token")
+    return request.COOKIES.get(settings.TRUSTED_DEVICE_COOKIE)
+
+
 def find_trusted(request, user):
-    token = request.COOKIES.get(settings.TRUSTED_DEVICE_COOKIE)
+    token = _device_token(request)
     if not token:
         return None
     device = TrustedDevice.objects.filter(user=user, token_hash=_hash(token)).first()
@@ -197,6 +204,9 @@ def find_trusted(request, user):
 def trust_device(request, response, user, ip=None):
     token = secrets.token_urlsafe(32)
     TrustedDevice.objects.create(user=user, token_hash=_hash(token), name=device_name(request.headers.get("User-Agent")), ip_address=ip)
+    if request.headers.get("Origin") in settings.NATIVE_APP_ORIGINS:
+        response.data["device"] = token
+        return
     response.set_cookie(
         settings.TRUSTED_DEVICE_COOKIE,
         token,
@@ -209,7 +219,7 @@ def trust_device(request, response, user, ip=None):
 
 
 def current_device_hash(request):
-    token = request.COOKIES.get(settings.TRUSTED_DEVICE_COOKIE)
+    token = _device_token(request)
     return _hash(token) if token else None
 
 

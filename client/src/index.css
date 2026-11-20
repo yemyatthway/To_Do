@@ -7538,10 +7538,8 @@ button.file-thumb:focus-visible .thumb-open {
   letter-spacing: 0;
 }
 
+/* Sits above the logo in the page's own flow (the page already leaves room for the notch). */
 .auth-language {
-  position: fixed;
-  top: calc(12px + env(safe-area-inset-top));
-  right: 12px;
   z-index: 2;
 }
 
