@@ -25,6 +25,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "priority",
             "remind_before_minutes",
             "alarm",
+            "duration_minutes",
             "done",
             "completed_at",
             "created_at",
@@ -47,6 +48,11 @@ class TaskSerializer(serializers.ModelSerializer):
         if not task.pk:
             return []
         return [(c.owner.full_name or c.owner.email).split()[0] for c in task.linked_copies.all()]
+
+    def validate_duration_minutes(self, value):
+        if value is not None and not 1 <= value <= 24 * 60:
+            raise serializers.ValidationError("A task can last up to a day.")
+        return value
 
     def validate_remind_before_minutes(self, value):
         # Up to a day ahead: the reminder job looks one day ahead (notifications.reminders.MAX_LEAD).

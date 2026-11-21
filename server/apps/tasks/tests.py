@@ -329,3 +329,13 @@ class TaskAlarmTests(APITestCase):
         self.assertIs(loud.data["alarm"], True)
         changed = self.client.patch(f"/api/tasks/{loud.data['id']}/", {"alarm": False}, format="json")
         self.assertIs(changed.data["alarm"], False)
+
+    def test_a_task_can_have_a_length(self):
+        due = (timezone.now() + timedelta(hours=2)).isoformat()
+        meeting = self.client.post("/api/tasks/", {"title": "Meeting", "due_at": due, "duration_minutes": 60}, format="json")
+        self.assertEqual((meeting.status_code, meeting.data["duration_minutes"]), (201, 60))
+        self.assertIsNone(self.client.post("/api/tasks/", {"title": "Call", "due_at": due}, format="json").data["duration_minutes"])
+        for bad in (0, 24 * 60 + 1, -5):
+            self.assertEqual(self.client.post("/api/tasks/", {"title": "x", "due_at": due, "duration_minutes": bad}, format="json").status_code, 400, bad)
+        cleared = self.client.patch(f"/api/tasks/{meeting.data['id']}/", {"duration_minutes": None}, format="json")
+        self.assertIsNone(cleared.data["duration_minutes"])

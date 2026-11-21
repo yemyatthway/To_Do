@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { tr } from './i18n'
 
-export type View = 'home' | 'tasks' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace' | 'notifications'
+export type View = 'home' | 'tasks' | 'progress' | 'profile' | 'admin' | 'friends' | 'timer' | 'chats' | 'more' | 'workspaces' | 'workspace' | 'notifications' | 'cards' | 'deck'
 
 export type WorkspaceSection = 'home' | 'members' | 'settings' | 'roles' | 'activity'
 export type WorkspaceChild = WorkspaceSection | 'page' | 'table'
@@ -19,7 +19,8 @@ export const SETTINGS_SECTIONS = {
 export type SettingsSection = keyof typeof SETTINGS_SECTIONS
 
 export type Route =
-  | { view: Exclude<View, 'friends' | 'workspace' | 'profile'> }
+  | { view: Exclude<View, 'friends' | 'workspace' | 'profile' | 'deck'> }
+  | { view: 'deck'; id: number; study?: boolean }
   | { view: 'friends'; username?: string }
   | { view: 'workspace'; id: number; section: WorkspaceSection }
   | { view: 'workspace'; id: number; section: 'page'; pageId: number }
@@ -34,6 +35,7 @@ const PLAIN: Partial<Record<string, Route>> = {
   timer: { view: 'timer' },
   admin: { view: 'admin' },
   notifications: { view: 'notifications' },
+  cards: { view: 'cards' },
 }
 
 const safeDecode = (part: string) => {
@@ -70,6 +72,11 @@ export function parseRoute(pathname: string, search = ''): Route {
     }
     return { view: 'workspace', id, section: 'home' }
   }
+  if (first === 'cards' && second) {
+    const id = Number(second)
+    if (!Number.isInteger(id) || id <= 0) return { view: 'cards' }
+    return third === 'study' ? { view: 'deck', id, study: true } : { view: 'deck', id }
+  }
   if (first === 'settings') {
     if (!second) return { view: 'profile' }
     return Object.hasOwn(SETTINGS_SECTIONS, second) ? { view: 'profile', section: second as SettingsSection } : { view: 'profile' }
@@ -93,6 +100,8 @@ export function pathFor(route: Route): string {
     }
     case 'profile':
       return route.section ? `/settings/${route.section}` : '/settings'
+    case 'deck':
+      return `/cards/${route.id}${route.study ? '/study' : ''}`
     default:
       return `/${route.view}`
   }
@@ -100,7 +109,7 @@ export function pathFor(route: Route): string {
 
 /** A page inside another page: it always has a back button. */
 export function isChildPage(route: Route): boolean {
-  return (route.view === 'friends' && Boolean(route.username)) || route.view === 'workspace' || (route.view === 'profile' && Boolean(route.section))
+  return (route.view === 'friends' && Boolean(route.username)) || route.view === 'workspace' || route.view === 'deck' || (route.view === 'profile' && Boolean(route.section))
 }
 
 /** Where Back goes when there's no earlier page in this visit (e.g. a link opened directly). */
@@ -114,6 +123,9 @@ export function parentOf(route: Route): Route {
       return { view: 'workspace', id: route.id, section: route.section === 'roles' ? 'settings' : 'home' }
     case 'profile':
       return route.section ? { view: 'profile' } : { view: 'more' }
+    case 'deck':
+      return route.study ? { view: 'deck', id: route.id } : { view: 'cards' }
+    case 'cards':
     case 'progress':
     case 'timer':
     case 'admin':

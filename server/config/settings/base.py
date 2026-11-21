@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "apps.chat",
     "apps.live",
     "apps.workspaces",
+    "apps.cards",
 ]
 
 AUTH_USER_MODEL = "users.User"
@@ -65,6 +66,8 @@ REST_FRAMEWORK = {
         "tables": "300/min",
         "comments": "120/min",
         "files": "300/min",
+        "cards": "600/min",
+        "card_import": "30/hour",
     },
 }
 

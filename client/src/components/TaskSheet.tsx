@@ -5,7 +5,7 @@ import type { ShownTask } from '../outbox'
 import { Calendar } from './Calendar'
 import { TimePicker } from './TimePicker'
 import { gsap, useGsap } from '../motion'
-import { addDays, dueDate, formatLead, fromInputs, REMINDER_LEADS, startOfDay, toDateInput, toTimeInput } from '../time'
+import { addDays, dueDate, durationText, formatLead, fromInputs, REMINDER_LEADS, startOfDay, TASK_LENGTHS, toDateInput, toTimeInput } from '../time'
 import { formatDate, tr } from '../i18n'
 import { alarmsAvailable, askForAlarms, openAlarmSettings } from '../nativeAlarm'
 import { describeChanges } from '../taskChanges'
@@ -29,7 +29,7 @@ const PRIORITIES: { value: Priority; label: string; color: string }[] = [
 ]
 const DEFAULT_LEAD = 10
 
-type RowName = 'date' | 'time' | 'remind' | 'category' | 'priority' | 'notes'
+type RowName = 'date' | 'time' | 'length' | 'remind' | 'category' | 'priority' | 'notes'
 
 const timeLabel = (value: string) => {
   const [hours, minutes] = value.split(':').map(Number)
@@ -79,6 +79,8 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
   // How long before the task the reminder comes (minutes); kept when the switch goes off and on.
   const [lead, setLead] = useState<number>(task?.remind_before_minutes ?? DEFAULT_LEAD)
   const [done, setDone] = useState(task?.done ?? false)
+  // How long it takes; null for just a start time.
+  const [duration, setDuration] = useState<number | null>(task?.duration_minutes ?? null)
   // Ring like a Clock alarm instead of a notification (iPhone app, iOS 26+).
   const [alarm, setAlarm] = useState(task?.alarm ?? false)
   const [alarmNote, setAlarmNote] = useState('')
@@ -188,6 +190,7 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
       priority,
       // With reminders off account-wide the switch is locked, so keep whatever the task already had.
       remind_before_minutes: !remindersOn ? (task?.remind_before_minutes ?? null) : time && remind ? lead : null,
+      duration_minutes: time ? duration : null,
       // Where alarms can't ring (a browser, an older iPhone) the task keeps what it had.
       alarm: remindersOn && alarmsAvailable() ? Boolean(time && remind && alarm) : (task?.alarm ?? false),
       done,
@@ -336,6 +339,30 @@ export function TaskSheet({ task, defaults, remindersOn, onClose, onSave, onDele
 
           {time && (
             <>
+              <TaskRowButton icon="timer" label={tr('Length')} value={duration ? durationText(duration) : tr('Just a start time')} open={openRow === 'length'} onToggle={() => toggleRow('length')} />
+              {openRow === 'length' && (
+                <div className="task-row-body">
+                  <div className="chips lead-chips" role="radiogroup" aria-label={tr('How long it takes')}>
+                    {[null, ...TASK_LENGTHS].map((minutes) => (
+                      <button
+                        key={minutes ?? 'none'}
+                        type="button"
+                        role="radio"
+                        aria-checked={duration === minutes}
+                        aria-pressed={duration === minutes}
+                        className="chip"
+                        onClick={() => {
+                          setDuration(minutes)
+                          setOpenRow(null)
+                        }}
+                      >
+                        {minutes ? durationText(minutes) : tr('None')}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="hint">{duration ? tr('Shows as Now until it ends, then Late.') : tr('Shows as Now for 30 minutes from its time, then Late.')}</span>
+                </div>
+              )}
               <TaskRowButton icon="bell" label={tr('Reminder')} value={!remindersOn ? tr('Off in settings') : remind ? (alarm && alarmsAvailable() ? `${formatLead(lead)} · ${tr('Alarm')}` : formatLead(lead)) : tr('None')} open={openRow === 'remind'} onToggle={() => toggleRow('remind')} />
               {openRow === 'remind' && (
                 <div className="task-row-body">

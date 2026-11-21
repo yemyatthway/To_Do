@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, auth, chat, createOutbox, refreshSession, setSessionExpiredHandler, social, workspaces, type Task, type TaskInput, type User, type WorkspaceList } from './api'
+import { api, auth, chat, createOutbox, flashcards, refreshSession, setSessionExpiredHandler, social, workspaces, type Task, type TaskInput, type User, type WorkspaceList } from './api'
 import { SideNav } from './components/SideNav'
 import { AppSkeleton, CardsSkeleton, HomeSkeleton, Loading, LoadingPage } from './components/Loading'
 import { TaskSheet, type SheetDefaults } from './components/TaskSheet'
@@ -45,7 +45,7 @@ import type { TaskList } from './taskGroups'
 import { ConfirmAction } from './components/ConfirmAction'
 
 // Phone: screens reached through More, which get a back button.
-const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace', 'notifications']
+const MORE_VIEWS: readonly View[] = ['more', 'progress', 'timer', 'profile', 'admin', 'workspaces', 'workspace', 'notifications', 'cards', 'deck']
 
 // Screens most visits never open load on demand, so the first paint stays small.
 const GuestScreen = lazy(() => import('./pages/Guest').then((m) => ({ default: m.GuestScreen })))
@@ -57,6 +57,9 @@ const Timer = lazy(() => import('./pages/Timer').then((m) => ({ default: m.Timer
 const Friends = lazy(() => import('./pages/Friends').then((m) => ({ default: m.Friends })))
 const Notifications = lazy(() => import('./pages/Notifications').then((m) => ({ default: m.Notifications })))
 const Workspaces = lazy(() => import('./pages/Workspaces').then((m) => ({ default: m.Workspaces })))
+const Decks = lazy(() => import('./pages/Cards').then((m) => ({ default: m.Decks })))
+const DeckPage = lazy(() => import('./pages/Cards').then((m) => ({ default: m.DeckPage })))
+const Study = lazy(() => import('./pages/Cards').then((m) => ({ default: m.Study })))
 const WorkspacePage = lazy(() => import('./pages/Workspaces').then((m) => ({ default: m.WorkspacePage })))
 const Chats = lazy(() => import('./pages/Chats').then((m) => ({ default: m.Chats })))
 const RemindersGuide = lazy(() => import('./components/RemindersGuide').then((m) => ({ default: m.RemindersGuide })))
@@ -311,9 +314,11 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   const route: Route = asked.view === 'admin' && !user.is_staff ? { view: 'home' } : asked
   const view = route.view
   const workspaceId = route.view === 'workspace' ? route.id : null
-  const go = useCallback((next: Exclude<View, 'workspace'>) => navigate({ view: next } as Route), [navigate])
+  const go = useCallback((next: Exclude<View, 'workspace' | 'deck'>) => navigate({ view: next } as Route), [navigate])
   const [friendName, setFriendName] = useState<string | null>(null)
   const [unreadNotices, setUnreadNotices] = useState(0)
+  const [deckTitle, setDeckTitle] = useState<string | null>(null)
+  const [cardsDue, setCardsDue] = useState(0)
   const [sideItems, setSideItems] = useState<{ workspaceId: number; items: WorkspaceItem[] } | null>(null)
   const showSideItems = useCallback((workspaceId: number, items: WorkspaceItem[]) => setSideItems({ workspaceId, items }), [])
   // Staff only: anyone else who opens /admin lands on Today, with the address to match.
@@ -362,6 +367,15 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
   // A reminder whose time comes while the app is on screen: the phone may not show a notification
   // over its own app, and this works even if a push never arrives.
   const pageVisible = usePageVisible()
+  // Flashcards waiting, for the row on Today. Checked when Today opens or the app comes back.
+  useEffect(() => {
+    if (view !== 'home' || !pageVisible) return
+    let live = true
+    flashcards.summary().then(({ due }) => live && setCardsDue(due), () => {})
+    return () => {
+      live = false
+    }
+  }, [view, pageVisible])
   useEffect(() => {
     if (!user.reminders_enabled || !pageVisible) return
     // The iPhone app shows the phone's own notification at that moment instead.
@@ -873,6 +887,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
     more: [tr('Everything else'), tr('More')],
     workspaces: [tr('Teams'), tr('Workspaces')],
     notifications: [tr('For you'), tr('Notifications')],
+    cards: [tr('Study'), tr('Flashcards')],
+    deck: route.view === 'deck' && route.study ? [deckTitle ?? tr('Flashcards'), tr('Study')] : [tr('Flashcards'), deckTitle ?? tr('Deck')],
     workspace:
       route.view !== 'workspace' || route.section === 'home' || route.section === 'page' || route.section === 'table'
         ? [tr('Workspaces'), workspaceName]
@@ -905,7 +921,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
 
       <div className="shell">
       <SideNav
-        view={route.view === 'workspace' ? (route.section === 'table' ? `table:${route.id}:${route.tableId}` : `workspace:${route.id}`) : view}
+        view={route.view === 'workspace' ? (route.section === 'table' ? `table:${route.id}:${route.tableId}` : `workspace:${route.id}`) : view === 'deck' ? 'cards' : view}
         // An open page has its own list of pages and tables beside it.
         openWorkspace={route.view === 'workspace' && route.section !== 'page' && sideItems?.workspaceId === route.id ? sideItems : null}
         isStaff={user.is_staff}
@@ -922,7 +938,7 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             const [, id, tableId] = next.split(':')
             navigate({ view: 'workspace', id: Number(id), section: 'table', tableId: Number(tableId) })
           } else if (next.startsWith('workspace:')) openWorkspace(Number(next.split(':')[1]))
-          else go(next as Exclude<View, 'workspace'>)
+          else go(next as Exclude<View, 'workspace' | 'deck'>)
         }}
       />
       <div className={`app${view === 'chats' ? ' is-chats' : ''}`}>
@@ -1045,6 +1061,25 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
             <Reveal key="notifications">
               <Notifications now={now} notify={notify} onOpen={openUrl} onUnread={setUnreadNotices} />
             </Reveal>
+          ) : view === 'cards' ? (
+            <Reveal key="cards">
+              <Decks onOpen={(id) => navigate({ view: 'deck', id })} />
+            </Reveal>
+          ) : route.view === 'deck' ? (
+            <Reveal key={`deck-${route.id}-${route.study ? 'study' : 'list'}`}>
+              {route.study ? (
+                <Study id={route.id} notify={notify} onTitle={setDeckTitle} onDone={() => navigate({ view: 'deck', id: route.id }, { replace: true })} />
+              ) : (
+                <DeckPage
+                  id={route.id}
+                  now={now}
+                  notify={notify}
+                  onTitle={setDeckTitle}
+                  onStudy={() => navigate({ view: 'deck', id: route.id, study: true })}
+                  onGone={() => navigate({ view: 'cards' }, { replace: true })}
+                />
+              )}
+            </Reveal>
           ) : view === 'workspaces' ? (
             <Reveal key="workspaces">
               <Workspaces data={workspaceList} error={workspaceError} notify={notify} onOpen={openWorkspace} onChanged={loadWorkspaces} onRetry={loadWorkspaces} />
@@ -1139,6 +1174,8 @@ function Workspace({ user, onUserChange, onLoggedOut }: { user: User; onUserChan
               onCreateAt={(d, time) => openCreate(d, time)}
               onAddOnDay={(d) => openCreate(d)}
               onShowProgress={() => go('progress')}
+              cardsDue={cardsDue}
+              onStudyCards={() => go('cards')}
               onSeeOverdue={() => {
                 setTaskList('overdue')
                 go('tasks')

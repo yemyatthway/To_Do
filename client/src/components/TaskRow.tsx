@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import type { Task } from '../api'
 import type { ShownTask } from '../outbox'
 import { Icon } from '../icons'
-import { dueDate, formatShortDay, formatTime, relativeLabel, sameDay } from '../time'
+import { dueDate, formatShortDay, formatTime, relativeLabel, sameDay, taskEnd } from '../time'
 import { tr } from '../i18n'
 
 const REVEAL = 92
@@ -30,7 +30,10 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action, 
 
   const due = dueDate(task)
   // From another day (an overdue task), say which day too.
-  const when = due ? (timeOnly || sameDay(due, now) ? formatTime(due) : `${formatShortDay(due)}, ${formatTime(due)}`) : tr('Anytime')
+  const end = task.duration_minutes ? taskEnd(task) : null
+  // A task with a length shows its span: "10:00 – 11:00 AM".
+  const hours = due ? (end ? `${formatTime(due)} – ${formatTime(end)}` : formatTime(due)) : ''
+  const when = due ? (timeOnly || sameDay(due, now) ? hours : `${formatShortDay(due)}, ${hours}`) : tr('Anytime')
   // "Remind a friend": who put it in your list, or who you added yours for.
   const people = task.added_by_name
     ? tr('from {value}', { value: task.added_by_name.split(' ')[0] })
@@ -113,8 +116,8 @@ export function TaskRow({ task, now, fresh, onToggle, onOpen, onDelete, action, 
           </span>
         </button>
         {fresh && <span className="badge badge-new">{tr('New')}</span>}
-        {!fresh && relative && !(timeOnly && relative === tr('Overdue')) && (
-          <span className={`badge ${relative === tr('Overdue') ? 'badge-late' : 'badge-soon'}`}>{relative}</span>
+        {!fresh && relative && !(timeOnly && relative.tone === 'late') && (
+          <span className={`badge ${relative.tone === 'late' ? 'badge-warn' : 'badge-soon'}`}>{relative.text}</span>
         )}
         {!fresh && !relative && task.priority === 'high' && !task.done && <span className="badge badge-high">{tr('High')}</span>}
         {action}

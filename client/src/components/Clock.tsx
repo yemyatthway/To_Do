@@ -4,6 +4,7 @@ import { useHourPress } from '../hourPress'
 import { gsap } from '../motion'
 import { useTicker } from '../useTicker'
 import { tr } from '../i18n'
+import { arcPath } from '../clockArc'
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 1)
 
@@ -80,6 +81,20 @@ export function Clock({ tasks, showHands, selectedHour, freshTaskId, onSelectHou
         {HOURS.map((hour) => {
           const [x, y] = point(hour * 30, 126)
           return <circle key={`t${hour}`} cx={x} cy={y} r="2" fill="var(--tick)" />
+        })}
+
+        {/* A task with a length is also drawn as an arc around the face, from its start to its end. */}
+        {tasks.filter((task) => task.duration_minutes).map((task) => {
+          const due = new Date(task.due_at!)
+          const start = ((due.getHours() % 12) + due.getMinutes() / 60) * 30
+          return (
+            <path
+              key={`arc${task.id}`}
+              className={`clock-arc${task.done ? ' done' : ''}`}
+              d={arcPath(start, (Math.min(task.duration_minutes!, 719) / 60) * 30, 80)}
+              stroke={`var(--${task.category})`}
+            />
+          )
         })}
 
         {/* High priority drawn last, so it sits on top when dots share a time. */}

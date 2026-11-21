@@ -55,6 +55,8 @@ export function ConfirmAction({ title, children, confirmLabel, danger, icon = 'h
     setError('')
     try {
       await onConfirm()
+      // Most dialogs close here; the ones that stay open (adding cards one after another) are ready again.
+      setBusy(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setBusy(false)

@@ -30,6 +30,9 @@ interface HomeProps {
   onAddOnDay: (day: Date) => void
   onShowProgress: () => void
   onSeeOverdue: () => void
+  /** Flashcards waiting across all decks (0 hides the row). */
+  cardsDue?: number
+  onStudyCards?: () => void
 }
 
 const time = (task: Task) => dueDate(task)!.getTime()
@@ -44,7 +47,7 @@ function dayLabel(date: Date, now: Date) {
   return formatShortDay(date)
 }
 
-export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveToToday, onOpen, onDelete, onCreateAt, onAddOnDay, onShowProgress, onSeeOverdue }: HomeProps) {
+export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveToToday, onOpen, onDelete, onCreateAt, onAddOnDay, onShowProgress, onSeeOverdue, cardsDue = 0, onStudyCards }: HomeProps) {
   const [selectedHour, setSelectedHour] = useState<number | null>(null)
   const listRef = useRef<HTMLElement>(null)
 
@@ -230,6 +233,18 @@ export function Home({ tasks, now, day, freshId, onDayChange, onToggle, onMoveTo
                 ))}
               </ul>
             </section>
+          )}
+          {isToday && cardsDue > 0 && onStudyCards && (
+            <button type="button" className="flat-row study-today" onClick={onStudyCards}>
+              <span className="well">
+                <Icon name="cards" />
+              </span>
+              <span className="row-main">
+                <span className="person-name">{tr('Review flashcards')}</span>
+                <span className="row-sub">{cardsDue === 1 ? tr('1 card waiting') : tr('{count} cards waiting', { count: cardsDue })}</span>
+              </span>
+              <Icon name="chevron" className="more-go" />
+            </button>
           )}
           <ul className="task-list">{upcoming.map(row)}</ul>
           {openAnytime.length > 0 && <h3 className="section-label">{tr('Anytime')}</h3>}

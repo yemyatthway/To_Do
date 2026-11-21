@@ -3,7 +3,7 @@ import type { Task } from './api'
 import { MAX_SCHEDULED, reminderPlan } from './nativeReminders'
 
 const NOW = new Date('2026-11-04T12:00:00Z')
-const task = (over: Partial<Task>) => ({ id: 1, title: 'Back muscles', due_at: '2026-11-04T12:40:00Z', remind_before_minutes: 10, done: false, priority: 'medium', alarm: false, ...over }) as Task
+const task = (over: Partial<Task>) => ({ id: 1, title: 'Back muscles', due_at: '2026-11-04T12:40:00Z', remind_before_minutes: 10, done: false, priority: 'medium', alarm: false, duration_minutes: null, ...over }) as Task
 
 describe('reminders scheduled on the phone', () => {
   it('rings the chosen time before the task', () => {

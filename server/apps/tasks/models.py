@@ -29,6 +29,8 @@ class Task(models.Model):
     remind_before_minutes = models.PositiveIntegerField(null=True, blank=True, default=10)
     done = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # How long the task takes (minutes). Null: just a start time. It decides how long it shows as "Now".
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
     # In the iPhone app, the reminder rings like a Clock alarm instead of a notification.
     alarm = models.BooleanField(default=False)
     reminder_sent_at = models.DateTimeField(null=True, blank=True)

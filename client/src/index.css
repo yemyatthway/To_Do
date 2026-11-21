@@ -37,6 +37,8 @@
   --okFill: #2fa597;
   --hBg: rgba(250, 226, 216, 0.95);
   --hT: #9a3b22;
+  --lateBg: rgba(255, 214, 140, 0.55);
+  --lateT: #8a5300;
   --nBg: rgba(229, 225, 252, 0.95);
   --nT: #4a3bb8;
   --toast: rgba(30, 43, 69, 0.88);
@@ -89,6 +91,8 @@
   --ok: #5fd3c4;
   --hBg: rgba(210, 81, 47, 0.25);
   --hT: #f7b5a2;
+  --lateBg: rgba(240, 170, 60, 0.22);
+  --lateT: #ffcf86;
   --nBg: rgba(140, 125, 245, 0.3);
   --nT: #d3ccff;
   --toast: rgba(52, 66, 96, 0.92);
@@ -553,6 +557,17 @@ html[data-platform='ios-app'] body::after {
   stroke-width: 2;
 }
 
+.clock-arc {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  opacity: 0.45;
+}
+
+.clock-arc.done {
+  opacity: 0.18;
+}
+
 .clock-dot {
   stroke: var(--bg);
   stroke-width: 2;
@@ -738,6 +753,8 @@ html[data-platform='ios-app'] body::after {
 .badge-high { background: var(--hBg); color: var(--hT); }
 .badge-new { background: var(--nBg); color: var(--nT); }
 .badge-late { background: var(--dBg); color: var(--dIcon); }
+/* Late today: a nudge, not an alarm. Red is kept for Overdue (earlier days). */
+.badge-warn { background: var(--lateBg); color: var(--lateT); }
 
 .row-trash {
   width: 34px;
@@ -8064,4 +8081,152 @@ button.file-thumb:focus-visible .thumb-open {
 
 .import-preview .row-sub {
   white-space: normal;
+}
+
+/* ---------- Flashcards ---------- */
+
+.study-start {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 4px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-row .row-main .person-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-row .badge {
+  flex: none;
+}
+
+textarea.card-side {
+  height: auto;
+  min-height: 64px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.row-sub.wrap {
+  white-space: normal;
+}
+
+.study {
+  gap: 18px;
+}
+
+.study-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.study-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.study-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--acc);
+  transition: width 0.5s var(--hover-ease);
+}
+
+.flashcard {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 28px 22px;
+  border-radius: 24px;
+  background: var(--bg);
+  box-shadow: var(--sk-sunk);
+  text-align: center;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.flashcard p {
+  margin: 0;
+}
+
+.flashcard-front {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.flashcard hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}
+
+.flashcard-back {
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.show-answer {
+  width: 100%;
+}
+
+.grades {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.row-btn.grade {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 6px;
+  text-align: center;
+}
+
+.row-btn.grade .row-sub {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.row-btn.grade-again {
+  color: var(--dIcon);
+}
+
+.row-btn.grade-good {
+  color: var(--accT);
+}
+
+.study-done {
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding-top: 32px;
+  padding-bottom: 28px;
+}
+
+.study-done h2 {
+  margin: 0;
+}
+
+.study-done .row-sub {
+  max-width: 420px;
+}
+
+.study-today {
+  margin-bottom: 6px;
 }

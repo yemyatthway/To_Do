@@ -24,6 +24,8 @@ export interface Task {
   remind_before_minutes: number | null
   /** In the iPhone app, the reminder rings like a Clock alarm. */
   alarm: boolean
+  /** How long it takes (minutes); null: just a start time. */
+  duration_minutes: number | null
   done: boolean
   completed_at: string | null
   created_at: string
@@ -40,7 +42,7 @@ export interface Task {
   client_id?: string | null
 }
 
-export type TaskInput = Pick<Task, 'title' | 'notes' | 'due_at' | 'category' | 'priority' | 'remind_before_minutes' | 'alarm' | 'done'>
+export type TaskInput = Pick<Task, 'title' | 'notes' | 'due_at' | 'category' | 'priority' | 'remind_before_minutes' | 'alarm' | 'duration_minutes' | 'done'>
 
 export interface User {
   id: number
@@ -876,4 +878,48 @@ export function putFile(target: UploadTarget, blob: Blob, onProgress: (loaded: n
     signal.addEventListener('abort', () => xhr.abort())
     xhr.send(blob)
   })
+}
+
+export type CardAnswer = 'again' | 'hard' | 'good' | 'easy'
+
+export interface Deck {
+  id: number
+  title: string
+  created_at: string
+  updated_at: string
+  card_count: number
+  /** Cards to review now (seen before). */
+  due_count: number
+  /** New cards you can still start today. */
+  new_count: number
+}
+
+export interface Flashcard {
+  id: number
+  deck: number
+  front: string
+  back: string
+  is_new: boolean
+  due_at: string | null
+  interval_days: number
+  reps: number
+  lapses: number
+  created_at: string
+  /** Seconds until it comes back, for each answer (study only). */
+  previews?: Record<CardAnswer, number>
+}
+
+export const flashcards = {
+  decks: () => request<{ decks: Deck[] }>('/api/cards/decks/'),
+  createDeck: (title: string) => request<Deck>('/api/cards/decks/', json('POST', { title })),
+  deck: (id: number) => request<Deck & { cards: Flashcard[] }>(`/api/cards/decks/${id}/`),
+  renameDeck: (id: number, title: string) => request<Deck>(`/api/cards/decks/${id}/`, json('PATCH', { title })),
+  deleteDeck: (id: number) => request<void>(`/api/cards/decks/${id}/`, { method: 'DELETE' }),
+  addCard: (deckId: number, front: string, back: string) => request<Flashcard>(`/api/cards/decks/${deckId}/cards/`, json('POST', { front, back })),
+  importCards: (deckId: number, cards: [string, string][]) => request<{ added: number }>(`/api/cards/decks/${deckId}/cards/import/`, json('POST', { cards })),
+  editCard: (id: number, front: string, back: string) => request<Flashcard>(`/api/cards/cards/${id}/`, json('PATCH', { front, back })),
+  deleteCard: (id: number) => request<void>(`/api/cards/cards/${id}/`, { method: 'DELETE' }),
+  study: (deckId: number) => request<{ deck: Deck; cards: Flashcard[] }>(`/api/cards/decks/${deckId}/study/`),
+  review: (id: number, answer: CardAnswer) => request<Flashcard>(`/api/cards/cards/${id}/review/`, json('POST', { answer })),
+  summary: () => request<{ due: number }>('/api/cards/summary/'),
 }

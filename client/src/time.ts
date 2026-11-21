@@ -87,15 +87,48 @@ export function hourSlot(windowStart: Date, hour: number) {
   return windowStart
 }
 
-/** "in 20 min" for tasks starting within the hour, "Overdue" for missed ones. */
-export function relativeLabel(task: Task, now: Date) {
+/** A task with no length still counts as "Now" for this long after its time. */
+export const NOW_MINUTES = 30
+
+/** The choices for how long a task takes. */
+export const TASK_LENGTHS = [15, 30, 45, 60, 90, 120, 180, 240] as const
+
+/** 45 -> "45 min", 60 -> "1 hour", 90 -> "1 h 30 min", 180 -> "3 hours". */
+export function durationText(minutes: number) {
+  if (minutes < 60) return tr('{minutes} min', { minutes })
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (rest) return tr('{hours} h {minutes} min', { hours, minutes: rest })
+  return hours === 1 ? tr('1 hour') : tr('{hours} hours', { hours })
+}
+
+/** When a task is over: its start plus its length, or plus NOW_MINUTES if it has none. */
+export function taskEnd(task: Task) {
   const due = dueDate(task)
-  if (!due || task.done) return null
-  const minutes = Math.round((due.getTime() - now.getTime()) / 60000)
-  if (minutes < -1) return sameDay(due, now) ? tr('Overdue') : null
-  if (minutes <= 0) return tr('Now')
-  if (minutes <= 60) return tr('in {minutes} min', { minutes })
-  return null
+  return due ? new Date(due.getTime() + (task.duration_minutes ?? NOW_MINUTES) * 60000) : null
+}
+
+export type RelativeTone = 'soon' | 'now' | 'late'
+
+/**
+ * A task is meant for its time, not earlier: "in 20 min" before it, "Now" from its time until it's
+ * over, then a gentle "Late · 45 min" for the rest of the day. From the next day it's in Overdue.
+ */
+export function relativeLabel(task: Task, now: Date): { text: string; tone: RelativeTone } | null {
+  const due = dueDate(task)
+  const end = taskEnd(task)
+  if (!due || !end || task.done) return null
+  const at = now.getTime()
+  if (at < due.getTime()) {
+    const minutes = Math.round((due.getTime() - at) / 60000)
+    if (minutes <= 0) return { text: tr('Now'), tone: 'now' }
+    return minutes <= 60 ? { text: tr('in {minutes} min', { minutes }), tone: 'soon' } : null
+  }
+  if (at < end.getTime()) return { text: tr('Now'), tone: 'now' }
+  if (!sameDay(due, now)) return null
+  // Late counted from when it should have been finished, or from its time if it has no length.
+  const since = task.duration_minutes ? end.getTime() : due.getTime()
+  return { text: tr('Late · {time}', { time: durationText(Math.max(1, Math.round((at - since) / 60000))) }), tone: 'late' }
 }
 
 export const monthStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)

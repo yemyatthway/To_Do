@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { ChatMessage, Task, TaskInput } from './api'
 import { Outbox, overlayTasks, pendingMessages, type Transport } from './outbox'
 
-const INPUT: TaskInput = { title: 'Call the dentist', notes: '', due_at: null, category: 'personal', priority: 'medium', remind_before_minutes: null, alarm: false, done: false }
+const INPUT: TaskInput = { title: 'Call the dentist', notes: '', due_at: null, category: 'personal', priority: 'medium', remind_before_minutes: null, alarm: false, duration_minutes: null, done: false }
 const lost = () => Object.assign(new Error("Couldn't reach the server."), { status: 0 })
 const refused = (status: number, message = 'Pick today or a later date.', data?: unknown) => Object.assign(new Error(message), { status, data })
 

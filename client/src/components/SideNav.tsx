@@ -100,6 +100,7 @@ export function SideNav({ view, isStaff, chatBadge, socialBadge, workspaces, inv
     {
       label: tr('You'),
       items: [
+        { id: 'cards', label: tr('Flashcards'), icon: 'cards' },
         { id: 'progress', label: tr('Progress'), icon: 'chart', tour: 'progress' },
         { id: 'timer', label: tr('Timer'), icon: 'timer', tour: 'timer' },
         { id: 'profile', label: tr('Profile'), icon: 'user', tour: 'profile' },
